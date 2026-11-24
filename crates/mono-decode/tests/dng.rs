@@ -221,3 +221,15 @@ fn a_damaged_file_never_panics() {
         }
     }
 }
+
+/// Refused before rawler sets the memory aside: Linux has no 170 GB to
+/// promise, and ends the program.
+#[test]
+fn a_made_up_size_is_an_error() {
+    let mut bytes = dng(34892);
+    let entry = [&[0, 1, 4, 0, 1, 0, 0, 0][..], &(W as u32).to_le_bytes()].concat();
+    let at = bytes.windows(12).position(|e| e == entry).unwrap();
+    bytes[at + 11] = 0x7f;
+    let e = decode(&bytes).unwrap_err().to_string();
+    assert!(e.contains("2130706480x40"), "{e}");
+}

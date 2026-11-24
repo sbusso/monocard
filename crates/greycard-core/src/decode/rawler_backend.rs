@@ -701,6 +701,41 @@ fn raf_jpeg_end(
     Ok(Some(end).filter(|&end| end >= head && end <= len))
 }
 
+/// A DNG whose tags claim more samples than any sensor has: rawler sets
+/// the memory aside before it reads one, and where there is not that much
+/// the program ends. Stock builds read it as they did.
+// Ceiling: 2^30 samples, for the raw and every other image of the file. A
+// stitched DNG above it is refused; the fix in rawler would lift that.
+#[cfg(feature = "mono")]
+fn refuse_a_made_up_size(source: &RawSource) -> Result<()> {
+    use ::rawler::formats::tiff::reader::{GenericTiffReader, TiffReader};
+    use ::rawler::tags::{DngTag, TiffCommonTag};
+    let Ok(tiff) = GenericTiffReader::new(&mut source.reader(), 0, 0, None, &[]) else {
+        return Ok(());
+    };
+    if tiff.find_ifds_with_tag(DngTag::DNGVersion).is_empty() {
+        return Ok(());
+    }
+    for ifd in tiff.find_ifds_with_tag(TiffCommonTag::Compression) {
+        let of = |tag, or: u32| -> u64 {
+            let e = ifd.get_entry(tag);
+            let v = e.and_then(|e: &::rawler::formats::tiff::Entry| e.value.get_u32(0).ok()?);
+            v.unwrap_or(or).into()
+        };
+        let (w, h) = (
+            of(TiffCommonTag::ImageWidth, 0),
+            of(TiffCommonTag::ImageLength, 0),
+        );
+        let samples = w
+            .saturating_mul(h)
+            .saturating_mul(of(TiffCommonTag::SamplesPerPixel, 1));
+        if samples > 1 << 30 {
+            return Err(Error::Decode(format!("DNG with an image of {w}x{h}")));
+        }
+    }
+    Ok(())
+}
+
 /// Samples and metadata from one source; the frame takes what it keeps
 /// of the metadata (the shot).
 fn decode_source(source: &RawSource) -> Result<(RawFrame, RawMetadata)> {
@@ -708,6 +743,8 @@ fn decode_source(source: &RawSource) -> Result<(RawFrame, RawMetadata)> {
     // always was; only a RAF whose CFA data ends in zeros has rawler
     // look at it first, through a dummy read of its own.
     let up_front = refuse_a_half_copy(source.buf(), || raf_shape(source))?;
+    #[cfg(feature = "mono")]
+    refuse_a_made_up_size(source)?;
     let decoder = ::rawler::get_decoder(source).map_err(decoder_error)?;
     let params = RawDecodeParams::default();
     let image = decoder
