@@ -198,9 +198,11 @@ export global Mono {
     callback chart-shown(bool);
     callback chart-saved();
 
-    /// The camera window: where it is offered, its place in the import menu,
-    /// and whether it opens as a camera is connected.
-    out property <bool> camera-offered: self.only && Platform.os == OperatingSystemType.macos;
+    /// The camera window: whether the import from a camera is compiled, where
+    /// the window is offered, its place in the import menu, and whether it
+    /// opens as a camera is connected.
+    in property <bool> camera-built: false;
+    out property <bool> camera-offered: self.only && self.camera-built;
     out property <string> camera-menu: "From the camera...";
     callback camera-asked();
     in-out property <bool> camera-popup: true;

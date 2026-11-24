@@ -14,7 +14,7 @@ opened and developed by hand, and one DNG from it.
 | Looks and brand | Ten looks, grain, toning, vignette, solarize, TOML looks, XMP import, icon, theme, About, landing page |
 | Learned and AI | Learned runner and training tools (no weights), subject and sky masks, HDR merge |
 | Camera modes | Mode read from the MakerNote, `monocard mode`, `monocard profile modes`, look import, export, rename and delete, Camera modes group, start from the camera's mode (off by default). Settings page Camera profiles (table, fit from folders, sensor noise, test chart), `monocard profile list`. Standard, Solid and Solarized 1 to 3 pass on three real DNGs. Soft, High Contrast and HDR Tone are drafts, Grainy has no photos. See [picture-controls.md](picture-controls.md) |
-| USB import | The camera window: menu entry, opens when a camera is connected, grid of the camera's photos, import of the selected ones. macOS only. Tested with a made-up camera, not with the real one. See [camera-connection.md](camera-connection.md) |
+| USB import | The camera window: menu entry, opens when a camera is connected, grid of the camera's photos, import of the selected ones. macOS only, with the `mono-usb` feature. Tested with a made-up camera, not with the real one. See [camera-connection.md](camera-connection.md) |
 
 ## Measured (M5 Max)
 

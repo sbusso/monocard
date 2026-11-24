@@ -20,7 +20,13 @@ fn main() {
     // at every edit.
     println!("cargo:rerun-if-changed=build.rs");
     catalogs();
-    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+    let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    // The import from a camera on USB: the feature, on macOS.
+    println!("cargo:rustc-check-cfg=cfg(mono_usb)");
+    if std::env::var_os("CARGO_FEATURE_MONO_USB").is_some() && os == "macos" {
+        println!("cargo:rustc-cfg=mono_usb");
+    }
+    if os == "windows" {
         windows_resource();
     }
 }

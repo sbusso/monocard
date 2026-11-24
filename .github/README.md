@@ -81,7 +81,9 @@ cargo build --release -p greycard-cli --features mono --bin monocard
 scripts/ort-dylib.sh release
 ```
 
-The last line gets the runtime of the subject and sky masks. To make a macOS app:
+The last line gets the runtime of the subject and sky masks. On a Mac, use
+`--features mono-usb` in the first line to add the import from the camera.
+Other systems do not have it. To make a macOS app:
 
 ```sh
 scripts/monocard-package.sh

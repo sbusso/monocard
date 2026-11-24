@@ -148,7 +148,8 @@ Two ways work today with no build:
 ### Stage 1: USB import
 
 Built on 2026-11-24. The code is in `crates/greycard-ui/src/mono/usb.rs` (the logic, tested
-with a made-up camera) and `mono/usb/icc.rs` (ImageCaptureCore, macOS only). Not tested:
+with a made-up camera) and `mono/usb/icc.rs` (ImageCaptureCore). Both are compiled only on macOS,
+with the `mono-usb` feature, which is off by default. Not tested:
 
 - A run of the app with the camera. The calls are those of the Swift program that was tested.
 - U3 (the same bytes as from the card), U4 (both stores), and U6 (cable out during a copy).
@@ -174,7 +175,7 @@ S is under half a day, M about a day, L two days or more.
 
 | # | Step | Files | Size |
 | --- | --- | --- | --- |
-| 1 | List cameras and files, download, stop | new `crates/greycard-ui/src/mono/usb.rs`, `Cargo.toml` (`objc2-image-capture-core`), only for macOS and the `mono` feature | L |
+| 1 | List cameras and files, download, stop | new `crates/greycard-ui/src/mono/usb.rs`, `Cargo.toml` (`objc2-image-capture-core`), only for macOS and the `mono-usb` feature | L |
 | 2 | Skip photos already imported, before the copy. Read 64 KiB at each end and ask the library | `mono/usb.rs`, `import.rs` (split `hash_tail` so that it takes bytes) | M |
 | 3 | Show the camera as a source. Show "Copying 12 of 214". Built first as a row in the import sheet. The camera window replaced the row | `panel/import.rs`, `mono/camera.rs`, `mono-ui/ui/camera.slint` | M |
 | 4 | Pass the temporary folder to `import::scan` and `import::run`. Remove it at the end | `panel/import.rs` | S |
@@ -196,8 +197,9 @@ photos in one run. Later, download straight into the import's own temporary file
 ### Camera window
 
 Asked for by the user on 2026-11-24: an import as in Apple's Image Capture, with its own menu
-entry, that opens when a camera is connected. Built on 2026-11-24, for macOS and the `mono`
-feature. The card import sheet has no camera row now.
+entry, that opens when a camera is connected. Built on 2026-11-24, for macOS and the
+`mono-usb` feature. Without the feature, the window is not offered. The card import sheet has
+no camera row now.
 
 | Part | Where |
 | --- | --- |

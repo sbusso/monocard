@@ -67,9 +67,9 @@ pub(crate) struct Sheet {
     pub(crate) place_read: Option<Held>,
     pub(crate) place_generation: u64,
     /// The camera on the cable, in Monocard.
-    #[cfg(feature = "mono")]
+    #[cfg(mono_usb)]
     pub(crate) usb: crate::mono::usb::Sheet,
-    #[cfg(feature = "mono")]
+    #[cfg(mono_usb)]
     pub(crate) camera: crate::mono::camera::View,
 }
 
@@ -255,7 +255,7 @@ pub(crate) fn show(st: &State, app: &App) {
         String::new()
     };
     app.set_import_folders_note(note.into());
-    #[cfg(feature = "mono")]
+    #[cfg(mono_usb)]
     crate::mono::camera::options_changed(st, app);
     app.set_import_place(path_text(&st.import.place));
     // Add in place: a folder chosen and read, with frames in it.
@@ -682,7 +682,7 @@ pub(crate) fn finished(state: &Rc<Shared>, app: &App, opts: &Options, report: Re
     let (closing, moved) = {
         let mut st = state.borrow_mut();
         st.import.job = None;
-        #[cfg(feature = "mono")]
+        #[cfg(mono_usb)]
         crate::mono::usb::ended(&mut st, app);
         // Its last act was to post this; it ends on its own.
         st.import.thread = None;
@@ -745,7 +745,7 @@ pub(crate) fn leave(sheet: &mut Sheet, limit: std::time::Duration) {
         job.cancel();
         tracing::info!("import: the window closed; stopping after the file in hand");
     }
-    #[cfg(feature = "mono")]
+    #[cfg(mono_usb)]
     crate::mono::usb::leave();
     let Some(thread) = sheet.thread.take() else {
         return;

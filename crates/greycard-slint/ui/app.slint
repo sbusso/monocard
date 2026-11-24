@@ -3079,7 +3079,7 @@ export component App inherits Window {
             || root.lr-open || root.rt-open || root.keys-open || root.camera-open;
     }
     // Monocard's camera window.
-    property <bool> camera-open: Mono.only && CameraView.open;
+    property <bool> camera-open: Mono.camera-offered && CameraView.open;
     changed camera-open => { if (!root.camera-open) { CameraView.closed(); } }
 
     /// A mouse's back (true) or forward button pressed anywhere over

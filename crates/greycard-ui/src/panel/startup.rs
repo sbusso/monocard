@@ -1040,7 +1040,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     // The pane's entry from what the last check found, and this
     // launch's check if a day has gone.
     crate::update::start(&app, state.borrow().window.batch, &remembered.update);
-    #[cfg(feature = "mono")]
+    #[cfg(mono_usb)]
     crate::mono::usb::watch(&state.borrow(), &app);
 
     // The viewport is rendered inside Slint's frame, on its device.

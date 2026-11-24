@@ -1,5 +1,5 @@
-//! The camera window among the app's sheets: its menu item, when it opens by
-//! itself, and what reaches what under it.
+//! The camera window among the app's sheets: when it opens by itself,
+//! and what reaches what under it.
 
 use std::sync::Arc;
 
@@ -9,9 +9,6 @@ use super::*;
 use crate::CameraView;
 use crate::mono::camera;
 use crate::mono::usb::event::{Event, Tile};
-use crate::testing::labeled;
-
-const ITEM: &str = "From the camera...";
 
 fn is_open(app: &App) -> bool {
     app.global::<CameraView>().get_open()
@@ -29,52 +26,6 @@ fn connected(app: &App, state: &Rc<Shared>) {
 fn close(app: &App) {
     app.global::<CameraView>().set_open(false);
     settle(app);
-}
-
-/// The pane's menu of the ways in.
-fn open_menu(app: &App) {
-    app.set_grid_open(true);
-    settle(app);
-    let (at, size) = labeled(app, "Import...");
-    crate::testing::click(app, at.x + size.width / 2.0, at.y + size.height / 2.0);
-    assert!(app.get_menu_up(), "the menu opened");
-    settle(app);
-}
-
-#[test]
-fn the_menu_offers_the_camera_in_the_mono_build_alone() {
-    let (app, _state) = open();
-    let asked = Rc::new(Cell::new((0, 0)));
-    let a = asked.clone();
-    app.on_import_asked(move || a.set((a.get().0 + 1, a.get().1)));
-    let a = asked.clone();
-    let mono = app.global::<Mono>();
-    mono.on_camera_asked(move || a.set((a.get().0, a.get().1 + 1)));
-
-    open_menu(&app);
-    assert_eq!(
-        count_labeled(&app, ITEM),
-        usize::from(cfg!(target_os = "macos"))
-    );
-    assert_eq!(count_labeled(&app, "From a card or folder..."), 1);
-    press(&app, Key::DownArrow);
-    press(&app, Key::Return);
-    settle(&app);
-    let camera = if cfg!(target_os = "macos") {
-        (0, 1)
-    } else {
-        (1, 0)
-    };
-    assert_eq!(asked.get(), camera);
-
-    // The test's window has the stock panels, then a frame of none.
-    let mono = window(2);
-    let (_state, _worker) = state_for(&mono, folder(2));
-    mono.window()
-        .set_size(slint::LogicalSize::new(1500.0, 950.0));
-    open_menu(&mono);
-    assert_eq!(count_labeled(&mono, ITEM), 0, "stock");
-    assert_eq!(count_labeled(&mono, "From a card or folder..."), 1);
 }
 
 #[test]
@@ -223,24 +174,4 @@ fn the_import_sheet_has_no_camera_row() {
         assert_eq!(count_labeled(&app, gone), 0, "{gone}");
     }
     assert_eq!(count_labeled(&app, "Verify against the card"), 1);
-}
-
-#[test]
-fn the_popup_setting_is_on_the_library_page_and_kept() {
-    let (one, dir) = looks_of("mono-camera-popup");
-    let (app, _state) = open();
-    let mono = app.global::<Mono>();
-    assert!(mono.get_camera_popup(), "on at first");
-    app.window()
-        .set_size(slint::LogicalSize::new(1500.0, 6000.0));
-    app.set_settings_category("Library".into());
-    app.invoke_settings_asked();
-    settle(&app);
-    if cfg!(target_os = "macos") {
-        crate::testing::click_switch(&app, &mono.get_camera_popup_label());
-        assert!(!mono.get_camera_popup());
-        assert!(!crate::settings::Settings::load().mono_camera_popup);
-    }
-    looks_done(&dir);
-    drop(one);
 }

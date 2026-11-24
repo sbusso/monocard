@@ -5,7 +5,8 @@
 //!
 //! [`Camera`] is all this asks of a camera: a list, a small picture, a part
 //! of a file, and a whole file. Nothing on the camera is written or deleted.
-//! The one real camera is [`icc`]'s, on macOS; the tests' is made up.
+//! The one real camera is [`icc`]'s; the tests' is made up. Compiled with
+//! the `mono-usb` feature, on macOS.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -27,7 +28,6 @@ use crate::panel::import as sheet;
 use crate::{App, STATE, State};
 
 pub(crate) mod event;
-#[cfg(target_os = "macos")]
 mod icc;
 
 /// A file as the camera lists it. The names are the camera's, unchecked
@@ -482,9 +482,7 @@ impl Temp {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_nanos());
         let path = root.join(format!("monocard-camera-{}-{n}-{when}", std::process::id()));
-        #[cfg_attr(not(unix), allow(unused_mut))]
         let mut builder = std::fs::DirBuilder::new();
-        #[cfg(unix)]
         std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
         // Not `create_dir_all`: a folder that is there is another's.
         builder
@@ -520,7 +518,6 @@ impl Drop for Temp {
 }
 
 /// The bytes free for this user on the disk `dir` is on.
-#[cfg(unix)]
 fn free(dir: &Path) -> Option<u64> {
     use std::os::unix::ffi::OsStrExt;
     let dir = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
@@ -533,15 +530,7 @@ fn free(dir: &Path) -> Option<u64> {
         }
         said.assume_init()
     };
-    // The types differ by platform.
-    #[allow(clippy::unnecessary_cast)]
-    Some((said.f_bavail as u64).saturating_mul(said.f_frsize as u64))
-}
-
-/// Ceiling: not asked where there is no camera source; the write fails then.
-#[cfg(not(unix))]
-fn free(_dir: &Path) -> Option<u64> {
-    None
+    Some(u64::from(said.f_bavail).saturating_mul(said.f_frsize))
 }
 
 /// The room a run needs on the temporary folder's disk: each photo once, and
@@ -907,12 +896,9 @@ fn heard(st: &mut State, app: &App, event: Event) {
 /// run the command line drives.
 pub(crate) fn watch(st: &State, _app: &App) {
     let quiet = cfg!(test) || st.window.batch || st.launch.owned || !super::only();
-    #[cfg(target_os = "macos")]
     if !quiet {
         icc::start();
     }
-    #[cfg(not(target_os = "macos"))]
-    let _ = quiet;
 }
 
 /// A camera was found.
@@ -968,14 +954,12 @@ pub(crate) fn close(st: &mut State, _app: &App) {
 fn end(usb: &mut Sheet) {
     // Their files are the session's.
     usb.frames.clear();
-    #[cfg(target_os = "macos")]
     icc::rest();
 }
 
 /// The window is closed: no loop runs any more, so what is under way on the
 /// camera is stopped here.
 pub(crate) fn leave() {
-    #[cfg(target_os = "macos")]
     icc::stop();
 }
 

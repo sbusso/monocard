@@ -45,6 +45,7 @@ a credit.
 cargo fmt --check
 cargo clippy -p <crate> --all-targets
 cargo clippy -p <crate> --all-targets --features mono
+cargo clippy -p greycard-ui --all-targets --features mono-usb   # on a Mac
 cargo test -p <crate>
 scripts/monocard-licenses.sh
 ```

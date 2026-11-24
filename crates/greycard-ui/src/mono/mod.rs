@@ -23,6 +23,7 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
 use crate::worker::Worker;
 use crate::{App, Mono, MonoCurve, MonoLook, MonoPanel, MonoPoint, MonoRow, Shared, State};
 
+#[cfg(mono_usb)]
 pub(crate) mod camera;
 mod chart;
 pub(crate) mod picture;
@@ -30,8 +31,7 @@ mod profile;
 mod profiles;
 #[cfg(test)]
 mod tests;
-// The camera is macOS's; elsewhere nothing finds one.
-#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+#[cfg(mono_usb)]
 pub(crate) mod usb;
 
 /// The panels' values in hand, and what is open and shown of them.
@@ -1058,6 +1058,7 @@ fn save_look(app: &App, name: &str) {
 
 /// Whether the camera window may open by itself now: nothing is over the
 /// window, no import or export is under way, and the setting is on.
+#[cfg(mono_usb)]
 pub(crate) fn popup(st: &State, app: &App) -> bool {
     let mono = app.global::<Mono>();
     let quiet = st.window.batch || st.launch.owned || !only();
@@ -1113,7 +1114,10 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, _worker: &Rc<Worker>) {
         }
     }
     picture::install(app);
+    #[cfg(mono_usb)]
     camera::install(app, state);
+    #[cfg(not(mono_usb))]
+    let _ = state;
     show_looks(app);
     refresh(app);
 
@@ -1178,17 +1182,21 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, _worker: &Rc<Worker>) {
         let on = app.global::<Mono>().get_start_mode();
         crate::settings::Settings::change(|s| s.shared.mono_start_mode = on);
     });
-    mono.set_camera_popup(crate::settings::Settings::load().mono_camera_popup);
-    with!(on_camera_popup_changed, |app| {
-        let on = app.global::<Mono>().get_camera_popup();
-        crate::settings::Settings::change(|s| s.mono_camera_popup = on);
-    });
-    let (weak, shared) = (app.as_weak(), state.clone());
-    mono.on_camera_asked(move || {
-        if let Some(app) = weak.upgrade() {
-            camera::show(&mut shared.borrow_mut(), &app);
-        }
-    });
+    #[cfg(mono_usb)]
+    {
+        mono.set_camera_built(true);
+        mono.set_camera_popup(crate::settings::Settings::load().mono_camera_popup);
+        with!(on_camera_popup_changed, |app| {
+            let on = app.global::<Mono>().get_camera_popup();
+            crate::settings::Settings::change(|s| s.mono_camera_popup = on);
+        });
+        let (weak, shared) = (app.as_weak(), state.clone());
+        mono.on_camera_asked(move || {
+            if let Some(app) = weak.upgrade() {
+                camera::show(&mut shared.borrow_mut(), &app);
+            }
+        });
+    }
     with!(on_scale_set, |app, i, v| {
         change(&app, |h| {
             panel::set_scale(&mut h.edit, i.max(0) as usize, v.round());

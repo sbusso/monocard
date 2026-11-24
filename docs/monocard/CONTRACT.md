@@ -9,6 +9,8 @@ SPEC.md says what is built. This page says how the parts meet. Types are in
   Touch only the files your task owns. Need a change elsewhere: report it, do not make it.
 - Stock builds (no `mono` feature) stay as upstream: every change in a `greycard-*` crate
   is behind `#[cfg(feature = "mono")]` or has no effect without it. Smallest diff wins.
+- The import from a camera by USB is behind `#[cfg(mono_usb)]`. `crates/greycard-ui/build.rs` sets
+  it for the `mono-usb` feature on macOS. `mono-usb` includes `mono` and is off by default.
 - Every op has a CPU reference with a test. A GPU version is held to it.
 - A ported function's file header names its darktable source file and commit
   f9a6fd73c7d77621ddfd146e98128db05eb31eaf, its authors, and GPL-3.0-or-later. RAWmakase code

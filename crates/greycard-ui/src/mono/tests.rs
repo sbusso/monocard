@@ -6,7 +6,9 @@ use super::*;
 use crate::panel::edit::{read_edit, show_edit};
 use crate::testing::{count_labeled, folder, header_reset, press, state_for, window};
 
+mod offered;
 mod page;
+#[cfg(mono_usb)]
 mod sheet;
 
 /// A window over two frames, the first open and a monochrome sensor's.

@@ -523,7 +523,6 @@ fn the_temporary_folder_is_new_and_a_folder_not_removed_is_said() {
 
 /// The class the framework calls is whole: with its methods checked against
 /// the framework's protocols. No browser is made.
-#[cfg(target_os = "macos")]
 #[test]
 fn the_delegate_has_what_the_framework_asks() {
     icc::check_class();
