@@ -4,10 +4,10 @@
 #     scripts/monocard-notices.sh [--no-crate-texts] [output]
 #
 # docs/monocard/THIRD-PARTY-NOTICES.md, then Greycard's own notices
-# (scripts/notices.sh, with the `mono` feature's crates). Those need
-# cargo-about. --no-crate-texts does without it and lists the crates by
-# name and license instead of giving their texts: for a test build, not
-# for a release.
+# (scripts/notices.sh, with the crates of the `mono-usb` feature, which are
+# `mono`'s and the Mac's USB import's). Those need cargo-about.
+# --no-crate-texts does without it and lists the crates by name and license
+# instead of giving their texts: for a test build, not for a release.
 
 set -eu
 cd "$(dirname "$0")/.."
@@ -30,7 +30,7 @@ rest="$out.rest"
 trap 'rm -f "$rest"' EXIT
 
 if [ -n "$texts" ]; then
-    NOTICES_FEATURES=mono scripts/notices.sh "$rest" >/dev/null
+    NOTICES_FEATURES=mono-usb scripts/notices.sh "$rest" >/dev/null
 else
     {
         cat packaging/notices/bundled.txt
@@ -46,7 +46,8 @@ for p in sorted(json.load(sys.stdin)["packages"], key=lambda p: (p["name"], p["v
     } >"$rest"
 fi
 {
-    cat docs/monocard/THIRD-PARTY-NOTICES.md
+    # A Windows checkout may have CRLF line ends.
+    tr -d '\r' <docs/monocard/THIRD-PARTY-NOTICES.md
     printf '\n'
     cat "$rest"
 } >"$out"

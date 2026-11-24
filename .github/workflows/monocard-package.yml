@@ -1,0 +1,198 @@
+# Monocard's packages for Linux and Windows, x86-64: built, checked on the
+# runner that built them, and left as the run's artifacts. It publishes
+# nothing and signs nothing. The Mac's disk image is made on a Mac, with
+# scripts/monocard-package.sh.
+#
+# The runners are release.yml's, for its reasons: ubuntu-24.04 for the
+# glibc floor, windows-2025 for an MSVC toolset as new as the one ONNX
+# Runtime was built with. As there, no build cache: a package is built
+# from what the tree says.
+#
+# scripts/monocard-package-check.sh says what is checked. The window run
+# is a check on Linux, on lavapipe. On Windows it is tried, on WARP, and
+# a failure is a warning: the runner has no GPU, and its desktop session
+# is not promised.
+name: Monocard package
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [monocard, packages]
+    tags: ['monocard-v*']
+    # Not read for a tag.
+    paths-ignore: ['docs/**', 'site/**', '.github/README.md']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type == 'branch' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # lcms2 from lcms2-sys's own source, so that no system is asked for it;
+  # see release.yml.
+  LCMS2_STATIC: '1'
+
+jobs:
+  linux:
+    name: x86_64-linux package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - &checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      # The first line is the build's, as in release.yml. The rest is the
+      # window run's: the display, the software GPU, what winit opens by
+      # name under X11, and a font; and the menu entry's check.
+      - name: Native libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libfontconfig1-dev libwayland-dev libxkbcommon-dev pkg-config \
+            xvfb xauth mesa-vulkan-drivers libx11-6 libx11-xcb1 libxcursor1 \
+            libxi6 libxrandr2 libxkbcommon-x11-0 fonts-dejavu-core \
+            desktop-file-utils shared-mime-info
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+
+      # Before the build, so that a fetch that cannot work fails early.
+      - &runtime
+        name: ONNX Runtime library
+        run: scripts/ort-dylib.sh release
+
+      - &editor
+        name: Build the editor
+        run: cargo build --locked --release -p greycard-ui --features mono --bin monocard-ui
+
+      - &command
+        name: Build the command line
+        run: cargo build --locked --release -p greycard-cli --features mono --bin monocard
+
+      # For THIRD-PARTY-NOTICES; see release.yml.
+      - &about-cache
+        name: cargo-about from the cache
+        id: cargo-about
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/bin/cargo-about
+            ~/.cargo/bin/cargo-about.exe
+          key: cargo-about-0.9.3-${{ runner.os }}-${{ runner.arch }}
+
+      - &about
+        name: Install cargo-about
+        if: steps.cargo-about.outputs.cache-hit != 'true'
+        run: cargo install cargo-about --locked --version 0.9.3 --features cli
+
+      - name: Package
+        run: scripts/monocard-package.sh --appimage
+
+      - name: Check the tarball
+        run: scripts/monocard-package-check.sh target/dist/Monocard-*-x86_64-linux.tar.gz
+
+      - name: Check the AppImage
+        run: scripts/monocard-package-check.sh target/dist/Monocard-*-linux-x86_64.AppImage
+
+      # Vulkan alone, as ci.yml has it: the only adapter is lavapipe.
+      - name: Check the window
+        timeout-minutes: 10
+        env:
+          WGPU_BACKEND: vulkan
+        run: >-
+          scripts/monocard-package-check.sh --window linux-window.png
+          target/dist/Monocard-*-x86_64-linux.tar.gz
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: linux-window
+          path: linux-window.png
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: package-x86_64-linux
+          path: target/dist/Monocard-*-x86_64-linux.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: package-x86_64-linux-appimage
+          path: target/dist/Monocard-*-linux-x86_64.AppImage
+          if-no-files-found: error
+          retention-days: 30
+
+  windows:
+    name: x86_64-windows package
+    runs-on: windows-2025
+    timeout-minutes: 180
+    # The scripts are /bin/sh; Git Bash is there under this name.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - *checkout
+
+      # As in release.yml: read off the log when a link fails.
+      - name: MSVC toolsets on this runner
+        run: |
+          ls -d "/c/Program Files"*"/Microsoft Visual Studio"/*/*/VC/Tools/MSVC/*/ \
+            2>/dev/null || echo "no VC/Tools/MSVC directory found"
+          ls -d "/c/Program Files"*"/Microsoft Visual Studio"/*/*/VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT \
+            2>/dev/null || echo "no x64 VC redistributable directory found"
+
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          # llvm-readobj, for the check of the imports.
+          components: llvm-tools
+
+      - *runtime
+      - *editor
+      - *command
+      - *about-cache
+      - *about
+
+      - name: Package
+        run: scripts/monocard-package.sh
+
+      - name: Check the zip
+        run: scripts/monocard-package-check.sh target/dist/Monocard-*-x86_64-windows.zip
+
+      - name: Try the window
+        id: window
+        continue-on-error: true
+        timeout-minutes: 10
+        run: >-
+          scripts/monocard-package-check.sh --window windows-window.png
+          target/dist/Monocard-*-x86_64-windows.zip
+
+      - name: The window run failed
+        if: steps.window.outcome != 'success'
+        run: |
+          line="The window run on Windows failed. The package is uploaded, and nothing here has seen its window."
+          echo "::warning::$line"
+          echo "$line" >>"$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: windows-window
+          path: windows-window.png
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: package-x86_64-windows
+          path: target/dist/Monocard-*-x86_64-windows.zip
+          if-no-files-found: error
+          retention-days: 30

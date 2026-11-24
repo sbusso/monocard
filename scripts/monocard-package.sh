@@ -1,20 +1,41 @@
 #!/bin/sh
-# Build Monocard.app from a build folder, and the disk image it goes out in.
+# Build Monocard's package from a build folder: on a Mac Monocard.app, and
+# the disk image it goes out in; on Linux a tarball, and an AppImage; on
+# Windows, from Git Bash, a zip. Linux and Windows are x86-64.
 #
 #     export LCMS2_STATIC=1
-#     cargo build --release -p greycard-ui --features mono --bin monocard-ui
+#     cargo build --release -p greycard-ui --features mono-usb --bin monocard-ui
 #     cargo build --release -p greycard-cli --features mono --bin monocard
 #     scripts/ort-dylib.sh release
-#     scripts/monocard-package.sh [--build DIR] [--out DIR] [--debug-bin] [--dmg]
+#     scripts/monocard-package.sh [--build DIR] [--out DIR] [--debug-bin]
+#         [--dmg] [--appimage]
+#
+# That is a Mac's build. On Linux and Windows monocard-ui is built with
+# --features mono: the import by USB is macOS only.
 #
 # --build is the folder that holds the binaries (target/release), --out
-# the folder the app goes to (dist under the target folder).
+# the folder the package goes to (dist under the target folder).
 # --debug-bin takes target/debug, goes on without ONNX Runtime or with a
 # library that only this Mac has, and writes the notices without the
-# crates' license texts: a test of the bundle, not something to release.
-# LCMS2_STATIC builds lcms2 in: without it the app links Homebrew's.
+# crates' license texts: a test of the package, not something to release.
+# LCMS2_STATIC builds lcms2 in: without it the app links Homebrew's, or
+# the Linux system's.
 #
-# --dmg also makes Monocard.dmg beside the app.
+# Linux: Monocard-<version>-x86_64-linux.tar.gz, with bin/ (the programs,
+# and the libraries beside them, where they look), share/ (the menu entry,
+# the icon, the file type), and packaging/monocard's install.sh and
+# uninstall.sh. --appimage also makes the AppImage, from the same files,
+# with scripts/appimage.sh.
+#
+# Windows: Monocard-<version>-x86_64-windows.zip, with bin/ (the programs,
+# the libraries, and the Visual C++ runtime, as scripts/package.sh ships
+# it). VCREDIST_DIR names the Microsoft.VC*.CRT folder to take the runtime
+# from when Visual Studio's own is not found. There is no installer.
+#
+# Both have the license, the notices and packaging/monocard/README.md at
+# the top. scripts/monocard-package-check.sh checks them.
+#
+# macOS: --dmg also makes Monocard.dmg beside the app.
 #
 # The signature is ad hoc unless MACOS_SIGN_IDENTITY names one.
 # MACOS_NOTARY_PROFILE names a notarytool keychain profile (xcrun
@@ -38,6 +59,7 @@ build=
 out="$target/dist"
 debug=
 dmg=
+appimage=
 while [ $# -gt 0 ]; do
     case "$1" in
     --build | --out)
@@ -47,11 +69,34 @@ while [ $# -gt 0 ]; do
         ;;
     --debug-bin) debug=1 ;;
     --dmg) dmg=1 ;;
+    --appimage) appimage=1 ;;
     *) fail "$1 is not an option" ;;
     esac
     shift
 done
-[ "$(uname -s)" = Darwin ] || fail "this makes a macOS app, on a Mac"
+exe=
+case "$(uname -s)" in
+Darwin)
+    os=macos
+    libs=libonnxruntime.dylib
+    [ "$(uname -m)" = x86_64 ] || libs="$libs libwebgpu_dawn.dylib"
+    ;;
+Linux)
+    os=linux
+    libs="libonnxruntime.so libwebgpu_dawn.so"
+    ;;
+MINGW* | MSYS*)
+    os=windows
+    exe=.exe
+    # Dawn loads the last two by name; see scripts/package.sh.
+    libs="onnxruntime.dll webgpu_dawn.dll dxcompiler.dll dxil.dll"
+    ;;
+*) fail "there is no package for $(uname -s)" ;;
+esac
+[ "$os" = macos ] || [ "$(uname -m)" = x86_64 ] ||
+    fail "the $os package is x86-64 only, and this is $(uname -m)"
+[ "$os" = macos ] || [ -z "$dmg" ] || fail "--dmg is a Mac's"
+[ "$os" = linux ] || [ -z "$appimage" ] || fail "--appimage is Linux's"
 if [ -n "${MACOS_NOTARY_PROFILE:-}" ]; then
     dmg=1
     [ -n "${MACOS_SIGN_IDENTITY:-}" ] || fail "MACOS_NOTARY_PROFILE needs MACOS_SIGN_IDENTITY"
@@ -62,10 +107,8 @@ if [ -z "$build" ]; then
 fi
 
 for b in monocard-ui monocard; do
-    [ -x "$build/$b" ] || fail "$build/$b is missing; build it with --features mono"
+    [ -x "$build/$b$exe" ] || fail "$build/$b$exe is missing; build it with --features mono"
 done
-libs=libonnxruntime.dylib
-[ "$(uname -m)" = x86_64 ] || libs="$libs libwebgpu_dawn.dylib"
 have=
 for l in $libs; do
     if [ -e "$build/$l" ]; then
@@ -77,9 +120,76 @@ done
 # The binaries must be Monocard's: a stock build renamed would write
 # Greycard's sidecars.
 for b in monocard-ui monocard; do
-    version=$("$build/$b" --version | sed -n "s/^$b \([0-9][0-9.]*\).*/\1/p")
-    [ -n "$version" ] || fail "$build/$b does not say it is $b"
+    version=$("$build/$b$exe" --version | sed -n "s/^$b \([0-9][0-9.]*\).*/\1/p")
+    [ -n "$version" ] || fail "$build/$b$exe does not say it is $b"
 done
+
+# Linux and Windows, to the end of the script.
+if [ "$os" != macos ]; then
+    name="Monocard-$version-x86_64-$os"
+    stage="$out/$name"
+    rm -rf "$stage" "$stage.tar" "$stage.tar.gz" "$stage.zip"
+    mkdir -p "$stage/bin"
+    for b in monocard-ui monocard; do
+        cp "$build/$b$exe" "$stage/bin/"
+        chmod 0755 "$stage/bin/$b$exe"
+    done
+    # The build's are links into target/ort-dylib.
+    for l in $have; do
+        cp -L "$build/$l" "$stage/bin/"
+        chmod 0644 "$stage/bin/$l"
+    done
+    cp LICENSE packaging/monocard/README.md "$stage/"
+    scripts/monocard-notices.sh ${debug:+--no-crate-texts} \
+        "$stage/THIRD-PARTY-NOTICES" >/dev/null
+    # The commit's date on every entry, so that two builds of one commit
+    # make the same archive.
+    when=$(git log -1 --format=%ct 2>/dev/null) || when=
+    [ -n "$when" ] || when=315532800
+
+    if [ "$os" = windows ]; then
+        # The Visual C++ runtime; scripts/package.sh says why these five.
+        vcredist=${VCREDIST_DIR:-}
+        if [ -z "$vcredist" ]; then
+            vswhere="/c/Program Files (x86)/Microsoft Visual Studio/Installer/vswhere.exe"
+            [ -x "$vswhere" ] || fail "there is no Visual Studio; set VCREDIST_DIR"
+            studio=$("$vswhere" -latest -products '*' -property installationPath | tr -d '\r')
+            # The last is the newest: the versions sort as 14.NN.
+            for d in "$(cygpath -u "$studio")"/VC/Redist/MSVC/*/x64/Microsoft.VC*.CRT; do
+                [ ! -d "$d" ] || vcredist=$d
+            done
+        fi
+        for l in msvcp140.dll msvcp140_1.dll msvcp140_atomic_wait.dll \
+            vcruntime140.dll vcruntime140_1.dll; do
+            [ -f "$vcredist/$l" ] || fail "there is no $l in '$vcredist'; set VCREDIST_DIR"
+            cp "$vcredist/$l" "$stage/bin/"
+            chmod 0644 "$stage/bin/$l"
+        done
+        echo "Visual C++ runtime from $vcredist"
+        powershell -NoProfile -ExecutionPolicy Bypass -File scripts/zip.ps1 \
+            -Source "$(cygpath -aw "$stage")" -Destination "$(cygpath -aw "$stage.zip")" \
+            -Date "$(date -u -d "@$when" +%Y-%m-%dT%H:%M:%SZ)"
+        echo "$stage.zip"
+        exit 0
+    fi
+
+    share="$stage/share"
+    mkdir -p "$share/applications" "$share/icons/hicolor/scalable/apps" "$share/mime/packages"
+    cp packaging/monocard/monocard.desktop "$share/applications/"
+    cp assets/monocard/icon.svg "$share/icons/hicolor/scalable/apps/monocard.svg"
+    cp packaging/monocard/monocard.xml "$share/mime/packages/"
+    cp packaging/monocard/install.sh packaging/monocard/uninstall.sh "$stage/"
+    chmod 0755 "$stage/install.sh" "$stage/uninstall.sh"
+    tar --format=ustar --sort=name --mtime="@$when" --owner=0 --group=0 --numeric-owner \
+        -cf "$stage.tar" -C "$out" "$name"
+    gzip -9nf "$stage.tar"
+    echo "$stage.tar.gz"
+    if [ -n "$appimage" ]; then
+        APPIMAGE_APP=monocard APPIMAGE_TITLE=Monocard APPIMAGE_DIST="$out" \
+            scripts/appimage.sh "$version"
+    fi
+    exit 0
+fi
 
 # Send a file to Apple, wait for the answer, and staple the ticket to $2.
 notarize() {

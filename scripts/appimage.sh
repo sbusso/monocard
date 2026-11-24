@@ -13,6 +13,11 @@
 # is target/dist/greycard-<version>-linux-x86_64.AppImage, on an
 # x86_64 Linux host only; its AppDir is left beside it.
 #
+# scripts/monocard-package.sh makes Monocard's with this, through three
+# variables: APPIMAGE_APP, what the binaries, the entry and the icon are
+# named by (greycard), APPIMAGE_TITLE, what the files it reads and writes
+# are (the same), and APPIMAGE_DIST, where they are (target/dist).
+#
 # The AppDir:
 #
 #   AppRun               packaging/linux/AppRun: runs usr/bin/greycard-ui,
@@ -70,6 +75,10 @@ appimagetool_sha256=ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb38
 runtime_url=https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64
 runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
 
+app=${APPIMAGE_APP:-greycard}
+title=${APPIMAGE_TITLE:-$app}
+dist=${APPIMAGE_DIST:-target/dist}
+
 host=$(rustc -vV | sed -n 's/^host: //p')
 case "$host" in
 x86_64-*-linux-*) ;;
@@ -98,20 +107,20 @@ if [ "$version" != "$crate" ]; then
     exit 1
 fi
 
-stage="target/dist/greycard-$version-x86_64-linux"
-name="greycard-$version-linux-x86_64"
-appdir="target/dist/$name.AppDir"
-out="target/dist/$name.AppImage"
+stage="$dist/$title-$version-x86_64-linux"
+name="$title-$version-linux-x86_64"
+appdir="$dist/$name.AppDir"
+out="$dist/$name.AppImage"
 tools=target/appimagetool
 
 if ! command -v readelf >/dev/null 2>&1; then
     echo "appimage.sh: readelf is missing; it comes with binutils" >&2
     exit 1
 fi
-for f in "$stage/bin/greycard-ui" "$stage/bin/greycard" \
+for f in "$stage/bin/$app-ui" "$stage/bin/$app" \
     "$stage/bin/libonnxruntime.so" "$stage/bin/libwebgpu_dawn.so" \
-    "$stage/share/applications/greycard.desktop" \
-    "$stage/share/icons/hicolor/scalable/apps/greycard.svg" \
+    "$stage/share/applications/$app.desktop" \
+    "$stage/share/icons/hicolor/scalable/apps/$app.svg" \
     "$stage/THIRD-PARTY-NOTICES"; do
     if [ ! -f "$f" ]; then
         echo "appimage.sh: $f is missing; run scripts/package.sh first" >&2
@@ -141,24 +150,25 @@ fetch "$runtime_url" "$runtime_sha256" "$tools/runtime-20251108-x86_64"
 chmod 0755 "$tools/appimagetool-1.9.1-x86_64.AppImage"
 
 rm -rf "$appdir" "$out"
-mkdir -p "$appdir/usr/bin" "$appdir/usr/share/doc/greycard"
-cp "$stage/bin/greycard-ui" "$stage/bin/greycard" \
+mkdir -p "$appdir/usr/bin" "$appdir/usr/share/doc/$app"
+cp "$stage/bin/$app-ui" "$stage/bin/$app" \
     "$stage/bin/libonnxruntime.so" "$stage/bin/libwebgpu_dawn.so" \
     "$appdir/usr/bin/"
 cp -R "$stage/share/." "$appdir/usr/share/"
 cp "$stage/LICENSE" "$stage/THIRD-PARTY-NOTICES" "$stage/README.md" \
-    "$appdir/usr/share/doc/greycard/"
-cp packaging/linux/AppRun "$appdir/AppRun"
-chmod 0755 "$appdir/AppRun" "$appdir/usr/bin/greycard-ui" "$appdir/usr/bin/greycard"
+    "$appdir/usr/share/doc/$app/"
+# For greycard, the file as it is.
+sed "s/greycard/$app/g" packaging/linux/AppRun >"$appdir/AppRun"
+chmod 0755 "$appdir/AppRun" "$appdir/usr/bin/$app-ui" "$appdir/usr/bin/$app"
 chmod 0644 "$appdir/usr/bin/libonnxruntime.so" "$appdir/usr/bin/libwebgpu_dawn.so"
 
 # appimagetool wants the entry and the icon it names at the top. The
 # entry's Exec= stays greycard-ui, the binary's name, which is what a
 # launcher that integrates AppImages rewrites to the AppImage's path.
 sed "/^\[Desktop Entry\]$/a X-AppImage-Version=$version" \
-    "$stage/share/applications/greycard.desktop" >"$appdir/greycard.desktop"
-cp "$stage/share/icons/hicolor/scalable/apps/greycard.svg" "$appdir/greycard.svg"
-ln -s greycard.svg "$appdir/.DirIcon"
+    "$stage/share/applications/$app.desktop" >"$appdir/$app.desktop"
+cp "$stage/share/icons/hicolor/scalable/apps/$app.svg" "$appdir/$app.svg"
+ln -s "$app.svg" "$appdir/.DirIcon"
 
 # What each file loads at exec, against its share of the list above.
 # allowed <file> <library>: whether that file may ask the host for it.
@@ -167,7 +177,7 @@ allowed() {
     libc.so.6 | libm.so.6 | ld-linux-x86-64.so.2 | libgcc_s.so.1) return 0 ;;
     esac
     case "$1:$2" in
-    greycard-ui:libfontconfig.so.1 | greycard:libfontconfig.so.1) return 0 ;;
+    "$app-ui:libfontconfig.so.1" | "$app:libfontconfig.so.1") return 0 ;;
     libonnxruntime.so:libstdc++.so.6 | libwebgpu_dawn.so:libstdc++.so.6) return 0 ;;
     libonnxruntime.so:libwebgpu_dawn.so) return 0 ;;
     esac
@@ -175,7 +185,7 @@ allowed() {
 }
 echo "shared libraries:"
 stray=
-for f in "$appdir/usr/bin/greycard-ui" "$appdir/usr/bin/greycard" \
+for f in "$appdir/usr/bin/$app-ui" "$appdir/usr/bin/$app" \
     "$appdir/usr/bin/libonnxruntime.so" "$appdir/usr/bin/libwebgpu_dawn.so"; do
     # Read first and parsed after: a readelf that fails inside the for
     # list below would leave it empty and the check passed.
