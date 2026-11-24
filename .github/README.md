@@ -19,8 +19,11 @@ tool.
 Monocard is a soft fork of [Greycard](https://github.com/jessolmstead/greycard) by Jess
 Olmstead. The library, the GPU pipeline, and most of the window are Greycard's.
 
-**[Build](#build)** · [What it does](#what-it-does) · [Limits](#limits) ·
-[Documentation](#documentation)
+**[Download for macOS](https://github.com/sbusso/monocard/releases/latest/download/Monocard.dmg)** ·
+[Website](https://sbusso.github.io/monocard/) · [What it does](#what-it-does) ·
+[Limits](#limits) · [Build](#build) · [Documentation](#documentation)
+
+The download is for Apple silicon Macs with macOS 13.4 or later. It is notarized.
 
 ## What it does
 
@@ -54,8 +57,10 @@ Olmstead. The library, the GPU pipeline, and most of the window are Greycard's.
 
 ## Limits
 
-- There is no release yet. Monocard is built from source.
-- I use it on an Apple silicon Mac. The other systems have not been tried.
+- The download is for Apple silicon Macs only. I use it on one. The other systems have not
+  been tried.
+- The app shows the version of the Greycard that it is built on, not its own.
+- Import from the camera by USB is new and has had little testing.
 - It is made for the Ricoh GR IV Monochrome. Other cameras' monochrome DNGs open, and they
   have had less testing.
 - The noise profile of the GR IV Monochrome holds no measurements yet.

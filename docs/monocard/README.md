@@ -71,7 +71,7 @@ the cache folder.
 - The profile for the Ricoh GR IV Monochrome holds no measurements yet.
 - The learned monochrome denoiser is not trained.
 - The Solar looks are not matched against the camera's files.
-- There is no release, no update check, and no issue tracker. The update check and
+- There is no update check and no issue tracker. The update check and
   Report a problem stay off until `brand.rs` names addresses for them.
 - The bundle id `app.monocard.Monocard` is a placeholder.
 - The text that Monocard adds is in English only.

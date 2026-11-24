@@ -33,7 +33,7 @@ A 4 GB PC GPU was not tried.
 - Training pairs and a trained learned model. Fast and Best use Profiled until then.
 - Reference DNGs for the golden renders (`MONOCARD_GOLDEN`), the blind A/B, the beta.
 - The upstream author, the name's trademark and domain, photos with written permission,
-  a repository and release URL, the bundle id, signing.
+  the bundle id.
 
 ## Departures from SPEC.md
 
