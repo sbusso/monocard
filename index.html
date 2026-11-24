@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="Monocard is a free, open source raw editor for monochrome sensors. It develops one channel, from the sensor data to the print. First camera: Ricoh GR IV Monochrome.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Monocard: the darkroom for monochrome sensors">
+<meta property="og:description" content="A free, open source raw editor for monochrome sensors. One channel, from the sensor data to the print.">
+<meta property="og:image" content="assets/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Monocard: the darkroom for monochrome sensors. A step wedge of eleven greys, zones 0 to X, beside the Monocard window.">
+<meta name="twitter:card" content="summary_large_image">
+<title>Monocard: the darkroom for monochrome sensors</title>
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script src="script.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="#one-channel">
+      <img src="assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <a class="top-link" href="#source" data-repo>Source on GitHub</a>
+  </div>
+</header>
+
+<!-- The step wedge. The greys are the app's own zone greys (mono_ui::zones). -->
+<nav class="rail" aria-label="Sections">
+  <ol>
+    <li><a href="#one-channel" style="--z:#000000"><span class="n">0</span><span class="t">One channel</span></a></li>
+    <li><a href="#zones" style="--z:#1b1b1b"><span class="n">I</span><span class="t">Zone view</span></a></li>
+    <li><a href="#noise" style="--z:#303030"><span class="n">II</span><span class="t">Noise</span></a></li>
+    <li><a href="#tone" style="--z:#474747"><span class="n">III</span><span class="t">Tone</span></a></li>
+    <li><a href="#detail" style="--z:#5e5e5e"><span class="n">IV</span><span class="t">Detail</span></a></li>
+    <li><a class="lt" href="#highlights" style="--z:#777777"><span class="n">V</span><span class="t">Highlights</span></a></li>
+    <li><a class="lt" href="#masks" style="--z:#919191"><span class="n">VI</span><span class="t">Masks</span></a></li>
+    <li><a class="lt" href="#looks" style="--z:#ababab"><span class="n">VII</span><span class="t">Looks</span></a></li>
+    <li><a class="lt" href="#modes" style="--z:#c6c6c6"><span class="n">VIII</span><span class="t">Camera modes</span></a></li>
+    <li><a class="lt" href="#camera" style="--z:#e2e2e2"><span class="n">IX</span><span class="t">Camera window</span></a></li>
+    <li><a class="lt" href="#output" style="--z:#ffffff"><span class="n">X</span><span class="t">Output</span></a></li>
+  </ol>
+</nav>
+
+<main id="main">
+
+<!-- 0 -->
+<section class="zone hero" id="one-channel" style="--g:#0f0f0f">
+  <div class="wrap">
+    <div class="hero-head">
+      <h1>The darkroom for monochrome sensors.</h1>
+      <div class="hero-side">
+        <p>Monocard is a free, open source raw editor for cameras with no color filter on the sensor. It develops one channel, from the sensor data to the print: no demosaic, no white balance, no color conversion. The first camera is the Ricoh&nbsp;GR&nbsp;IV Monochrome.</p>
+        <p class="hero-act">
+          <a class="btn btn-main" id="download" href="https://github.com/sbusso/monocard/releases/latest/download/Monocard.dmg">Download for macOS</a>
+          <span class="note">macOS 13.4 or later, Apple silicon. Notarized.</span>
+        </p>
+      </div>
+    </div>
+    <figure class="shot">
+      <div class="frame app" style="--ar:2400/1280;--pos:100% 50%">
+        <img src="assets/app-develop-2400.webp" srcset="assets/app-develop-1200.webp 1200w, assets/app-develop-2400.webp 2400w" sizes="(min-width: 64rem) min(84rem, calc(100vw - 14rem)), calc(100vw - 2rem)" width="2400" height="1280" fetchpriority="high" decoding="async"
+             alt="The Monocard window in Develop: a monochrome photo in the middle, the filmstrip under it, the history on the left, and the histogram and the LOOK panel on the right.">
+      </div>
+      <figcaption>
+        <span>Develop, with the LOOK panel open. Keys: <kbd>A</kbd> before, <kbd>B</kbd> after, <kbd>S</kbd> split, <kbd>Z</kbd> zones, <kbd>C</kbd> clip map.</span>
+      </figcaption>
+    </figure>
+    <dl class="facts">
+      <div><dt>Develop</dt><dd>One channel, raw to print. A monochrome camera’s JPEG is edited with the same tools.</dd></div>
+      <div><dt>Color</dt><dd>Color photos are not listed. No color tool is shown anywhere in the window.</dd></div>
+      <div><dt>Speed</dt><dd>A slider redraws in <span class="fig">3 to 6&nbsp;ms</span> at <span class="fig">26&nbsp;MP</span> (<span class="fig">6192&nbsp;×&nbsp;4128</span>) on an M5&nbsp;Max.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<!-- I -->
+<section class="zone" id="zones" style="--g:#111111">
+  <div class="wrap">
+    <div class="head">
+      <div class="head-main">
+        <h2><span class="num" aria-hidden="true">I</span>Zone view</h2>
+        <p>Key <kbd>Z</kbd> paints the picture in eleven zones, 0 to X, in equal steps of lightness. Zone V is the 18&#8239;% grey card. The scale at the edge of this page is the same one.</p>
+      </div>
+      <p class="head-side js-only"><span class="if-fine">Drag the line across the frame. The picture is on its left, its zones on its right. Arrow keys move it when it has focus; a double click puts it back.</span><span class="if-touch">Drag the line.</span></p>
+    </div>
+
+    <figure class="compare" style="--split:30%">
+      <div class="compare-frame frame" style="--ar:2400/1600">
+        <img src="assets/zones-off-1600.webp" srcset="assets/zones-off-800.webp 800w, assets/zones-off-1600.webp 1600w, assets/zones-off-2400.webp 2400w" sizes="(min-width: 64rem) min(84rem, calc(100vw - 14rem)), calc(100vw - 2rem)" width="2400" height="1600" loading="lazy"
+             alt="A monochrome sample picture, developed in Monocard.">
+        <img class="compare-over" src="assets/zones-on-1600.webp" srcset="assets/zones-on-800.webp 800w, assets/zones-on-1600.webp 1600w, assets/zones-on-2400.webp 2400w" sizes="(min-width: 64rem) min(84rem, calc(100vw - 14rem)), calc(100vw - 2rem)" width="2400" height="1600" loading="lazy"
+             alt="The same picture in zone view: each area painted in the flat grey of its zone, with the legend 0 to X over its lower edge.">
+        <span class="compare-tag compare-tag-l" aria-hidden="true">Picture</span>
+        <span class="compare-tag compare-tag-r" aria-hidden="true">Zones</span>
+        <span class="compare-line" aria-hidden="true"><span class="compare-grip"></span></span>
+        <input class="compare-range" type="range" min="0" max="100" step="0.1" value="30"
+               aria-label="Split between the picture and its zones" aria-valuetext="Split at 30 percent">
+      </div>
+      <table class="legend">
+        <caption class="vh">The eleven zones, with the lightness and the sRGB grey each is painted in</caption>
+        <tbody>
+          <tr class="legend-zone">
+            <th scope="row">Zone</th>
+            <td style="--z:#000000">0</td><td style="--z:#1b1b1b">I</td><td style="--z:#303030">II</td><td style="--z:#474747">III</td><td style="--z:#5e5e5e">IV</td><td class="lt" style="--z:#777777">V</td><td class="lt" style="--z:#919191">VI</td><td class="lt" style="--z:#ababab">VII</td><td class="lt" style="--z:#c6c6c6">VIII</td><td class="lt" style="--z:#e2e2e2">IX</td><td class="lt" style="--z:#ffffff">X</td>
+          </tr>
+          <tr>
+            <th scope="row">L*</th>
+            <td>0</td><td>10</td><td>20</td><td>30</td><td>40</td><td>50</td><td>60</td><td>70</td><td>80</td><td>90</td><td>100</td>
+          </tr>
+          <tr>
+            <th scope="row">sRGB</th>
+            <td>00</td><td>1b</td><td>30</td><td>47</td><td>5e</td><td>77</td><td>91</td><td>ab</td><td>c6</td><td>e2</td><td>ff</td>
+          </tr>
+        </tbody>
+      </table>
+      <figcaption><span>Sample pictures are generated, then developed in Monocard.</span></figcaption>
+    </figure>
+
+    <figure class="shot">
+      <div class="frame app" style="--ar:2400/1280;--pos:100% 50%">
+        <img src="assets/app-zones-2400.webp" srcset="assets/app-zones-1200.webp 1200w, assets/app-zones-2400.webp 2400w" sizes="(min-width: 64rem) min(84rem, calc(100vw - 14rem)), calc(100vw - 2rem)" width="2400" height="1280" loading="lazy"
+             alt="The Monocard window with zone view on: a room lit by a tall window, painted in flat greys, with the legend 0 to X over the lower edge of the picture.">
+      </div>
+      <figcaption><span>Zone view in the window, with its legend over the picture.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- II -->
+<section class="zone" id="noise" style="--g:#131313">
+  <div class="wrap">
+    <div class="head">
+      <div class="head-main">
+        <h2><span class="num" aria-hidden="true">II</span>Noise</h2>
+        <p>Denoise works from a noise model of the sensor at each ISO, on the one channel the sensor recorded. A slider keeps part of the sensor’s grain.</p>
+      </div>
+      <dl class="spec">
+        <div><dt>Profiled</dt><dd>A noise model for each ISO, with non-local means or wavelets.</dd></div>
+        <div><dt>Raw wavelets</dt><dd>Wavelet denoise on the raw data.</dd></div>
+        <div><dt>Keep grain</dt><dd>Leaves a chosen part of the sensor’s grain in the picture.</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- III -->
+<section class="zone" id="tone" style="--g:#151515">
+  <div class="wrap">
+    <div class="head head-fig">
+      <div class="head-main">
+        <h2><span class="num" aria-hidden="true">III</span>Tone</h2>
+        <p>Dodge and burn by zone. The tone equalizer has nine zones, from −8&nbsp;EV to 0&nbsp;EV, and follows edges, to avoid halos. The curve and the LIGHT sliders stay on screen.</p>
+        <dl class="spec">
+          <div><dt>LIGHT</dt><dd>Nine sliders, one a stop, from <span class="fig">−8&nbsp;EV</span> to <span class="fig">0&nbsp;EV</span>. A zone mask. The zone view switch.</dd></div>
+          <div><dt>BASIC</dt><dd>Exposure, contrast, blacks, midtones, whites. Display transform: sigmoid or AgX.</dd></div>
+          <div><dt>Curve</dt><dd>Drawn over the histogram. Presets: linear, soft S, strong S, lifted, faded.</dd></div>
+        </dl>
+      </div>
+      <div class="panels">
+        <figure class="shot shot-panel">
+          <div class="frame" style="--ar:719/882">
+            <img src="assets/panel-light.webp" width="719" height="882" loading="lazy"
+                 alt="The LIGHT panel: nine sliders from −8 EV to 0 EV, the zone mask, the zone view switch and the number of zones.">
+          </div>
+          <figcaption><span>The LIGHT panel.</span></figcaption>
+        </figure>
+        <figure class="shot shot-panel">
+          <div class="frame" style="--ar:719/1424">
+            <img src="assets/panel-basic.webp" width="719" height="1424" loading="lazy"
+                 alt="The BASIC panel: sliders for exposure, contrast, blacks, midtones and whites, the choice of display transform, and the tone curve drawn over the histogram.">
+          </div>
+          <figcaption><span>The BASIC panel.</span></figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- IV -->
+<section class="zone" id="detail" style="--g:#171717">
+  <div class="wrap">
+    <div class="head">
+      <div class="head-main">
+        <h2><span class="num" aria-hidden="true">IV</span>Detail</h2>
+        <p>Contrast by scale, from fine texture to large forms, and sharpening at the sensor’s pixel pitch.</p>
+      </div>
+      <dl class="spec">
+        <div><dt>Local contrast</dt><dd>Contrast between neighbouring areas.</dd></div>
+        <div><dt>Contrast equalizer</dt><dd>One control for each scale, from fine texture to large forms.</dd></div>
+        <div><dt>Diffuse or sharpen</dt><dd>Deblurs detail at the sensor’s pixel pitch.</dd></div>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<!-- V -->
+<section class="zone hi" id="highlights" style="--g:#191919">
+  <div class="wrap">
+    <div class="head">
+      <div class="head-main">
+        <h2><span class="num" aria-hidden="true">V</span>Highlights</h2>
+        <p>Clipped light is lost. A monochrome sensor has no other channel to take it from. Monocard shows what the sensor clipped and shapes the way into white.</p>
+      </div>
+      <dl class="spec">
+        <div><dt>Clip map</dt><dd>Key <kbd>C</kbd> marks what the sensor clipped, apart from what the display clips.</dd></div>
+        <div><dt>Shoulder</dt><dd>A roll-off into white under the clip point.</dd></div>
+        <div><dt>Bracket merge</dt><dd>Merges 2 to 5 frames of one scene to keep more range.</dd></div>
+      </dl>
+    </div>
+    <figure class="shot">
+      <div class="frame app" style="--ar:2400/1280;--pos:100% 50%">
+        <img src="assets/app-clip-2400.webp" srcset="assets/app-clip-1200.webp 1200w, assets/app-clip-2400.webp 2400w" sizes="(min-width: 64rem) min(84rem, calc(100vw - 14rem)), calc(100vw - 2rem)" width="2400" height="1280" loading="lazy"
+             alt="The Monocard window with the clip map on: in a picture of white sheets in hard sun, the clipped areas are hatched.">
+      </div>
+      <figcaption><span>The clip map. Hatched areas hold no data.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- VI -->
+<section class="zone hi" id="masks" style="--g:#1b1b1b">
+  <div class="wrap">
+    <div class="head">
+      <div class="head-main">
+        <h2><span class="num" aria-hidden="true">VI</span>Masks</h2>
+        <p>Five kinds of mask. Each drives exposure, the tone equalizer, the curve and local contrast.</p>
+      </div>
+      <dl class="spec spec-terms">
+        <div><dt>Brush</dt><dd>Painted by hand.</dd></div>
+        <div><dt>Gradient</dt><dd>A straight line, or an ellipse.</dd></div>
+        <div><dt>Luminance</dt><dd>A range of tones.</dd></div>
+        <div><dt>Subject</dt><dd>Found by a model.</dd></div>
+        <div><dt>Sky</dt><dd>Found by a model.</dd></div>
+      </dl>
+    </div>
+    <figure class="shot">
+      <div class="frame app" style="--ar:2400/1280;--pos:70% 50%">
+        <img src="assets/app-masks-2400.webp" srcset="assets/app-masks-1200.webp 1200w, assets/app-masks-2400.webp 2400w" sizes="(min-width: 64rem) min(84rem, calc(100vw - 14rem)), calc(100vw - 2rem)" width="2400" height="1280" loading="lazy"
+             alt="The Monocard window on the Masks tab: an oval mask named Doorway over the lit doorway of a night alley, and the list of masks with its controls on the right.">
+      </div>
+      <figcaption><span>Masks: a shape over the lit doorway, shown on the picture.</span></figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- VII -->
+<section class="zone hi" id="looks" style="--g:#1d1d1d">
+  <div class="wrap">
+    <div class="head">
+      <div class="head-main">
+        <h2><span class="num" aria-hidden="true">VII</span>Looks</h2>
+        <p>Ten looks, each a small text file, each editable after it is applied. Grain follows the tones. Toning and solarize are part of a look.</p>
+      </div>
+      <p class="head-side">The frame below is one picture in eleven bands: no look, then the ten looks, in the order of the LOOK panel.</p>
+    </div>
+
+    <figure class="strip">
+      <div class="strip-frame frame" style="--ar:2400/1600">
+        <!-- One band of each look, cut from the same frame. -->
+        <img src="assets/looks-strip-1600.webp" srcset="assets/looks-strip-800.webp 800w, assets/looks-strip-1600.webp 1600w, assets/looks-strip-2400.webp 2400w" sizes="(min-width: 64rem) min(84rem, calc(100vw - 14rem)), calc(100vw - 2rem)"
+             width="2400" height="1600" loading="lazy"
+             alt="One sample picture shown as a test strip of eleven vertical bands. Band 0 has no look; bands 1 to 10 are the ten looks, in the order of the table.">
+      </div>
+      <ol class="strip-key" aria-hidden="true">
+        <li><b>0</b><span>No look</span></li><li><b>1</b><span>Street</span></li><li><b>2</b><span>Hard</span></li><li><b>3</b><span>Soft Print</span></li><li><b>4</b><span>Night Push</span></li><li><b>5</b><span>Solar 1</span></li><li><b>6</b><span>Solar 2</span></li><li><b>7</b><span>Solar 3</span></li><li><b>8</b><span>Selenium</span></li><li><b>9</b><span>Warm Fibre</span></li><li><b>10</b><span>High Key</span></li>
+      </ol>
+    </figure>
+
+    <div class="looks">
+      <table class="tbl">
+        <caption class="vh">The bands of the test strip</caption>
+        <thead><tr><th scope="col" class="c-n">Band</th><th scope="col">Look</th><th scope="col">What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="c-n">0</td><th scope="row">No look</th><td>The develop alone.</td></tr>
+          <tr><td class="c-n">1</td><th scope="row">Street</th><td>Neutral, full tonal range, a gentle shoulder.</td></tr>
+          <tr><td class="c-n">2</td><th scope="row">Hard</th><td>Deep blacks, strong midtone contrast, fine grain.</td></tr>
+          <tr><td class="c-n">3</td><th scope="row">Soft Print</th><td>Lifted blacks, paper white at 0.94, low contrast.</td></tr>
+          <tr><td class="c-n">4</td><th scope="row">Night Push</th><td>Pushed film, for ISO 12800 and up.</td></tr>
+          <tr><td class="c-n">5</td><th scope="row">Solar 1</th><td>Tone reversed about the middle.</td></tr>
+          <tr><td class="c-n">6</td><th scope="row">Solar 2</th><td>Tone reversed at both ends.</td></tr>
+          <tr><td class="c-n">7</td><th scope="row">Solar 3</th><td>Tone reversed in the shadows.</td></tr>
+          <tr><td class="c-n">8</td><th scope="row">Selenium</th><td>A cool tone in the shadows only.</td></tr>
+          <tr><td class="c-n">9</td><th scope="row">Warm Fibre</th><td>A warm paper tone across the picture.</td></tr>
+          <tr><td class="c-n">10</td><th scope="row">High Key</th><td>Bright and airy, few true blacks.</td></tr>
+        </tbody>
+        <tfoot><tr><td></td><td colspan="2">Solar 1 to 3 are drawn curves. The camera’s own Solarized modes are fitted separately: see <a href="#modes">Camera modes</a>.</td></tr></tfoot>
+      </table>
+      <figure class="shot shot-panel">
+        <div class="frame" style="--ar:719/1144">
+          <img src="assets/panel-look.webp" width="719" height="1144" loading="lazy"
+               alt="The LOOK panel: a tile for each look, a strength slider, and buttons to export a look, save one and import one.">
+        </div>
+        <figcaption><span>The LOOK panel.</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- VIII -->
+<section class="zone hi" id="modes" style="--g:#1f1f1f">
+  <div class="wrap">
+    <div class="head head-fig">
+      <div class="head-main">
+        <h2><span class="num" aria-hidden="true">VIII</span>Camera modes</h2>
+        <p>The camera’s own picture modes, as looks. Monocard reads the mode from the file. Each mode is fitted from pairs of a raw and the camera’s JPEG, and kept in a profile table with a test chart.</p>
+        <table class="tbl tbl-modes">
+          <caption class="vh">State of each camera mode</caption>
+          <thead><tr><th scope="col">Mode</th><th scope="col">State</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Standard</th><td>Good</td></tr>
+            <tr><th scope="row">Solid</th><td>Good</td></tr>
+            <tr><th scope="row">Solarized 1 to 3</th><td>Good</td></tr>
+            <tr><th scope="row">Soft</th><td>Draft</td></tr>
+            <tr><th scope="row">High Contrast</th><td>Draft</td></tr>
+            <tr><th scope="row">HDR Tone</th><td>Draft</td></tr>
+            <tr><th scope="row">Grainy</th><td>Missing: no photos yet</td></tr>
+          </tbody>
+          <tfoot><tr><td colspan="2">Good: fitted from real photos, within the limits.</td></tr></tfoot>
+        </table>
+      </div>
+      <figure class="shot shot-sheet">
+        <div class="frame" style="--ar:1148/1480">
+          <img src="assets/app-profiles.webp" width="1148" height="1480" loading="lazy"
+               alt="Settings, Camera profiles: a table of the camera’s modes with the state of each fit, its error, the number of photos and the date, and what each fit still needs.">
+        </div>
+        <figcaption><span>Settings, Camera profiles.</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- IX -->
+<section class="zone hi" id="camera" style="--g:#212121">
+  <div class="wrap">
+    <div class="head">
+      <div class="head-main">
+        <h2><span class="num" aria-hidden="true">IX</span>Camera window</h2>
+        <p>Connect the camera by USB and its window opens. It shows the photos on the camera in a grid, by day. Select the ones to keep and import them.</p>
+      </div>
+      <dl class="spec">
+        <div><dt>Opens</dt><dd>When a camera is connected, or from the menu.</dd></div>
+        <div><dt>Import</dt><dd>The selected photos only.</dd></div>
+        <div><dt>Delete</dt><dd>Nothing is deleted on the camera. There is no delete button.</dd></div>
+        <div><dt>System</dt><dd>macOS.</dd></div>
+      </dl>
+    </div>
+    <div class="pair">
+      <figure class="shot">
+        <div class="frame app" style="--ar:2048/1280;--pos:0% 0%">
+          <img src="assets/app-camera-2048.webp" srcset="assets/app-camera-1024.webp 1024w, assets/app-camera-2048.webp 2048w" sizes="(min-width: 56rem) 50vw, calc(100vw - 2rem)" width="2048" height="1280" loading="lazy"
+               alt="The camera window: the photos on the camera in a grid, grouped by day, with some selected for import.">
+        </div>
+        <figcaption><span>The camera window, with a sample list.</span></figcaption>
+      </figure>
+      <figure class="shot shot-lib">
+        <div class="frame app" style="--ar:2400/1280;--pos:0% 50%">
+          <img src="assets/app-library-2400.webp" srcset="assets/app-library-1200.webp 1200w, assets/app-library-2400.webp 2400w" sizes="(min-width: 56rem) 60vw, calc(100vw - 2rem)" width="2400" height="1280" loading="lazy"
+               alt="The library grid after an import: monochrome photos only.">
+        </div>
+        <figcaption><span>The library. Color photos are not listed.</span></figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- X -->
+<section class="zone hi" id="output" style="--g:#232323">
+  <div class="wrap">
+    <div class="head">
+      <div class="head-main">
+        <h2><span class="num" aria-hidden="true">X</span>Output</h2>
+        <p>A picture that is not toned leaves as a grey file, one channel. The proof shows it within the white and the black of a paper.</p>
+      </div>
+      <dl class="spec">
+        <div><dt>Files</dt><dd>Grey JPEG, 16-bit grey TIFF.</dd></div>
+        <div><dt>Paper proof</dt><dd>Matte, baryta, newsprint.</dd></div>
+        <div><dt>Sidecar</dt><dd>The edit is kept beside the photo, in <code>IMG.DNG.mcd</code>.</dd></div>
+        <div><dt>Command line</dt><dd><code>monocard</code> develops files with no window.</dd></div>
+      </dl>
+    </div>
+    <div class="prints">
+      <div class="prints-row">
+        <figure style="--ar:1.5"><div class="frame"><picture><source type="image/avif" srcset="assets/photo-2-800.avif 800w, assets/photo-2-1600.avif 1600w" sizes="(min-width: 64rem) min(57rem, 62vw), 66vw"><img src="assets/photo-2-1600.webp" srcset="assets/photo-2-800.webp 800w, assets/photo-2-1600.webp 1600w" sizes="(min-width: 64rem) min(57rem, 62vw), 66vw" width="1600" height="1067" loading="lazy" alt="Sample picture: white sheets on a line in hard sun, a figure behind them."></picture></div></figure>
+        <figure style="--ar:0.6667"><div class="frame"><picture><source type="image/avif" srcset="assets/photo-4-534.avif 534w, assets/photo-4-1067.avif 1067w" sizes="(min-width: 64rem) min(26rem, 28vw), 30vw"><img src="assets/photo-4-1067.webp" srcset="assets/photo-4-534.webp 534w, assets/photo-4-1067.webp 1067w" sizes="(min-width: 64rem) min(26rem, 28vw), 30vw" width="1067" height="1600" loading="lazy" alt="Sample picture, upright: the balconies of a concrete housing block."></picture></div></figure>
+      </div>
+      <div class="prints-row">
+        <figure style="--ar:1.5"><div class="frame"><picture><source type="image/avif" srcset="assets/photo-1-800.avif 800w, assets/photo-1-1600.avif 1600w" sizes="(min-width: 64rem) min(42rem, 45vw), 48vw"><img src="assets/photo-1-1600.webp" srcset="assets/photo-1-800.webp 800w, assets/photo-1-1600.webp 1600w" sizes="(min-width: 64rem) min(42rem, 45vw), 48vw" width="1600" height="1067" loading="lazy" alt="Sample picture: a wet alley at night, a figure in a lit doorway."></picture></div></figure>
+        <figure style="--ar:1.5"><div class="frame"><picture><source type="image/avif" srcset="assets/photo-6-800.avif 800w, assets/photo-6-1600.avif 1600w" sizes="(min-width: 64rem) min(42rem, 45vw), 48vw"><img src="assets/photo-6-1600.webp" srcset="assets/photo-6-800.webp 800w, assets/photo-6-1600.webp 1600w" sizes="(min-width: 64rem) min(42rem, 45vw), 48vw" width="1600" height="1067" loading="lazy" alt="Sample picture: a concrete stair in raking light, a figure walking."></picture></div></figure>
+      </div>
+    </div>
+    <p class="cap">Four pictures developed in Monocard and exported as grey files.</p>
+  </div>
+</section>
+
+<!-- Off the scale -->
+<section class="off" id="source">
+  <div class="wrap off-grid">
+    <div class="off-limits">
+      <h2>Limits</h2>
+      <ul class="plain">
+        <li>The noise profile for the Ricoh&nbsp;GR&nbsp;IV Monochrome is not calibrated.</li>
+        <li>The learned denoiser is not trained. The profiled and the wavelet denoisers work now.</li>
+        <li>Clipped light is lost. Monocard shapes the way into white.</li>
+        <li>Three camera modes are drafts: Soft, High Contrast and HDR Tone. Grainy has no fit yet.</li>
+        <li>The download is for the Mac only.</li>
+      </ul>
+    </div>
+    <div class="off-build">
+      <h2>Download</h2>
+      <p class="hero-act off-act">
+        <a class="btn btn-main" href="#download" data-download>Download for macOS</a>
+        <span class="note">macOS 13.4 or later, Apple silicon. Notarized.</span>
+      </p>
+      <h2>Source</h2>
+      <p>Monocard is free and open source, under GPL-3.0. The code and the build notes are on GitHub.</p>
+      <p><a class="btn" id="repo" href="https://github.com/sbusso/monocard">Source on GitHub</a></p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Built on <a href="https://github.com/jessolmstead/greycard">Greycard</a> by Jess Olmstead, GPL-3.0. Monocard is a separate project under the same license.</p>
+    <p>Denoise, tone and detail tools are ported from darktable, GPL-3.0. The Lightroom preset import is adapted from RAWmakase, MIT.</p>
+    <p>Ricoh, GR, and GR&nbsp;IV&nbsp;Monochrome belong to Ricoh Imaging Company, Ltd. Monocard is not affiliated with or endorsed by Ricoh Imaging.</p>
+  </div>
+</footer>
+</body>
+</html>
