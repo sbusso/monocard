@@ -63,6 +63,7 @@
         <p class="hero-act">
           <a class="btn btn-main" id="download" href="https://github.com/sbusso/monocard/releases/latest/download/Monocard.dmg">Download for macOS</a>
           <span class="note">macOS 13.4 or later, Apple silicon. Notarized.</span>
+          <span class="note">Also for <a href="#downloads">Linux and Windows</a>, new and little tested.</span>
         </p>
       </div>
     </div>
@@ -412,15 +413,20 @@
         <li>The learned denoiser is not trained. The profiled and the wavelet denoisers work now.</li>
         <li>Clipped light is lost. Monocard shapes the way into white.</li>
         <li>Three camera modes are drafts: Soft, High Contrast and HDR Tone. Grainy has no fit yet.</li>
-        <li>The download is for the Mac only.</li>
+        <li>The Linux and Windows versions are new and little tested. Import from the camera by USB is for the Mac only.</li>
       </ul>
     </div>
     <div class="off-build">
-      <h2>Download</h2>
+      <h2 id="downloads">Download</h2>
       <p class="hero-act off-act">
         <a class="btn btn-main" href="#download" data-download>Download for macOS</a>
         <span class="note">macOS 13.4 or later, Apple silicon. Notarized.</span>
       </p>
+      <dl class="spec off-others">
+        <div><dt>Linux</dt><dd><a href="https://github.com/sbusso/monocard/releases/latest/download/Monocard-linux-x86_64.AppImage">AppImage</a> or <a href="https://github.com/sbusso/monocard/releases/latest/download/Monocard-linux-x86_64.tar.gz">archive</a>. 64-bit Intel or AMD, glibc 2.39 or later, Vulkan.</dd></div>
+        <div><dt>Windows</dt><dd><a href="https://github.com/sbusso/monocard/releases/latest/download/Monocard-windows-x86_64.zip">Zip</a>. Windows 10 or later, 64-bit Intel or AMD. Not signed, so Windows asks before the first start.</dd></div>
+      </dl>
+      <p class="note off-new">The Linux and Windows versions are new and little tested.</p>
       <h2>Source</h2>
       <p>Monocard is free and open source, under GPL-3.0. The code and the build notes are on GitHub.</p>
       <p><a class="btn" id="repo" href="https://github.com/sbusso/monocard">Source on GitHub</a></p>

@@ -456,7 +456,9 @@ html:not(.js) .js-only { display: none; }
 .plain li:last-child { border-bottom: 1px solid var(--line); }
 .off-build p { max-width: 30rem; color: var(--secondary); }
 .off-build p:last-child { margin-top: 1.5rem; }
-.off-build .off-act { margin: 0 0 3rem; max-width: none; }
+.off-build .off-act { margin: 0 0 1.75rem; max-width: none; }
+.off-others { max-width: 36rem; }
+.off-others + .off-new { margin: 1rem 0 3rem; }
 @media (min-width: 56rem) {
   .off-grid { grid-template-columns: repeat(12, 1fr); }
   .off-limits { grid-column: 1 / span 5; }
