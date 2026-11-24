@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- A square card in three steps of grey with a film notch, drawn on
+       the 16 px grid (32 units a pixel) so that it stays sharp there. -->
+  <clipPath id="card">
+    <path d="M64 32H224V96H288V32H448A32 32 0 0 1 480 64V448A32 32 0 0 1 448 480H64A32 32 0 0 1 32 448V64A32 32 0 0 1 64 32Z"/>
+  </clipPath>
+  <g clip-path="url(#card)">
+    <rect x="32" y="32" width="160" height="448" fill="#f2f2f2"/>
+    <rect x="192" y="32" width="128" height="448" fill="#777777"/>
+    <rect x="320" y="32" width="160" height="448" fill="#1a1a1a"/>
+    <path d="M64 32H224V96H288V32H448A32 32 0 0 1 480 64V448A32 32 0 0 1 448 480H64A32 32 0 0 1 32 448V64A32 32 0 0 1 64 32Z" fill="none" stroke="#1a1a1a" stroke-width="12"/>
+  </g>
+</svg>
