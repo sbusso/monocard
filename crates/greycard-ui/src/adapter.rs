@@ -16,6 +16,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use greycard_core::brand::NAME;
 use greycard_gpu::wgpu;
 
 use crate::{App, State, tr};
@@ -121,14 +122,15 @@ impl Drawing {
         Some(if self == Drawing::Software {
             Lines {
                 start: format!(
-                    "no GPU greycard can draw on through {API}: drawing in software and \
+                    "no GPU {NAME} can draw on through {API}: drawing in software and \
                      developing on the CPU, which is slow"
                 ),
                 shown: tr!(
                     "no GPU greycard can draw on through {api}: drawing in software and \
                      developing on the CPU, which is slow",
                     api = tr_api()
-                ),
+                )
+                .replace("greycard", NAME),
             }
         } else {
             Lines {
@@ -296,7 +298,7 @@ mod tests {
         assert!(
             lines
                 .start
-                .starts_with("no GPU greycard can draw on through "),
+                .starts_with(&format!("no GPU {NAME} can draw on through ")),
             "{lines:?}"
         );
     }

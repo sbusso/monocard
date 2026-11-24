@@ -26,6 +26,12 @@ const OURS: [&str; 9] = [
     "greycard_render",
     "greycard_engine",
 ];
+/// The Monocard build's own.
+const MONO: &[&str] = if cfg!(feature = "mono") {
+    &["monocard", "mono_decode", "mono_denoise", "mono_profile"]
+} else {
+    &[]
+};
 
 pub fn start(verbose: u8) {
     let env_set = std::env::var_os(EnvFilter::DEFAULT_ENV).is_some();
@@ -36,7 +42,7 @@ pub fn start(verbose: u8) {
     };
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         let mut spec = String::from("warn");
-        for target in OURS {
+        for target in OURS.iter().chain(MONO) {
             spec.push_str(&format!(",{target}={ours}"));
         }
         EnvFilter::new(spec)

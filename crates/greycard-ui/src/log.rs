@@ -63,6 +63,12 @@ const OURS: [&str; 13] = [
     "greycard_library::files",
     "greycard_library::export_record",
 ];
+/// The Monocard build's own.
+const MONO: &[&str] = if cfg!(feature = "mono") {
+    &["monocard_ui", "mono_decode", "mono_denoise", "mono_profile"]
+} else {
+    &[]
+};
 
 /// `$XDG_STATE_HOME/greycard` when that is set, else the platform's
 /// place for logs: `~/Library/Logs/greycard` on macOS, where
@@ -178,7 +184,7 @@ const QUIET: [&str; 5] = [
 /// error.
 fn filter(ours: &str) -> EnvFilter {
     let mut spec = String::from("warn");
-    for target in OURS {
+    for target in OURS.iter().chain(MONO) {
         spec.push_str(&format!(",{target}={ours}"));
     }
     for target in QUIET {

@@ -44,6 +44,8 @@ use std::ffi::OsStr;
 use std::fmt;
 use std::path::{Path, PathBuf};
 
+use greycard_core::brand::NAME;
+
 use crate::registry::Runtime;
 
 /// The library the decision found, and where it came from.
@@ -119,7 +121,11 @@ pub enum Unavailable {
 
 /// The command line's word for fetching the CPU-only runtime, which
 /// `greycard models` takes.
-pub const FETCH_RUNTIME: &str = "greycard models --fetch onnxruntime";
+pub const FETCH_RUNTIME: &str = if cfg!(feature = "mono") {
+    "monocard models --fetch onnxruntime"
+} else {
+    "greycard models --fetch onnxruntime"
+};
 
 impl Unavailable {
     /// The CPU-only runtime that would turn the AI features on, where
@@ -165,10 +171,13 @@ impl fmt::Display for Unavailable {
         match self {
             Unavailable::Fetchable { missing, name, .. } => {
                 processor(f, missing, name)?;
-                f.write_str(", which greycard's ONNX Runtime is built for")
+                write!(f, ", which {NAME}'s ONNX Runtime is built for")
             }
             Unavailable::NotShipped { runtime } => {
-                f.write_str("no ONNX Runtime of greycard's own is made for this platform")?;
+                write!(
+                    f,
+                    "no ONNX Runtime of {NAME}'s own is made for this platform"
+                )?;
                 if runtime.is_none() {
                     f.write_str("; GREYCARD_ORT_DYLIB can name one")?;
                 }
@@ -176,10 +185,10 @@ impl fmt::Display for Unavailable {
             }
             Unavailable::Processor { missing, name } => {
                 processor(f, missing, name)?;
-                f.write_str(", which greycard's ONNX Runtime is built for")
+                write!(f, ", which {NAME}'s ONNX Runtime is built for")
             }
             Unavailable::NotBeside { looked } if looked.is_empty() => {
-                write!(f, "no {LIBRARY}, and no knowing where greycard runs from")
+                write!(f, "no {LIBRARY}, and no knowing where {NAME} runs from")
             }
             Unavailable::NotBeside { looked } => {
                 let places: Vec<String> = looked
@@ -188,7 +197,7 @@ impl fmt::Display for Unavailable {
                     .collect();
                 write!(
                     f,
-                    "no {LIBRARY} beside greycard (looked in {}); a build from source makes it \
+                    "no {LIBRARY} beside {NAME} (looked in {}); a build from source makes it \
                      with scripts/ort-dylib.sh",
                     places.join(" and ")
                 )
@@ -681,7 +690,7 @@ mod tests {
             line,
             format!(
                 "the AI features are off until Microsoft's ONNX Runtime for the CPU is \
-                 downloaded ({FETCH_RUNTIME}): no ONNX Runtime of greycard's own is made for \
+                 downloaded ({FETCH_RUNTIME}): no ONNX Runtime of {NAME}'s own is made for \
                  this platform"
             )
         );
@@ -690,7 +699,7 @@ mod tests {
         }
         assert_eq!(
             off.reason(),
-            "no ONNX Runtime of greycard's own is made for this platform"
+            format!("no ONNX Runtime of {NAME}'s own is made for this platform")
         );
         // A platform with neither (Linux on ARM): off, nothing offered,
         // and the variable that can name one said.
@@ -946,8 +955,10 @@ mod tests {
         };
         assert_eq!(
             no_name.to_string(),
-            "the AI features are off: this processor has no AVX2, which greycard's ONNX Runtime \
-             is built for"
+            format!(
+                "the AI features are off: this processor has no AVX2, which {NAME}'s ONNX \
+                 Runtime is built for"
+            )
         );
         let load = Unavailable::WouldNotLoad {
             path: PathBuf::from("/x/libonnxruntime.so"),

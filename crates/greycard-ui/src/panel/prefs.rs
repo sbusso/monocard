@@ -1710,7 +1710,8 @@ mod tests {
         let shown = about_dirs();
         let [_, library, caches, log] = &shown;
         for dir in [library, caches, log] {
-            let logs = cfg!(windows) && dir.ends_with(r"greycard\logs");
+            let own = greycard_core::brand::APP_DIR;
+            let logs = cfg!(windows) && dir.ends_with(&format!(r"{own}\logs"));
             assert!(
                 dir.ends_with(greycard_core::brand::APP_DIR) || logs,
                 "{dir}"
