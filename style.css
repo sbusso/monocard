@@ -278,6 +278,8 @@ figcaption, .cap {
   font-weight: 500; font-size: 0.9375rem; line-height: 1.25rem;
   text-decoration: none;
 }
+.logos { position: absolute; }
+.os { width: 1.125em; height: 1.125em; margin-right: 0.5em; vertical-align: -0.1875em; fill: currentColor; }
 .btn:hover { border-color: var(--accent); color: #fff; }
 .btn-main { background: var(--accent); border-color: var(--accent); color: var(--ink); }
 .btn-main:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: var(--ink); }
