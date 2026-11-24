@@ -269,8 +269,12 @@ pub fn luma(c: [f32; 3]) -> f32 {
 }
 
 /// The color under the pointer in words: each channel's level and
-/// the luma's, 0 to 255, as the scopes bin them.
+/// the luma's, 0 to 255, as the scopes bin them. Monocard says the
+/// luma's alone.
 pub fn readout(c: [f32; 3]) -> String {
+    if cfg!(feature = "mono") {
+        return format!("L {}", level(luma(c)));
+    }
     format!(
         "R {}  G {}  B {}  L {}",
         level(c[0]),
@@ -379,6 +383,13 @@ pub fn under_pointer(
 mod tests {
     use super::*;
     use crate::testing::{colors, flat, ramp};
+
+    /// Monocard has no color tool: the grey value is all it says.
+    #[cfg(feature = "mono")]
+    #[test]
+    fn the_readout_is_the_grey_value_alone() {
+        assert_eq!(readout([0.5; 3]), format!("L {}", level(0.5)));
+    }
 
     #[test]
     fn every_pixel_lands_in_a_bin() {

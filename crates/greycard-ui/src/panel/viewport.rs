@@ -1099,7 +1099,13 @@ pub(crate) fn show_hover(st: &mut State, app: &App) {
         return;
     }
     st.develop.hover_shown = Some(shown);
-    let marks: Vec<ScopeMark> = scope::marks(st.develop.scope, reading.color, reading.across)
+    // Monocard marks the grey of a toned pixel, not its channels.
+    let color = if cfg!(feature = "mono") {
+        [scope::luma(reading.color); 3]
+    } else {
+        reading.color
+    };
+    let marks: Vec<ScopeMark> = scope::marks(st.develop.scope, color, reading.across)
         .into_iter()
         .map(|m| ScopeMark {
             x: m.x,
@@ -1119,7 +1125,7 @@ pub(crate) fn show_hover(st: &mut State, app: &App) {
         }
         _ => app.set_scope_marks(ModelRc::new(VecModel::from(marks))),
     }
-    app.set_scope_readout(scope::readout(reading.color).into());
+    app.set_scope_readout(scope::readout(color).into());
     // Outside the scopes' selection the pixel is on no trace: its
     // marks show faded where it would be, against the selection's.
     app.set_scope_marks_outside(!reading.selected);
