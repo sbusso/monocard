@@ -7,6 +7,10 @@
 
 A raw photo editor for monochrome sensors. Free, and open source.
 
+![Monocard with a street photo open: the history on the left, the photo in the middle, the histogram and the LOOK panel on the right, and the filmstrip along the bottom.](../docs/images/monocard.webp)
+
+<sub>The sample pictures are generated, then developed in Monocard.</sub>
+
 I shoot with a Ricoh GR IV Monochrome. It came with no software, and most editors run its
 files through a color pipeline and turn them grey at the end. Monocard is made for monochrome
 files only. It develops one channel, from the sensor's data to the print, and it has no color
