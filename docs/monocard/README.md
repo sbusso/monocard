@@ -32,6 +32,9 @@ program under Greycard's name.
 To make a macOS app, run `scripts/monocard-package.sh`. The signature is ad hoc
 unless `MACOS_SIGN_IDENTITY` names an identity.
 
+To make the notarized disk image for other Macs, build with `LCMS2_STATIC=1`, and set
+`MACOS_SIGN_IDENTITY` and `MACOS_NOTARY_PROFILE`. The header of the script has the steps.
+
 ## Files
 
 Monocard and Greycard can be installed on one machine. They share no settings,

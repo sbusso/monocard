@@ -695,6 +695,22 @@ fn the_buttons_take_what_is_selected_or_not_imported() {
     assert_eq!(v.get_selected(), 0);
 }
 
+/// The pictures of the folder `MONOCARD_CAPTURE_PHOTOS` names, for tiles of
+/// a capture in place of the drawn ones.
+fn photos_named() -> Vec<image::RgbImage> {
+    let Some(dir) = std::env::var_os("MONOCARD_CAPTURE_PHOTOS") else {
+        return Vec::new();
+    };
+    let mut files: Vec<_> = (std::fs::read_dir(dir).unwrap())
+        .map(|f| f.unwrap().path())
+        .collect();
+    files.sort();
+    files
+        .iter()
+        .map(|f| image::open(f).unwrap().to_rgb8())
+        .collect()
+}
+
 /// A made-up photo: a sky, a hill, and a sun, upright for one in five.
 fn photo(key: u64) -> image::RgbImage {
     let (w, h) = if key % 5 == 2 { (341, 512) } else { (512, 341) };
@@ -711,7 +727,8 @@ fn photo(key: u64) -> image::RgbImage {
     })
 }
 
-/// The window drawn. Run with `MONOCARD_CAPTURES=DIR` and `--ignored`.
+/// The window drawn. Run with `MONOCARD_CAPTURES=DIR` and `--ignored`,
+/// and `MONOCARD_CAPTURE_PHOTOS=DIR` for tiles with those pictures, at 2x.
 #[test]
 #[ignore]
 fn capture_the_camera_window() {
@@ -721,14 +738,31 @@ fn capture_the_camera_window() {
     std::fs::create_dir_all(&out).unwrap();
     crate::testing::drawing_backend();
     let (app, state) = app();
+    let photos = photos_named();
+    if !photos.is_empty() {
+        let scale_factor = 2.0;
+        (app.window()).dispatch_event(WindowEvent::ScaleFactorChanged { scale_factor });
+        state.borrow_mut().import.destination = Some("/Volumes/Photos".into());
+        options_changed(&state.borrow(), &app);
+    }
     let shot = |name: &str| {
         for (w, h) in [(1024.0, 640.0), (1440.0, 900.0)] {
             size(&app, w, h);
+            if !photos.is_empty() {
+                // The backend knows no scale: its pixels, then the points.
+                size(&app, w * 2.0, h * 2.0);
+                let size = slint::LogicalSize::new(w, h);
+                app.window().dispatch_event(WindowEvent::Resized { size });
+                settle(&app);
+            }
             for _ in 0..4 {
                 // Pictures of all that is asked for.
                 let wanted = state.borrow().import.camera.wanted.clone();
                 for key in wanted {
-                    let picture = (key % 11 != 4).then(|| photo(key));
+                    let picture = match photos.len() {
+                        0 => (key % 11 != 4).then(|| photo(key)),
+                        n => Some(photos[key as usize % n].clone()),
+                    };
                     heard(&mut state.borrow_mut(), &app, Event::Thumb { key, picture });
                 }
                 settle(&app);
@@ -738,6 +772,10 @@ fn capture_the_camera_window() {
             // The camera side has no camera to say it of.
             if view(&app).get_count() > 0 {
                 let path = "R0000174.DNG becomes ~/Pictures/2026-11-05/R0000174.DNG";
+                let path = match photos.is_empty() {
+                    true => path.to_string(),
+                    false => path.replace('~', "/Volumes").replace("Pictures", "Photos"),
+                };
                 view(&app).set_path(path.into());
                 settle(&app);
             }
@@ -761,6 +799,9 @@ fn capture_the_camera_window() {
     let mut tiles = many(174);
     for t in &mut tiles {
         t.imported = Some(t.key < 148 && t.key % 3 != 0);
+        if !photos.is_empty() && t.kind == "JPEG" {
+            t.name = t.name.replace(".DNG", ".JPG");
+        }
     }
     let settled = true;
     hear(
