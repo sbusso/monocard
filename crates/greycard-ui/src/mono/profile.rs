@@ -1,4 +1,4 @@
-//! Build camera profile: a folder of calibration shots fitted off the
+//! Measure sensor noise: a folder of calibration shots fitted off the
 //! window's thread, the profile and its plot kept with the user's own.
 
 use std::path::{Path, PathBuf};
@@ -15,13 +15,19 @@ pub(super) fn asked(app: &App) {
     crate::chooser::choose_folder("Calibration shots", start, move |chosen| {
         let Ok(Some(folder)) = chosen else { return };
         let _ = weak.upgrade_in_event_loop(move |app| {
-            app.set_status("building the camera profile...".into());
+            let mono = app.global::<Mono>();
+            if mono.get_building() {
+                return;
+            }
+            mono.set_building(true);
             let weak = app.as_weak();
             std::thread::spawn(move || {
                 let said = built(&folder);
                 let _ = weak.upgrade_in_event_loop(move |app| {
-                    app.set_status("".into());
-                    app.global::<Mono>().set_report(said.into());
+                    let mono = app.global::<Mono>();
+                    mono.set_building(false);
+                    mono.set_report(said.into());
+                    super::profiles::show_values(&app, &greycard_engine::mono::profiles());
                 });
             });
         });

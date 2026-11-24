@@ -279,6 +279,18 @@ export component MonoProfiles inherits VerticalLayout {
             }
         }
     }
+    HorizontalLayout {
+        alignment: start;
+        PanelButton {
+            text: Mono.building ? "Measuring..." : "Measure sensor noise...";
+            enabled: !Mono.building;
+            clicked => { Mono.profile-build(); }
+        }
+    }
+    Words {
+        width: root.inner-width;
+        text: "Choose a folder of flat and dark frames from one camera, a few at each ISO. Monocard measures the sensor's noise and hot pixels. No look changes.";
+    }
     Rectangle { height: Theme.space-1; }
     Heading { text: "PHOTOS FOR THE FIT"; }
     Words {

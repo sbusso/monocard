@@ -179,6 +179,10 @@ export global Mono {
     in-out property <string> profile-ask;
     /// An action on the row with this key.
     callback profile-pressed(string, string);
+    /// The sensor measured from a folder of calibration shots, and whether
+    /// that is under way.
+    callback profile-build();
+    in-out property <bool> building: false;
     /// The folders the modes are fitted from, a fit under way, and what it
     /// is at.
     in-out property <[string]> fit-folders;

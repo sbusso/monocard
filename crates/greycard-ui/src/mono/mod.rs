@@ -605,7 +605,7 @@ pub(crate) fn refresh(app: &App) {
     // With no monochrome frame open, what is for one rests.
     let live = on(app);
     for v in panels.iter_mut().flatten().chain(&mut mask) {
-        v.enabled &= live || ["look.import", "profile"].contains(&v.id);
+        v.enabled &= live || v.id == "look.import";
     }
     for (p, views) in mono.get_panels().iter().zip(&panels) {
         put_rows(&p.rows, views);
@@ -850,7 +850,6 @@ fn pressed(app: &App, id: &str) {
         "masks" => tab(app, "Masks"),
         "crop" => tab(app, "Crop"),
         "merge" => merge(app),
-        "profile" => profile::asked(app),
         "lens" => {
             let mut names: Vec<SharedString> = mono.get_sections().iter().collect();
             match names.iter().position(|n| n == "lens") {
@@ -1166,6 +1165,7 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, _worker: &Rc<Worker>) {
     with!(on_profile_pressed, |app, action, key| profiles::pressed(
         &app, &action, &key
     ));
+    with!(on_profile_build, |app| profile::asked(&app));
     with!(on_fit_all, |app| profiles::fit_all(&app));
     with!(on_folder_add, |app| profiles::add_folder_asked(&app));
     with!(on_folder_remove, |app, i| profiles::remove_folder(&app, i));

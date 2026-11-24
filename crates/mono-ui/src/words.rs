@@ -45,9 +45,6 @@ Elsewhere C culls."
     }
 }
 
-pub const PROFILE_HELP: &str = "Choose a folder of flat and dark frames from one camera, a few at \
-each ISO.";
-
 /// The faces of the mono build: the panels', and the figures'. A face the
 /// system lacks falls back to its own.
 pub const FONT: &str = if cfg!(target_os = "macos") {

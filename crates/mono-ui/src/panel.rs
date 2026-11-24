@@ -696,8 +696,6 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
         V(note("keys-help", words::KEYS_HELP).under("view-group")),
         V(button("crop", "Crop and straighten")),
         V(button("lens", "Lens corrections")),
-        V(button("profile", "Build camera profile...")),
-        V(note("profile-help", words::PROFILE_HELP)),
         V(note("filter-help", words::FILTER_HELP)),
     ];
     let titles = ["LOOK", "BASIC", "LIGHT", "DETAIL", "HIGHLIGHTS", "FINISH"];

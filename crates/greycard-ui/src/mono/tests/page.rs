@@ -111,6 +111,18 @@ fn the_page_has_every_mode_and_the_panel_marks_the_unfinished() {
     }
     let values: Vec<_> = mono.get_profile_values().iter().collect();
     assert_eq!(values[0].state, "Draft");
+    // The sensor is measured from this page alone, and the rows follow.
+    let measure = "Measure sensor noise...";
+    assert_eq!(count_labeled(&app, measure), 1);
+    mono.set_building(true);
+    settle(&app);
+    assert_eq!(count_labeled(&app, measure), 0);
+    mono.set_building(false);
+    let mut measured = mono_profile::Profile::new("Mine", vec![CAMERA.into()]);
+    measured.calibrated = true;
+    profiles::show_values(&app, &[measured]);
+    settle(&app);
+    assert_eq!(mono.get_profile_values().row_data(0).unwrap().state, "Good");
     no_color_tool(&app, "the profiles page");
 
     // The keys: the category steps in its place, and a row opens.

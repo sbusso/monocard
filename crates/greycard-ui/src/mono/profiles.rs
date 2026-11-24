@@ -76,15 +76,21 @@ pub(super) fn show(app: &App) {
         mono.set_profiles(ModelRc::new(VecModel::from(rows)));
     }
     if mono.get_profile_values().row_count() == 0 {
-        let values = table::values(super::profiles(), table::CAMERA);
-        mono.set_profile_values(ModelRc::new(VecModel::from_iter(values.into_iter().map(
-            |v| MonoValue {
-                name: v.name.into(),
-                state: v.state.name().into(),
-                wants: v.wants.into(),
-            },
-        ))));
+        show_values(app, super::profiles());
     }
+}
+
+/// The rows of the values that come of the sensor, by `profiles`.
+pub(super) fn show_values(app: &App, profiles: &[mono_profile::Profile]) {
+    let rows = table::values(profiles, table::CAMERA)
+        .into_iter()
+        .map(|v| MonoValue {
+            name: v.name.into(),
+            state: v.state.name().into(),
+            wants: v.wants.into(),
+        });
+    app.global::<Mono>()
+        .set_profile_values(ModelRc::new(VecModel::from_iter(rows)));
 }
 
 /// A button of a row, or a question's yes.
