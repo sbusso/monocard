@@ -1346,6 +1346,8 @@ fn the_dehaze_viewport_against_the_export_on_real_frames() {
                 panic!("{stem}: the GPU's develop failed");
             };
             let viewport = match image {
+                #[cfg(feature = "mono")]
+                Developed::Mono(_) => panic!("{stem}: a color frame"),
                 Developed::Texture(t) => read_viewport(gpu.as_ref().unwrap(), &t),
                 Developed::Halves(h) => {
                     let data: Vec<f32> = h

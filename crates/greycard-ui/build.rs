@@ -91,12 +91,17 @@ fn catalogs() {
 // out of a cross build rather than failing one.
 #[cfg(windows)]
 fn windows_resource() {
-    let icon = "../../assets/icon/greycard.ico";
+    let mono = std::env::var_os("CARGO_FEATURE_MONO").is_some();
+    let (icon, name) = if mono {
+        ("../../assets/monocard/icon.ico", "Monocard")
+    } else {
+        ("../../assets/icon/greycard.ico", "greycard")
+    };
     println!("cargo:rerun-if-changed={icon}");
     winresource::WindowsResource::new()
         .set_icon(icon)
-        .set("ProductName", "greycard")
-        .set("FileDescription", "greycard")
+        .set("ProductName", name)
+        .set("FileDescription", name)
         .set("CompanyName", "Jess Olmstead")
         // The binary links Slint, under GPL-3.0-only, so the whole is
         // version 3; winresource writes the .rc as UTF-8 under

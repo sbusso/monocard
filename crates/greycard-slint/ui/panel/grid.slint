@@ -7,6 +7,8 @@ import { Thumb, ThumbCell, FilterChip, FacetRow, FacetRange, FolderTile, SortMen
 import { ButtonKeys, NameTip, PanelButton, ScrollBand, SizeSlider, ThumbBadges, ThumbMarks, ThumbStack, ThumbTag, TipArea } from "../controls.slint";
 import { FilterBar, SortButton } from "filter.slint";
 import { LoadingCard } from "loading.slint";
+import { Mono } from "../../../mono-ui/ui/state.slint";
+import { MonoSplash } from "../../../mono-ui/ui/splash.slint";
 
 // A button on the lightbox's bar: an icon alone on the bar's dark
 // plate, in the plate's own colors in every theme, its words at the
@@ -648,6 +650,9 @@ export component GridSheet inherits Rectangle {
             init => { root.grid-w = self.width; root.grid-h = self.height; root.grid-relay(); }
             changed width => { root.grid-w = self.width; root.grid-relay(); }
             changed height => { root.grid-h = self.height; root.grid-relay(); }
+            // Not where a filter hides the frames there are.
+            if Mono.on && !root.lightbox && !root.loading-shown && root.filter-total == 0
+                && root.thumbs.length == 0 && root.tiles.length == 0: MonoSplash { }
             // The cells ride on this one, which is also what sees
             // the wheel: a cell's own TouchArea rejects a scroll
             // and it rises to this, its parent, wherever the

@@ -967,6 +967,7 @@ mod tests {
     /// watched, and the status line ends on the export's own line. A
     /// second Edit in under the same name is watched once.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own export")]
     fn edit_in_exports_beside_the_raw_and_hands_the_file_over() {
         let dir = crate::testing::scratch_dir("edit-in-export");
         let app = window(2);
@@ -1266,6 +1267,7 @@ mod tests {
     /// a new stack of the two, opened; a frame already in a stack takes
     /// it after itself in that stack. A second save stacks nothing more.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own export")]
     fn a_saved_file_is_listed_and_stacked_with_its_raw() {
         let mut s = setup("stack");
         let apps = s.dir.join("apps");

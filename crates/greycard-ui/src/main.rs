@@ -35,6 +35,8 @@ mod headless;
 mod keys;
 mod library;
 mod lightbox;
+#[cfg(feature = "mono")]
+mod mono;
 #[cfg(test)]
 mod name_tips;
 mod open_note;
@@ -117,7 +119,7 @@ pub(crate) use greycard_slint::*;
 
 #[derive(Parser)]
 #[command(
-    name = "greycard-ui",
+    name = if cfg!(feature = "mono") { "monocard-ui" } else { "greycard-ui" },
     version = greycard_version::LABEL,
     about = "RAW editor: open a file or a folder, develop it, export it"
 )]
@@ -975,6 +977,8 @@ impl State {
                 drawn_guide: Arc::new(finish::Guide::NONE),
                 drawn_generation: 0,
                 drawn_planes: None,
+                #[cfg(feature = "mono")]
+                drawn_mono: None,
                 picture_asked: None,
                 as_shot_white: None,
                 before_as_shot: None,
@@ -1178,6 +1182,8 @@ pub(crate) fn install_callbacks(app: &App, state: Rc<Shared>, worker: Rc<Worker>
     tree::install(app, &state, &worker);
     report::install(app, &state);
     update::install(app, &state);
+    #[cfg(feature = "mono")]
+    mono::install(app, &state, &worker);
 
     // A neighbor in a folder on a network mount or an automount not yet
     // mounted is not read ahead: the check handed over from the start,

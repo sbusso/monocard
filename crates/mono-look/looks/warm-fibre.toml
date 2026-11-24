@@ -1,0 +1,8 @@
+name = "Warm Fibre"
+description = "A warm paper tone across the picture."
+
+[tools.toning]
+balance = 0
+overall = { hue = 40, amount = 0.1 }
+highlights = { amount = 0 }
+shadows = { amount = 0 }

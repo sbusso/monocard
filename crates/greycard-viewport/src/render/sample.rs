@@ -36,6 +36,25 @@ pub fn texel_of((x, y): (i64, i64), size: (u32, u32), lag: u8) -> (i64, i64) {
     }
 }
 
+/// A source texel's bytes: the picture's four half floats, or a mono
+/// frame's one half.
+fn texel_bytes(source: &gpu::Texture) -> u32 {
+    match source.format() {
+        gpu::TextureFormat::R16Float => 2,
+        _ => 8,
+    }
+}
+
+/// A texel as the working space's color, a mono one's light in all three.
+fn texel_rgb(texel: &[u8]) -> [f32; 3] {
+    match texel {
+        [a, b] => [half::f16::from_le_bytes([*a, *b]).to_f32(); 3],
+        _ => std::array::from_fn(|k| {
+            half::f16::from_le_bytes([texel[2 * k], texel[2 * k + 1]]).to_f32()
+        }),
+    }
+}
+
 impl Renderer {
     pub fn has_image(&self) -> bool {
         self.source.is_some()
@@ -63,7 +82,8 @@ impl Renderer {
         let (x0, y0) = ((x - reach).max(0), (y - reach).max(0));
         let (x1, y1) = ((x + reach + 1).min(w), (y + reach + 1).min(h));
         let (cw, ch) = ((x1 - x0) as u32, (y1 - y0) as u32);
-        let row = (cw * 8).div_ceil(256) * 256;
+        let texel = texel_bytes(source);
+        let row = (cw * texel).div_ceil(256) * 256;
         let buffer = self.device.create_buffer(&gpu::BufferDescriptor {
             label: Some("sample"),
             size: (row * ch) as u64,
@@ -117,13 +137,10 @@ impl Renderer {
             .context("reading the sample buffer")?;
         let mut sum = [0.0f32; 3];
         for r in 0..ch as usize {
-            let line = &data[r * row as usize..][..(cw * 8) as usize];
-            for px in bytemuck::cast_slice::<u8, half::f16>(line)
-                .as_chunks::<4>()
-                .0
-            {
+            let line = &data[r * row as usize..][..(cw * texel) as usize];
+            for px in line.chunks_exact(texel as usize).map(texel_rgb) {
                 for k in 0..3 {
-                    sum[k] += px[k].to_f32();
+                    sum[k] += px[k];
                 }
             }
         }
@@ -146,7 +163,8 @@ impl Renderer {
         let (w, h) = (source.width(), source.height());
         let step = (w / across.max(1)).max(1);
         let rows: Vec<u32> = (step / 2..h).step_by(step as usize).collect();
-        let row = (w * 8).div_ceil(256) * 256;
+        let texel = texel_bytes(source);
+        let row = (w * texel).div_ceil(256) * 256;
         let buffer = self.device.create_buffer(&gpu::BufferDescriptor {
             label: Some("sample grid"),
             size: u64::from(row) * rows.len() as u64,
@@ -198,16 +216,12 @@ impl Renderer {
             .context("reading the sample grid")?;
         let mut out = Vec::with_capacity(rows.len() * (w / step) as usize);
         for i in 0..rows.len() {
-            let line = &data[i * row as usize..][..(w * 8) as usize];
-            let texels = bytemuck::cast_slice::<u8, half::f16>(line)
-                .as_chunks::<4>()
-                .0;
+            let line = &data[i * row as usize..][..(w * texel) as usize];
             out.extend(
-                texels
-                    .iter()
+                line.chunks_exact(texel as usize)
                     .skip((step / 2) as usize)
                     .step_by(step as usize)
-                    .map(|px| [px[0].to_f32(), px[1].to_f32(), px[2].to_f32()]),
+                    .map(texel_rgb),
             );
         }
         drop(data);

@@ -72,6 +72,10 @@ pub(super) fn open(
 ) -> anyhow::Result<(Input, greycard_core::decode::RawMetadata)> {
     if is_picture_path(path) {
         let mut picture = decode_picture_path(path)?;
+        #[cfg(feature = "mono")]
+        if let Some(f) = crate::mono::frame_of(path, &picture) {
+            return Ok((Input::Raw(Arc::new(f)), picture.metadata));
+        }
         let image = std::mem::replace(&mut picture.image, WorkingImage::new(0, 0));
         let metadata = picture.metadata.clone();
         return Ok((

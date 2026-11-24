@@ -41,6 +41,9 @@ pub(crate) use crate::preset_fit::preset_at_start;
 pub(crate) use greycard_engine::headless::Overrides;
 
 pub(crate) fn main() -> Result<std::process::ExitCode> {
+    // By the program, not the feature: the mono build's tests also run the
+    // one named greycard, on color files.
+    greycard_library::monochrome::only(env!("CARGO_BIN_NAME").starts_with("monocard"));
     let cli = Cli::parse();
     // A launch with a path alone, or with nothing, hands it to the
     // editor this user has running, and ends. Before the log starts,
@@ -56,9 +59,15 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
         // One line, so a second editor started from a terminal beside
         // the running one says why no window came.
         if cli.path.is_some() {
-            eprintln!("opened in the running greycard (pid {pid})");
+            eprintln!(
+                "opened in the running {} (pid {pid})",
+                greycard_core::brand::NAME
+            );
         } else {
-            eprintln!("brought the running greycard forward (pid {pid})");
+            eprintln!(
+                "brought the running {} forward (pid {pid})",
+                greycard_core::brand::NAME
+            );
         }
         return Ok(std::process::ExitCode::SUCCESS);
     }
@@ -367,7 +376,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     // dock pins the window to its entry and shows its icon. Set before
     // the window is built, which is when winit reads it; off Linux it
     // does nothing.
-    if let Err(e) = slint::set_xdg_app_id("greycard") {
+    if let Err(e) = slint::set_xdg_app_id(greycard_core::brand::APP_DIR) {
         tracing::warn!("the window's app id was not set: {e}");
     }
     let app = App::new()?;
@@ -453,6 +462,8 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     show_sheet(&app, &sheet);
     show_presets_picker(&app, &remembered.shared.export_presets, preset.as_deref());
     show_folds(&app, &remembered.collapsed);
+    #[cfg(feature = "mono")]
+    crate::mono::show_open_folds(&app, &remembered.mono_open);
     crate::panel::order::show(&app, &remembered.section_orders);
     crate::panel::shares::show(&app, &remembered.shares);
     crate::panel::sizes::show(&app, &remembered);
@@ -589,7 +600,8 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     let preset_store = preset::Store::user();
     // The film presets this build ships, put there the first time
     // there is a directory to put them in (`Store::seed`).
-    if let Some(store) = &preset_store {
+    // Not in the mono build: they are color looks.
+    if let Some(store) = preset_store.as_ref().filter(|_| !cfg!(feature = "mono")) {
         store.seed();
     }
     let placement = if cli.sidecar_folder || remembered.shared.sidecars_in_folder {
@@ -669,6 +681,11 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
             settings::path()
         };
         let presets = preset_store.as_ref().map(|s| s.list()).unwrap_or_default();
+        #[cfg(feature = "mono")]
+        let presets = presets
+            .into_iter()
+            .filter(|e| crate::mono::preset_shown(&e.preset))
+            .collect::<Vec<_>>();
         let batch = cli.snapshot.is_some() || cli.screenshot.is_some();
         // Only a session someone is at deletes: never a capture or a
         // timing run, which have nobody to have confirmed. (An export
@@ -1023,6 +1040,8 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     // The pane's entry from what the last check found, and this
     // launch's check if a day has gone.
     crate::update::start(&app, state.borrow().window.batch, &remembered.update);
+    #[cfg(feature = "mono")]
+    crate::mono::usb::watch(&state.borrow(), &app);
 
     // The viewport is rendered inside Slint's frame, on its device.
     {
@@ -1423,14 +1442,24 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
                     // the worker when that develop came without one.
                     let own = crate::panel::viewport::own_develop(st) == Some(0);
                     let guide = st.develop.drawn_guide.clone();
+                    let exposure = edit.light.exposure;
+                    let stops = st.develop.drawn_kind.baseline(&edit.light) + exposure;
+                    // The exposure a mono frame is finished at is its own.
+                    #[cfg(feature = "mono")]
+                    let mono = crate::panel::viewport::mono_view(st, &edit);
+                    #[cfg(feature = "mono")]
+                    let (exposure, stops) = match &mono {
+                        Some(m) => (m.edit.basic.exposure, m.edit.basic.exposure),
+                        None => (exposure, stops),
+                    };
                     crate::panel::mask::refine_locals(
                         &edit,
                         &mut locals,
                         &mut st.develop.refined,
                         guide.picture.as_ref().filter(|_| own),
                         sh / sw.max(1.0),
-                        edit.light.exposure,
-                        st.develop.drawn_kind.baseline(&edit.light) + edit.light.exposure,
+                        exposure,
+                        stops,
                     );
                     if crate::panel::mask::picture_wanted(st, &edit) {
                         let generation = st.develop.drawn_generation;
@@ -1538,6 +1567,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
                     // until it is, the curve editor takes no histogram
                     // of it.
                     let own = crate::panel::viewport::own_develop(st).is_some();
+                    let scope = crate::panel::viewport::scope_of(st);
                     let Some(renderer) = st.develop.renderer.as_mut() else {
                         return;
                     };
@@ -1600,6 +1630,8 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
                         display_curve,
                         profile_tone: tone,
                         source_turn: lag,
+                        #[cfg(feature = "mono")]
+                        mono,
                     };
                     // The navigator's rectangle: what the view shows of
                     // the frame, as fractions of it.
@@ -1638,7 +1670,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
                         .filter(|&k| view.locals.get(k).is_some_and(|l| !l.mask.is_empty()));
                     app.set_scope_mask_active(selection.is_some());
                     let weigh_by = selection.filter(|_| app.get_scope_selection());
-                    let (bins, mut in_flight) = renderer.analyze(&view, st.develop.scope, weigh_by);
+                    let (bins, mut in_flight) = renderer.analyze(&view, scope, weigh_by);
                     if let Some((taken, bins)) = bins {
                         app.set_scope_picture(scope::draw(taken, bins));
                         clipping_read(&app, bins);
@@ -2460,6 +2492,10 @@ fn merged(
                 sidecars_in_folder,
                 jpegs_apart,
                 lens_on_new,
+                #[cfg(feature = "mono")]
+                mono_start_mode,
+                #[cfg(feature = "mono")]
+                mono_fit_folders,
                 author,
                 copyright,
                 export: _,
@@ -2482,6 +2518,16 @@ fn merged(
         sort,
         lenses_declined,
         models_asked,
+        #[cfg(feature = "mono")]
+        mono_welcomed,
+        #[cfg(feature = "mono")]
+        mono_open,
+        #[cfg(feature = "mono")]
+        mono_camera_popup,
+        #[cfg(feature = "mono")]
+        mono_camera_tile,
+        #[cfg(feature = "mono")]
+        mono_camera_sort,
         rawtherapee_answered,
         preset_favorites,
         preset_folds,
@@ -2544,6 +2590,11 @@ fn merged(
     settings.shared.sidecars_in_folder = sidecars_in_folder;
     settings.shared.jpegs_apart = jpegs_apart;
     settings.shared.lens_on_new = lens_on_new;
+    #[cfg(feature = "mono")]
+    {
+        settings.shared.mono_start_mode = mono_start_mode;
+        settings.shared.mono_fit_folders = mono_fit_folders;
+    }
     settings.shared.author = author;
     settings.shared.copyright = copyright;
     settings.one_section = one_section;
@@ -2555,6 +2606,14 @@ fn merged(
     settings.sort = sort;
     settings.lenses_declined = lenses_declined;
     settings.models_asked = models_asked;
+    #[cfg(feature = "mono")]
+    {
+        settings.mono_welcomed = mono_welcomed;
+        settings.mono_open = mono_open;
+        settings.mono_camera_popup = mono_camera_popup;
+        settings.mono_camera_tile = mono_camera_tile;
+        settings.mono_camera_sort = mono_camera_sort;
+    }
     settings.rawtherapee_answered = rawtherapee_answered;
     settings.preset_favorites = preset_favorites;
     settings.preset_folds = preset_folds;
@@ -2691,6 +2750,10 @@ pub(crate) fn remember(app: &App) -> settings::Settings {
             jpegs_apart: false,
             // As the Settings sheet's switch is flipped.
             lens_on_new: true,
+            #[cfg(feature = "mono")]
+            mono_start_mode: false,
+            #[cfg(feature = "mono")]
+            mono_fit_folders: Vec::new(),
             last_file: String::new(),
             // Kept as the sheet's fields take them: the caller keeps
             // the file's.
@@ -2760,6 +2823,18 @@ pub(crate) fn remember(app: &App) -> settings::Settings {
         cull_developed: false,
         lenses_declined: false,
         models_asked: false,
+        // Written as the welcome shows.
+        #[cfg(feature = "mono")]
+        mono_welcomed: false,
+        #[cfg(feature = "mono")]
+        mono_open: Vec::new(),
+        // Written as each changes.
+        #[cfg(feature = "mono")]
+        mono_camera_popup: true,
+        #[cfg(feature = "mono")]
+        mono_camera_tile: None,
+        #[cfg(feature = "mono")]
+        mono_camera_sort: String::new(),
         // Written as the RawTherapee offer is answered.
         rawtherapee_answered: Vec::new(),
         // Written as a star or a fold changes; the caller keeps the file's.

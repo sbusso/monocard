@@ -26,6 +26,9 @@
 import { Theme } from "../theme.slint";
 import { BindRow, ModelLine } from "../structs.slint";
 import { Toggle, PanelButton, Segmented, ScrollPane } from "../controls.slint";
+import { Mono } from "../../../mono-ui/ui/state.slint";
+import { MonoAbout } from "../../../mono-ui/ui/words.slint";
+import { MonoProfiles, MonoChart } from "../../../mono-ui/ui/profiles.slint";
 import { ComboBox, LineEdit } from "std-widgets.slint";
 
 // The Language row's first choice, in the window's language: the Rust
@@ -282,12 +285,20 @@ export component SettingsSheet inherits Rectangle {
     /// A folder clicked, by its row (0 settings, 1 library, 2 caches,
     /// 3 log): the host opens it in the file manager.
     callback dir-clicked(int);
-    property <[string]> categories: ["Interface", "Library", "Editing", "Models", "Keys", "About"];
+    property <[string]> categories: Mono.only
+        ? ["Interface", "Library", "Editing", "Camera profiles", "Models", "Keys", "About"]
+        : ["Interface", "Library", "Editing", "Models", "Keys", "About"];
     /// The categories in words, by index: the names above are what is
     /// kept and compared.
     // Settings: the category names on the sheet's left
-    property <[string]> category-words: [@tr("Interface"), @tr("Library"), @tr("Editing"), @tr("Models"), @tr("Keys"), @tr("About")];
-    property <length> column-w: 132px;
+    property <[string]> category-words: Mono.only
+        ? [@tr("Interface"), @tr("Library"), @tr("Editing"), Mono.profiles-title, @tr("Models"), @tr("Keys"), @tr("About")]
+        : [@tr("Interface"), @tr("Library"), @tr("Editing"), @tr("Models"), @tr("Keys"), @tr("About")];
+    property <bool> on-profiles: Mono.only && root.category == "Camera profiles";
+    // What Monocard shows over the sheet gives the keys back to it.
+    property <bool> covered: Mono.chart-open || Mono.report != "";
+    changed covered => { if (!Mono.chart-open) { names.focus(); } }
+    property <length> column-w: Mono.only ? 148px : 132px;
     property <length> pane-w: 440px;
     /// The focus goes to the column: a row left focused in the category
     /// hidden would take the next key and do nothing with it.
@@ -302,11 +313,13 @@ export component SettingsSheet inherits Rectangle {
     /// or round them with `wrap`.
     function step(by: int, wrap: bool) {
         let n = root.categories.length;
+        let more = Mono.only ? 1 : 0;
         let at = root.category == "Library" ? 1
             : root.category == "Editing" ? 2
-            : root.category == "Models" ? 3
-            : root.category == "Keys" ? 4
-            : root.category == "About" ? 5
+            : root.on-profiles ? 3
+            : root.category == "Models" ? 3 + more
+            : root.category == "Keys" ? 4 + more
+            : root.category == "About" ? 5 + more
             : 0;
         let next = wrap ? Math.mod(at + by + n, n) : Math.clamp(at + by, 0, n - 1);
         root.choose(root.categories[next]);
@@ -326,12 +339,14 @@ export component SettingsSheet inherits Rectangle {
         property <length> tallest: min(
             max(column.preferred-height, interface.preferred-height, library.preferred-height,
                 editing.preferred-height, models.preferred-height, keys.preferred-height,
+                Mono.only ? profiles.preferred-height : 0px,
                 about.preferred-height)
                 + done-row.preferred-height,
             root.height - 2 * Theme.space-5);
         height: min(
             max(column.preferred-height, root.category == "Library" ? library.preferred-height
                 : root.category == "Editing" ? editing.preferred-height
+                : root.on-profiles ? profiles.preferred-height
                 : root.category == "Models" ? models.preferred-height
                 : root.category == "Keys" ? keys.preferred-height
                 : root.category == "About" ? about.preferred-height
@@ -357,7 +372,11 @@ export component SettingsSheet inherits Rectangle {
             focus-on-click: false;
             key-pressed(e) => {
                 if (e.text == Key.Escape) {
-                    root.settings-open = false;
+                    if (Mono.report != "") {
+                        Mono.report = "";
+                    } else {
+                        root.settings-open = false;
+                    }
                     return accept;
                 }
                 if (e.modifiers.alt || e.modifiers.meta) { return reject; }
@@ -479,6 +498,7 @@ export component SettingsSheet inherits Rectangle {
                         content-width: root.pane-w;
                         content-height: root.category == "Library" ? library.preferred-height
                             : root.category == "Editing" ? editing.preferred-height
+                            : root.on-profiles ? profiles.preferred-height
                             : root.category == "Models" ? models.preferred-height
                             : root.category == "Keys" ? keys.preferred-height
                             : root.category == "About" ? about.preferred-height
@@ -659,6 +679,11 @@ export component SettingsSheet inherits Rectangle {
                                 checked <=> root.wheel-resizes;
                                 toggled => { root.wheel-resizes-changed(); }
                             }
+                            if Mono.camera-offered: Toggle {
+                                label: Mono.camera-popup-label;
+                                checked <=> Mono.camera-popup;
+                                toggled => { Mono.camera-popup-changed(); }
+                            }
                             Rectangle { height: Theme.space-1; }
                             Text {
                                 text: @tr("SIDECARS");
@@ -680,7 +705,9 @@ export component SettingsSheet inherits Rectangle {
                                 }
                             }
                             Text {
-                                text: root.sidecar-placement == "Hidden folder"
+                                text: Mono.on ? (root.sidecar-placement == "Hidden folder"
+                                        ? Mono.sidecar-hidden : Mono.sidecar-beside)
+                                    : root.sidecar-placement == "Hidden folder"
                                     ? @tr("In a hidden .greycard folder.")
                                     : @tr("IMG_0001.CR3.gcd, beside the raw.");
                                 font-size: Theme.font-xs;
@@ -869,7 +896,9 @@ export component SettingsSheet inherits Rectangle {
                                     accessible-role: list;
                                     accessible-value: self.current;
                                     selected(c) => {
-                                        root.canvas-choice = c == root.canvas-names[4] ? 4
+                                        // The mono build's sixth; "" without one, which no row is.
+                                        root.canvas-choice = c == root.canvas-names[5] ? 5
+                                            : c == root.canvas-names[4] ? 4
                                             : c == root.canvas-names[3] ? 3
                                             : c == root.canvas-names[2] ? 2
                                             : c == root.canvas-names[1] ? 1
@@ -918,7 +947,8 @@ export component SettingsSheet inherits Rectangle {
                                     clicked => { root.choose-display-file(); }
                                 }
                             }
-                            HorizontalLayout {
+                            // The mono build proofs on paper, in HIGHLIGHTS.
+                            if !Mono.only: HorizontalLayout {
                                 spacing: Theme.space-2;
                                 // Editing: the soft proof row
                                 Text { text: @tr("Soft proof"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
@@ -933,7 +963,7 @@ export component SettingsSheet inherits Rectangle {
                                     selected(p) => { root.proof-changed(); }
                                 }
                             }
-                            if root.proof-profile == "File": HorizontalLayout {
+                            if !Mono.only && root.proof-profile == "File": HorizontalLayout {
                                 spacing: Theme.space-2;
                                 padding-left: 68px + Theme.space-2;
                                 Text {
@@ -949,7 +979,7 @@ export component SettingsSheet inherits Rectangle {
                                     clicked => { root.choose-proof-file(); }
                                 }
                             }
-                            HorizontalLayout {
+                            if !Mono.only: HorizontalLayout {
                                 padding-left: 68px + Theme.space-2;
                                 intent-row := Segmented {
                                     options: ["Perceptual", "Relative"];
@@ -967,6 +997,17 @@ export component SettingsSheet inherits Rectangle {
                                 label: @tr("Lens corrections on new edits");
                                 checked <=> root.lens-on-new;
                                 toggled => { root.lens-on-new-changed(); }
+                            }
+                            if Mono.on: Toggle {
+                                label: Mono.start-mode-label;
+                                checked <=> Mono.start-mode;
+                                toggled => { Mono.start-mode-changed(); }
+                            }
+                            if Mono.on: Text {
+                                text: Mono.start-mode-note;
+                                font-size: Theme.font-xs;
+                                color: Theme.text-muted;
+                                wrap: word-wrap;
                             }
                             Rectangle { height: Theme.space-1; }
                             Text {
@@ -1023,13 +1064,13 @@ export component SettingsSheet inherits Rectangle {
                                 }
                             }
                             Rectangle { height: Theme.space-1; }
-                            Text {
+                            if !Mono.only: Text {
                                 text: @tr("PRESETS");
                                 font-size: Theme.font-xs;
                                 font-weight: Theme.weight-medium;
                                 color: Theme.text-secondary;
                             }
-                            HorizontalLayout {
+                            if !Mono.only: HorizontalLayout {
                                 spacing: Theme.space-2;
                                 Text {
                                     text: root.presets-missing-words;
@@ -1045,7 +1086,7 @@ export component SettingsSheet inherits Rectangle {
                                     clicked => { root.presets-restore(); }
                                 }
                             }
-                            Text {
+                            if !Mono.only: Text {
                                 text: @tr("Restores removed built-in presets.");
                                 font-size: Theme.font-xs;
                                 color: Theme.text-muted;
@@ -1073,9 +1114,10 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Color"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                Text { text: Mono.only ? Mono.profile-label : @tr("Color"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 space-row := Segmented {
-                                    options: ["sRGB", "Display P3", "Rec.2020", "Adobe RGB"];
+                                    options: Mono.only ? ["sRGB", "Display P3", "Gray Gamma 2.2", "Dot Gain 20%"] : ["sRGB", "Display P3", "Rec.2020", "Adobe RGB"];
+                                    labels: Mono.only ? ["sRGB", "Display P3", "Grey Gamma 2.2", "Dot Gain 20%"] : self.options;
                                     current <=> root.export-space;
                                     accessible-role: list;
                                     accessible-value: self.current;
@@ -1139,6 +1181,15 @@ export component SettingsSheet inherits Rectangle {
                                     accepted => { root.rights-changed(); }
                                 }
                             }
+                        }
+                        profiles := MonoProfiles {
+                            visible: root.on-profiles;
+                            x: 0;
+                            y: 0;
+                            width: root.pane-w;
+                            height: self.preferred-height;
+                            inner-width: root.pane-w - 2 * Theme.space-5 - Theme.scrollbar-band;
+                            focus-keys => { names.focus(); }
                         }
                         models := VerticalLayout {
                             visible: root.category == "Models";
@@ -1307,25 +1358,26 @@ export component SettingsSheet inherits Rectangle {
                                 Text { text: @tr("Version"); width: 68px; color: Theme.text; font-size: Theme.font-sm; }
                                 Text { text: root.version; font-size: Theme.font-sm; color: Theme.text-secondary; horizontal-stretch: 1; }
                             }
+                            if Mono.on: MonoAbout { }
                             Rectangle { height: Theme.space-1; }
-                            Text {
+                            if !Mono.on: Text {
                                 text: @tr("UPDATES");
                                 font-size: Theme.font-xs;
                                 font-weight: Theme.weight-medium;
                                 color: Theme.text-secondary;
                             }
-                            Toggle {
+                            if !Mono.on: Toggle {
                                 label: @tr("Check for a new version at launch");
                                 checked <=> root.update-check;
                                 toggled => { root.update-check-changed(); }
                             }
-                            Text {
+                            if !Mono.on: Text {
                                 text: @tr("Once a day; sends only the version number.");
                                 font-size: Theme.font-xs;
                                 color: Theme.text-muted;
                                 wrap: word-wrap;
                             }
-                            HorizontalLayout {
+                            if !Mono.on: HorizontalLayout {
                                 spacing: Theme.space-2;
                                 Text {
                                     text: root.update-note;
@@ -1426,4 +1478,5 @@ export component SettingsSheet inherits Rectangle {
             }
         }
     }
+    if Mono.chart-open: MonoChart { }
 }

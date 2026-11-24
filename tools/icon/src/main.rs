@@ -26,9 +26,13 @@ fn main() {
         .expect("tools/icon sits two below the repo root")
         .to_path_buf();
 
-    for name in ["greycard", "application-x-greycard-edit"] {
-        let svg = root.join("assets/icon").join(format!("{name}.svg"));
-        let out = root.join("assets/icon").join(format!("{name}.ico"));
+    for name in [
+        "icon/greycard",
+        "icon/application-x-greycard-edit",
+        "monocard/icon",
+    ] {
+        let svg = root.join("assets").join(format!("{name}.svg"));
+        let out = root.join("assets").join(format!("{name}.ico"));
         write_ico(&svg, &out);
         println!("{}", out.display());
     }

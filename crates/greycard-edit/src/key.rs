@@ -215,6 +215,15 @@ impl Edit {
             a.name.clear();
             a.look.white_balance = a.look.white_balance.acting();
         }
+        // The look's name and the tools from before it; a section at its
+        // defaults is none.
+        #[cfg(feature = "mono")]
+        {
+            edit.mono = edit.mono.and_then(|mut m| {
+                m.look = Default::default();
+                (*m != mono_core::MonoEdit::default()).then_some(m)
+            });
+        }
         let mut hasher = blake3::Hasher::new();
         hasher.update(b"greycard develop key\0");
         hasher.update(&DEVELOP_RECIPE.to_le_bytes());

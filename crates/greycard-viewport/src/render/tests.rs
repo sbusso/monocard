@@ -301,7 +301,7 @@ fn field() -> WorkingImage {
 
 /// The scopes' bins as the compute pass makes them, for `scope`
 /// weighed by `weigh_by`: `analyze` until its read back lands.
-fn gpu_bins(
+pub(super) fn gpu_bins(
     renderer: &mut Renderer,
     view: &View,
     scope: Scope,
@@ -5348,6 +5348,9 @@ fn case_fields(case: &Case, seen: &mut Moved) {
         adjustments,
         // The develop's, before the finish.
         retouch: _,
+        // `mono_tests` draws it.
+        #[cfg(feature = "mono")]
+            mono: _,
     } = edit;
     light_fields(seen, "light", light, true);
     for c in greycard_edit::DisplayCurve::ALL {
@@ -5437,6 +5440,8 @@ fn case_fields(case: &Case, seen: &mut Moved) {
             mask,
             look,
             opacity,
+            #[cfg(feature = "mono")]
+                mono: _,
         } = a;
         mark_off!(seen, "local", Adjustment::default(), enabled, opacity);
         let Mask {
@@ -6638,7 +6643,7 @@ fn the_taps_against_the_exports_resize() {
 /// The histogram where the curves take the picture in, as
 /// `histogram_at` reads it back: its call again until a read back
 /// lands with none behind it.
-fn tapped_bins(renderer: &mut Renderer, view: &View, tap: Tap) -> Vec<u32> {
+pub(super) fn tapped_bins(renderer: &mut Renderer, view: &View, tap: Tap) -> Vec<u32> {
     let mut last = None;
     for _ in 0..100 {
         let (bins, in_flight) = renderer.histogram_at(view, tap, None);

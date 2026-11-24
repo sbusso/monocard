@@ -100,6 +100,29 @@ pub fn choose_folder(
     );
 }
 
+/// Ask the desktop where a file goes, the same way: `name` is the one
+/// offered. The dialog asks before one that is there is picked.
+#[cfg(feature = "mono")]
+pub fn choose_save(
+    title: impl Into<String>,
+    start: PathBuf,
+    name: &str,
+    filter: (String, Vec<String>),
+    done: impl FnOnce(Result<Option<PathBuf>>) + Send + 'static,
+) {
+    ask(
+        Ask {
+            title: title.into(),
+            folder: start,
+            name: Some(name.into()),
+            filter,
+            directory: false,
+            multiple: false,
+        },
+        move |picked| done(picked.map(|p| p.into_iter().next())),
+    );
+}
+
 /// Linux asks the desktop's file chooser portal, on a thread of its
 /// own since the dialog takes as long as the user and the call is a
 /// blocking one. `done` gets what was picked, nothing when the user

@@ -28,6 +28,8 @@ serde_json.workspace = true
 roxmltree.workspace = true
 
 [features]
+# Monocard, the monochrome build (docs/monocard).
+mono = []
 # Nikon High Efficiency (HE and HE*) raws, through rawler's JPEG XS
 # decoder. Off by default and in every published build: JPEG XS is
 # licensed by a patent pool per copy of a decoder, with no exemption

@@ -423,7 +423,7 @@ pub(crate) fn record_panel(st: &mut State, app: &App) -> bool {
         return false;
     }
     let edit = read_edit(app, &st.develop.edit, st.develop.target);
-    panel_state(st, edit).is_some_and(|edit| st.line_mut(c).is_some_and(|l| l.record(edit)))
+    panel_state(st, edit).is_some_and(|edit| st.line_mut(c).is_some_and(|l| record(l, edit)))
 }
 
 /// Record `edit` as the current file's, and write its sidecar if that
@@ -456,7 +456,7 @@ pub(crate) fn save_edit(st: &mut State, edit: Edit) -> bool {
     if !crate::rows::panel_is_frames(st, c) {
         return st.line(c).is_some_and(|l| l.current != edit);
     }
-    if !st.line_mut(c).is_some_and(|l| l.record(edit)) {
+    if !st.line_mut(c).is_some_and(|l| record(l, edit)) {
         return false;
     }
     if writable(st, c) {
@@ -790,6 +790,8 @@ pub(crate) fn read_edit(app: &App, base: &Edit, target: Option<usize>) -> Edit {
     edit.look_lut.lut = greycard_edit::look::LutChoice::from_name(app.get_look_name().as_str());
     edit.look_lut.strength = app.get_look_strength().clamp(0.0, 1.0);
     edit.retouch.enabled = app.get_retouch_enabled();
+    #[cfg(feature = "mono")]
+    crate::mono::read(app, &mut edit, target);
     edit
 }
 
@@ -815,6 +817,8 @@ pub(crate) fn show_white(st: &State, edit: &Edit, app: &App) {
     let picture = crate::panel::color::open_is_picture(st);
     app.set_picture_open(picture);
     app.set_monochrome_open(crate::panel::color::open_is_monochrome(st));
+    #[cfg(feature = "mono")]
+    crate::mono::set_frame(st, app, app.get_monochrome_open());
     // A white of the other kind develops as none, so it shows as As shot:
     // a kelvin light on a picture (a paste from before a picture had a
     // white balance of its own), an offset on a raw (a hand edit).
@@ -1082,6 +1086,8 @@ pub(crate) fn show_edit(st: &State, edit: &Edit, app: &App, target: Option<usize
     // undo or a preset that brings a look says so at once.
     show_looks(st, &edit.look_lut, app);
     app.set_retouch_enabled(edit.retouch.enabled);
+    #[cfg(feature = "mono")]
+    crate::mono::show(edit, app, target);
     // "Use this person on all" only while the shape still has them,
     // under the mask it is in.
     crate::panel::parts_all::shown(st, edit, app);
@@ -1090,6 +1096,14 @@ pub(crate) fn show_edit(st: &State, edit: &Edit, app: &App, target: Option<usize
     *st.develop.look_seen.borrow_mut() = Some((read_look(app), app.get_mask_opacity()));
     // The headers' resets, by this edit against the frame's Original.
     crate::panel::section_reset::show_section_resets(st, app, edit, target);
+}
+
+/// Record `edit` on `line`: the history names the step by what moved.
+pub(crate) fn record(line: &mut greycard_edit::Line, edit: Edit) -> bool {
+    #[cfg(not(feature = "mono"))]
+    return line.record(edit);
+    #[cfg(feature = "mono")]
+    crate::mono::record(line, edit)
 }
 
 /// The panel's sections that fold, by the names the settings keep
@@ -1220,6 +1234,48 @@ pub(crate) const FOLDS: &[Fold] = &[
         "presets",
         App::get_collapsed_presets,
         App::set_collapsed_presets,
+    ),
+    #[cfg(feature = "mono")]
+    (
+        "mono-look",
+        crate::mono::folded::<0>,
+        crate::mono::set_folded::<0>,
+    ),
+    #[cfg(feature = "mono")]
+    (
+        "mono-basic",
+        crate::mono::folded::<1>,
+        crate::mono::set_folded::<1>,
+    ),
+    #[cfg(feature = "mono")]
+    (
+        "mono-light",
+        crate::mono::folded::<2>,
+        crate::mono::set_folded::<2>,
+    ),
+    #[cfg(feature = "mono")]
+    (
+        "mono-detail",
+        crate::mono::folded::<3>,
+        crate::mono::set_folded::<3>,
+    ),
+    #[cfg(feature = "mono")]
+    (
+        "mono-highlights",
+        crate::mono::folded::<4>,
+        crate::mono::set_folded::<4>,
+    ),
+    #[cfg(feature = "mono")]
+    (
+        "mono-finish",
+        crate::mono::folded::<5>,
+        crate::mono::set_folded::<5>,
+    ),
+    #[cfg(feature = "mono")]
+    (
+        "mono-mask",
+        crate::mono::folded::<6>,
+        crate::mono::set_folded::<6>,
     ),
 ];
 

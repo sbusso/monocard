@@ -1,0 +1,15 @@
+name = "Soft Print"
+description = "Lifted blacks, paper white at 0.94, low contrast."
+
+[tools.display]
+contrast = 1.2
+shoulder = 0.6
+toe = 0.8
+white_ceiling = 0.94
+black_floor = 0.015
+
+[tools.local_contrast]
+amount = 0
+
+[tools.contrast_eq]
+structure = 0

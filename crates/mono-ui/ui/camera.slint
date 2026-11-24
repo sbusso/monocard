@@ -1,0 +1,765 @@
+// The camera window: the photos of a camera on the USB cable, to choose and
+// import.
+
+import { ComboBox, LineEdit } from "std-widgets.slint";
+import { Theme } from "../../greycard-slint/ui/theme.slint";
+import { PanelButton, ScrollPane, SizeSlider } from "../../greycard-slint/ui/controls.slint";
+
+// A frame on the camera, and where its tile is.
+export struct CameraCell {
+    key: string,
+    x: length,
+    y: length,
+    name: string,
+    kind: string,
+    time: string,
+    /// Of the tiles that show, from zero.
+    index: int,
+    imported: bool,
+    selected: bool,
+    /// The keys are on it.
+    on: bool,
+    picture: image,
+    /// The camera gives no picture of it.
+    none: bool,
+}
+
+// The words over a day.
+export struct CameraDay {
+    y: length,
+    name: string,
+    count: string,
+}
+
+export global CameraView {
+    /// The window is over the app.
+    in-out property <bool> open: false;
+    /// The window closed.
+    callback closed();
+    /// Counted up where the keys are the window's again.
+    in-out property <int> keys-back;
+
+    /// The camera's name, empty for none, and what is said of its list.
+    in-out property <string> camera;
+    in-out property <string> summary;
+    /// Of the camera's files that are not tiles; empty for none.
+    in-out property <string> left-out;
+    callback again();
+    /// In the middle of the grid, with no tile to show: what, why, and the
+    /// name of the button that helps.
+    in-out property <string> empty;
+    in-out property <string> empty-why;
+    in-out property <string> empty-button;
+    callback helped();
+
+    /// Rows of the lists below.
+    in-out property <int> show-row;
+    in-out property <int> sort-row;
+    callback show-picked(int);
+    callback sort-picked(int);
+    /// The tiles' least width, and the slider's range.
+    in-out property <float> tile: 160;
+    in-out property <float> tile-least: 120;
+    in-out property <float> tile-most: 320;
+    callback tile-moved(float);
+    callback tile-kept();
+
+    /// The tiles round what is on screen, and their size.
+    in-out property <[CameraCell]> cells;
+    in-out property <[CameraDay]> days;
+    in-out property <length> tile-width;
+    in-out property <length> tile-height;
+    in-out property <length> content-height;
+    in-out property <length> content-y;
+    in-out property <int> count;
+    /// The grid's width, its height, and how far it is scrolled.
+    callback seen(length, length, length);
+    /// A press on a tile, with Cmd and Shift; or on none.
+    callback pressed(string, bool, bool);
+    callback opened(string);
+    /// A key of the grid or the preview, with Cmd and Shift: whether it is
+    /// taken.
+    callback key(string, bool, bool) -> bool;
+
+    /// The larger picture over the grid.
+    in-out property <bool> preview-open;
+    in-out property <CameraCell> preview;
+    in-out property <string> preview-words;
+    callback preview-stepped(int);
+    callback preview-closed();
+
+    /// What the buttons take, and why they are off.
+    in-out property <int> selected;
+    in-out property <int> all;
+    in-out property <bool> selected-ready;
+    in-out property <bool> all-ready;
+    in-out property <string> reason;
+    /// Where the first one goes.
+    in-out property <string> path;
+    callback import-selected();
+    callback import-all();
+}
+
+component Words inherits Text {
+    font-size: Theme.font-xs;
+    color: Theme.text-secondary;
+    wrap: word-wrap;
+}
+
+component Label inherits Text {
+    color: Theme.text;
+    font-size: Theme.font-sm;
+    vertical-alignment: center;
+}
+
+// A folder: its path under its name, and its buttons.
+component Folder inherits VerticalLayout {
+    in property <string> label;
+    in property <string> path;
+    in property <string> empty;
+    in property <bool> clearable: false;
+    in property <length> inner-width;
+    callback choose();
+    callback clear();
+    spacing: 2px;
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        Label {
+            text: root.label;
+            horizontal-stretch: 1;
+        }
+        if root.clearable && root.path != "": PanelButton {
+            text: "Clear";
+            accessible-label: "Clear: " + root.label;
+            clicked => { root.clear(); }
+        }
+        PanelButton {
+            text: "Choose...";
+            accessible-label: "Choose: " + root.label;
+            clicked => { root.choose(); }
+        }
+    }
+    Words {
+        width: root.inner-width;
+        text: root.path == "" ? root.empty : root.path;
+        color: root.path == "" ? Theme.text-muted : Theme.text-secondary;
+        wrap: char-wrap;
+    }
+}
+
+// A word on a picture.
+component Mark inherits Rectangle {
+    in property <string> text;
+    width: words.preferred-width + 10px;
+    height: 18px;
+    border-radius: Theme.radius-sm;
+    background: Theme.over-plate-dense;
+    words := Text {
+        accessible-role: none;
+        text: root.text;
+        font-size: Theme.font-xs;
+        color: Theme.over-text;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component Picture inherits Rectangle {
+    in property <CameraCell> cell;
+    if !root.cell.none: Image {
+        width: 100%;
+        height: 100%;
+        source: root.cell.picture;
+        image-fit: contain;
+        accessible-role: none;
+    }
+    // Nothing of it yet, or ever.
+    if root.cell.none || root.cell.picture.width == 0: Rectangle {
+        border-radius: Theme.radius-sm;
+        background: Theme.base;
+        if root.cell.none: Text {
+            accessible-role: none;
+            text: "No picture";
+            color: Theme.text-muted;
+            font-size: Theme.font-xs;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component Tile inherits Rectangle {
+    in property <CameraCell> cell;
+    // The grid has the keys.
+    in property <bool> keys;
+    callback press(bool, bool);
+    callback twice();
+    accessible-role: list-item;
+    accessible-label: root.cell.name + ", " + root.cell.kind
+        + (root.cell.time == "" ? "" : ", " + root.cell.time)
+        + (root.cell.imported ? ", imported" : "") + (root.cell.selected ? ", selected" : "");
+    accessible-item-selectable: true;
+    accessible-item-selected: root.cell.selected;
+    accessible-item-index: root.cell.index;
+    accessible-item-count: CameraView.count;
+    accessible-action-default => { root.press(false, false); }
+    border-radius: Theme.radius-md;
+    background: root.cell.selected ? Theme.selection : ta.has-hover ? Theme.hover-veil : transparent;
+    border-width: root.cell.selected || (root.cell.on && root.keys) ? 2px : 0px;
+    border-color: root.cell.selected ? Theme.accent-text : Theme.focus-ring;
+    picture := Picture {
+        x: 6px;
+        y: 6px;
+        width: parent.width - 12px;
+        height: parent.height - 50px;
+        cell: root.cell;
+        opacity: root.cell.imported ? 0.45 : 1;
+    }
+    // The keys on a tile that is chosen too.
+    if root.cell.selected && root.cell.on && root.keys: Rectangle {
+        x: 3px;
+        y: 3px;
+        width: parent.width - 6px;
+        height: parent.height - 6px;
+        border-radius: Theme.radius-sm;
+        border-width: 1px;
+        border-color: Theme.focus-ring;
+    }
+    if root.cell.imported: Mark {
+        x: parent.width - self.width - 8px;
+        y: 8px;
+        text: "Imported";
+    }
+    HorizontalLayout {
+        x: 8px;
+        y: parent.height - 42px;
+        width: parent.width - 16px;
+        height: 18px;
+        Text {
+            accessible-role: none;
+            text: root.cell.name;
+            color: Theme.text;
+            font-size: Theme.font-sm;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+    HorizontalLayout {
+        x: 8px;
+        y: parent.height - 23px;
+        width: parent.width - 16px;
+        height: 17px;
+        spacing: Theme.space-1;
+        Text {
+            accessible-role: none;
+            text: root.cell.time;
+            color: Theme.text-secondary;
+            font-size: Theme.font-xs;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+        Rectangle {
+            width: kind.preferred-width + 8px;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: Theme.text-muted;
+            kind := Text {
+                accessible-role: none;
+                text: root.cell.kind;
+                color: Theme.text-secondary;
+                font-size: 10px;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+    ta := TouchArea {
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down && e.button == PointerEventButton.left) {
+                root.press(e.modifiers.control, e.modifiers.shift);
+            }
+        }
+        double-clicked => { root.twice(); }
+    }
+}
+
+export component CameraWindow inherits Rectangle {
+    in property <string> destination;
+    in property <string> backup;
+    in-out property <string> subfolder;
+    in-out property <string> name;
+    in property <[string]> presets;
+    in-out property <string> preset;
+    /// Ask for the folder: "destination" or "backup".
+    callback choose(string);
+    callback backup-cleared();
+    /// A run, asked to stop, its words or the last one's.
+    in property <bool> running;
+    in property <bool> stopping;
+    in property <string> status;
+    callback stop();
+    /// A word on the folders, when there is one to say.
+    in property <string> folders-note;
+
+    property <int> keys-back: CameraView.keys-back;
+    changed keys-back => { root.take-keys(); }
+    function take-keys() {
+        if (CameraView.preview-open) { preview-keys.focus(); } else { grid-keys.focus(); }
+    }
+    property <bool> previewed: CameraView.preview-open;
+    changed previewed => { root.take-keys(); }
+    init => {
+        root.take-keys();
+        CameraView.seen(pane.visible-width, pane.visible-height, -CameraView.content-y);
+    }
+    background: Theme.surface;
+    // Nothing falls through to the window behind.
+    TouchArea {
+        scroll-event(e) => { return accept; }
+    }
+    // The keys that a control turned away.
+    FocusScope {
+        focus-on-tab-navigation: false;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Escape || (e.modifiers.control && e.text == "a")) {
+                CameraView.key(e.text, e.modifiers.control, e.modifiers.shift);
+                return accept;
+            }
+            return reject;
+        }
+        VerticalLayout {
+            // The header.
+            Rectangle {
+                height: 48px;
+                background: Theme.surface;
+                HorizontalLayout {
+                    padding-left: Theme.space-4;
+                    padding-right: Theme.space-4;
+                    padding-top: 10px;
+                    padding-bottom: 10px;
+                    spacing: Theme.space-3;
+                    Rectangle {
+                        width: Theme.icon;
+                        Image {
+                            source: @image-url("../../greycard-slint/ui/icons/camera.svg");
+                            colorize: Theme.text-secondary;
+                            width: Theme.icon;
+                            height: Theme.icon;
+                            accessible-role: none;
+                        }
+                    }
+                    Text {
+                        text: CameraView.camera == "" ? "Camera" : CameraView.camera;
+                        color: Theme.text;
+                        font-size: Theme.font-lg;
+                        font-weight: Theme.weight-medium;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 0;
+                    }
+                    Text {
+                        text: CameraView.summary;
+                        color: Theme.text-secondary;
+                        font-size: Theme.font-sm;
+                        vertical-alignment: center;
+                        overflow: elide;
+                        horizontal-stretch: 1;
+                    }
+                    PanelButton {
+                        text: "Read again";
+                        enabled: CameraView.camera != "" && !root.running;
+                        clicked => { CameraView.again(); }
+                    }
+                    PanelButton {
+                        text: "Close";
+                        clicked => { CameraView.open = false; }
+                    }
+                }
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.border;
+                }
+            }
+            HorizontalLayout {
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    // The bar.
+                    Rectangle {
+                        height: 44px;
+                        HorizontalLayout {
+                            padding-left: Theme.space-4;
+                            padding-right: Theme.space-4;
+                            padding-top: 6px;
+                            padding-bottom: 6px;
+                            spacing: Theme.space-2;
+                            Label { text: "Show"; }
+                            ComboBox {
+                                accessible-label: "Show";
+                                horizontal-stretch: 0;
+                                width: 160px;
+                                model: ["All", "Not imported"];
+                                current-index <=> CameraView.show-row;
+                                selected => { CameraView.show-picked(self.current-index); }
+                            }
+                            Rectangle { width: Theme.space-2; }
+                            Label { text: "Sort"; }
+                            ComboBox {
+                                accessible-label: "Sort";
+                                horizontal-stretch: 0;
+                                width: 160px;
+                                model: ["Newest first", "Oldest first", "Name"];
+                                current-index <=> CameraView.sort-row;
+                                selected => { CameraView.sort-picked(self.current-index); }
+                            }
+                            Rectangle { horizontal-stretch: 1; }
+                            SizeSlider {
+                                visible: !CameraView.preview-open;
+                                width: 110px;
+                                label: "Tile size";
+                                words: "Tile size";
+                                property <float> span: CameraView.tile-most - CameraView.tile-least;
+                                value: (CameraView.tile - CameraView.tile-least) / self.span;
+                                shown: CameraView.tile;
+                                least: CameraView.tile-least;
+                                most: CameraView.tile-most;
+                                moved(at) => { CameraView.tile-moved(CameraView.tile-least + at * self.span); }
+                                stepped(by) => {
+                                    CameraView.tile-moved(CameraView.tile + by * 10);
+                                    CameraView.tile-kept();
+                                }
+                                released => {
+                                    CameraView.tile-kept();
+                                    root.take-keys();
+                                }
+                            }
+                        }
+                        Rectangle {
+                            y: parent.height - 1px;
+                            height: 1px;
+                            background: Theme.border;
+                        }
+                    }
+                    // The grid.
+                    Rectangle {
+                        vertical-stretch: 1;
+                        background: Theme.sheet;
+                        clip: true;
+                        grid-keys := FocusScope {
+                            enabled: !CameraView.preview-open;
+                            accessible-role: list;
+                            accessible-label: "Photos on the camera";
+                            key-pressed(e) => {
+                                return CameraView.key(e.text, e.modifiers.control, e.modifiers.shift) ? accept : reject;
+                            }
+                            pane := ScrollPane {
+                                visible: !CameraView.preview-open && CameraView.empty == "";
+                                content-width: self.visible-width;
+                                content-height: CameraView.content-height;
+                                content-y <=> CameraView.content-y;
+                                // What is on screen, once it is laid out and
+                                // when it is another.
+                                changed visible-width => { self.tell(); }
+                                changed visible-height => { self.tell(); }
+                                changed content-y => { self.tell(); }
+                                function tell() {
+                                    CameraView.seen(self.visible-width, self.visible-height, -self.content-y);
+                                }
+                                // Beside the tiles.
+                                TouchArea {
+                                    width: pane.visible-width;
+                                    height: max(pane.visible-height, CameraView.content-height);
+                                    clicked => {
+                                        grid-keys.focus();
+                                        CameraView.pressed("", false, false);
+                                    }
+                                }
+                                for day in CameraView.days: HorizontalLayout {
+                                    x: 16px;
+                                    y: day.y;
+                                    width: pane.visible-width - 32px;
+                                    height: 36px;
+                                    spacing: Theme.space-2;
+                                    alignment: start;
+                                    Text {
+                                        text: day.name;
+                                        color: Theme.text;
+                                        font-size: Theme.font-md;
+                                        font-weight: Theme.weight-medium;
+                                        vertical-alignment: center;
+                                    }
+                                    Text {
+                                        text: day.count;
+                                        color: Theme.text-secondary;
+                                        font-size: Theme.font-xs;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                for cell in CameraView.cells: Tile {
+                                    x: cell.x;
+                                    y: cell.y;
+                                    width: CameraView.tile-width;
+                                    height: CameraView.tile-height;
+                                    cell: cell;
+                                    keys: grid-keys.has-focus;
+                                    press(command, shift) => {
+                                        grid-keys.focus();
+                                        CameraView.pressed(cell.key, command, shift);
+                                    }
+                                    twice => { CameraView.opened(cell.key); }
+                                }
+                            }
+                        }
+                        if CameraView.empty != "": VerticalLayout {
+                            alignment: center;
+                            padding: Theme.space-5;
+                            spacing: Theme.space-3;
+                            Text {
+                                text: CameraView.empty;
+                                color: Theme.text;
+                                font-size: Theme.font-lg;
+                                horizontal-alignment: center;
+                                wrap: word-wrap;
+                            }
+                            if CameraView.empty-why != "": Text {
+                                text: CameraView.empty-why;
+                                color: Theme.text-secondary;
+                                font-size: Theme.font-sm;
+                                horizontal-alignment: center;
+                                wrap: word-wrap;
+                            }
+                            if CameraView.empty-button != "": HorizontalLayout {
+                                alignment: center;
+                                PanelButton {
+                                    text: CameraView.empty-button;
+                                    clicked => {
+                                        CameraView.helped();
+                                        root.take-keys();
+                                    }
+                                }
+                            }
+                        }
+                        // The larger picture.
+                        preview-keys := FocusScope {
+                            visible: CameraView.preview-open;
+                            enabled: CameraView.preview-open;
+                            accessible-role: image;
+                            accessible-label: CameraView.preview.name + ", " + CameraView.preview-words;
+                            key-pressed(e) => {
+                                return CameraView.key(e.text, e.modifiers.control, e.modifiers.shift) ? accept : reject;
+                            }
+                            if CameraView.preview-open: VerticalLayout {
+                                padding: Theme.space-4;
+                                spacing: Theme.space-3;
+                                Rectangle {
+                                    vertical-stretch: 1;
+                                    Picture {
+                                        cell: CameraView.preview;
+                                    }
+                                    TouchArea {
+                                        double-clicked => { CameraView.preview-closed(); }
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: Theme.space-2;
+                                    VerticalLayout {
+                                        horizontal-stretch: 1;
+                                        spacing: 2px;
+                                        Text {
+                                            text: CameraView.preview.name;
+                                            color: Theme.text;
+                                            font-size: Theme.font-md;
+                                            overflow: elide;
+                                        }
+                                        Text {
+                                            text: CameraView.preview-words;
+                                            color: Theme.text-secondary;
+                                            font-size: Theme.font-xs;
+                                            overflow: elide;
+                                        }
+                                    }
+                                    PanelButton {
+                                        text: "Previous";
+                                        enabled: CameraView.preview.index > 0;
+                                        clicked => { CameraView.preview-stepped(-1); }
+                                    }
+                                    PanelButton {
+                                        text: "Next";
+                                        enabled: CameraView.preview.index < CameraView.count - 1;
+                                        clicked => { CameraView.preview-stepped(1); }
+                                    }
+                                    PanelButton {
+                                        text: "Back to all photos";
+                                        clicked => { CameraView.preview-closed(); }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if CameraView.left-out != "": Rectangle {
+                        height: 26px;
+                        Text {
+                            x: Theme.space-4;
+                            width: parent.width - 2 * Theme.space-4;
+                            text: CameraView.left-out;
+                            color: Theme.text-secondary;
+                            font-size: Theme.font-xs;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 1px;
+                    background: Theme.border;
+                }
+                // Escape of a field gives the keys back.
+                FocusScope {
+                    width: 304px;
+                    focus-on-tab-navigation: false;
+                    focus-on-click: false;
+                    key-pressed(e) => {
+                        if (e.text == Key.Escape) {
+                            root.take-keys();
+                            return accept;
+                        }
+                        return reject;
+                    }
+                    VerticalLayout {
+                        options := ScrollPane {
+                            vertical-stretch: 1;
+                            content-width: self.visible-width;
+                            content-height: fields.preferred-height;
+                            property <length> inner: self.visible-width - 2 * Theme.space-4 - Theme.scrollbar-band;
+                            fields := VerticalLayout {
+                                width: options.visible-width;
+                                padding: Theme.space-4;
+                                padding-right: Theme.space-4 + Theme.scrollbar-band;
+                                spacing: Theme.space-2;
+                                Folder {
+                                    label: "To";
+                                    path: root.destination;
+                                    empty: "No folder chosen";
+                                    inner-width: options.inner;
+                                    choose => { root.choose("destination"); }
+                                }
+                                HorizontalLayout {
+                                    spacing: Theme.space-2;
+                                    Label { text: "Folders"; width: 56px; }
+                                    LineEdit {
+                                        accessible-label: "Folders";
+                                        text <=> root.subfolder;
+                                        placeholder-text: "none";
+                                    }
+                                }
+                                HorizontalLayout {
+                                    spacing: Theme.space-2;
+                                    Label { text: "Name"; width: 56px; }
+                                    LineEdit {
+                                        accessible-label: "Name";
+                                        text <=> root.name;
+                                        placeholder-text: "{name}";
+                                    }
+                                }
+                                Words {
+                                    width: options.inner;
+                                    text: "{date} {yyyy} {mm} {dd} {name} {camera} {seq} {folder}; a / in Folders makes a folder in a folder.";
+                                }
+                                if CameraView.path != "": Words {
+                                    width: options.inner;
+                                    text: CameraView.path;
+                                    font-size: Theme.font-sm;
+                                    color: Theme.text;
+                                }
+                                HorizontalLayout {
+                                    spacing: Theme.space-2;
+                                    Label { text: "Preset"; width: 56px; }
+                                    ComboBox {
+                                        accessible-label: "Preset";
+                                        model: root.presets;
+                                        current-value <=> root.preset;
+                                    }
+                                }
+                                Folder {
+                                    label: "Backup";
+                                    path: root.backup;
+                                    empty: "None: one copy only";
+                                    clearable: true;
+                                    inner-width: options.inner;
+                                    choose => { root.choose("backup"); }
+                                    clear => {
+                                        root.backup-cleared();
+                                        root.take-keys();
+                                    }
+                                }
+                                if root.folders-note != "": Words {
+                                    width: options.inner;
+                                    text: root.folders-note;
+                                    color: Theme.warn-yellow;
+                                }
+                                Words {
+                                    width: options.inner;
+                                    text: "Photos are copied to a temporary folder, then imported from it. Nothing on the camera is changed.";
+                                }
+                                Words {
+                                    width: options.inner;
+                                    text: "The import is checked against the temporary copy, not against the camera. Each temporary copy must have the size that the camera gives.";
+                                }
+                            }
+                        }
+                        Rectangle {
+                            height: 1px;
+                            background: Theme.border;
+                        }
+                        VerticalLayout {
+                            padding: Theme.space-4;
+                            spacing: Theme.space-2;
+                            if root.status != "": Words {
+                                width: 304px - 2 * Theme.space-4;
+                                text: root.status;
+                                font-size: Theme.font-sm;
+                                color: Theme.text;
+                                accessible-role: text;
+                                accessible-label: self.text;
+                            }
+                            if !root.running && CameraView.reason != "": Words {
+                                width: 304px - 2 * Theme.space-4;
+                                text: CameraView.reason;
+                            }
+                            if root.running: PanelButton {
+                                text: root.stopping ? "Stopping..." : "Stop";
+                                accessible-label: root.stopping ? "Stopping" : "Stop the import";
+                                enabled: !root.stopping;
+                                clicked => {
+                                    root.stop();
+                                    root.take-keys();
+                                }
+                            }
+                            if !root.running: PanelButton {
+                                text: CameraView.selected > 0 ? "Import " + CameraView.selected + " selected" : "Import selected";
+                                primary: true;
+                                enabled: CameraView.selected-ready;
+                                accessible-description: self.enabled ? "" : CameraView.reason;
+                                clicked => {
+                                    CameraView.import-selected();
+                                    root.take-keys();
+                                }
+                            }
+                            if !root.running: PanelButton {
+                                text: CameraView.all > 0 ? "Import all (" + CameraView.all + ")" : "Import all";
+                                enabled: CameraView.all-ready;
+                                accessible-description: self.enabled ? "" : CameraView.reason;
+                                clicked => {
+                                    CameraView.import-all();
+                                    root.take-keys();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

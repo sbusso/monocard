@@ -1,0 +1,13 @@
+[project]
+name = "monocard-denoise"
+version = "0.0.1"
+description = "Fine-tuning and export of Monocard's one-channel denoiser"
+requires-python = ">=3.12"
+license = "GPL-3.0-or-later"
+dependencies = ["torch", "numpy", "onnx", "onnxruntime"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.uv]
+package = false

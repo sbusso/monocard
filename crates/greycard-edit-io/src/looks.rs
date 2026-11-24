@@ -20,7 +20,7 @@ pub fn store_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .or_else(dirs::data_dir)?;
-    Some(base.join("greycard").join("looks"))
+    Some(base.join(greycard_core::brand::APP_DIR).join("looks"))
 }
 
 /// Where a table of this name is kept. A name that is a path, or tries

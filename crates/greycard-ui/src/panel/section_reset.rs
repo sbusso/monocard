@@ -75,6 +75,10 @@ pub(crate) fn reset_section(
     target: Option<usize>,
     name: &str,
 ) -> bool {
+    #[cfg(feature = "mono")]
+    if let Some(done) = crate::mono::reset_section(edit, original, target, name) {
+        return done;
+    }
     if let Some(i) = target {
         let Some(look) = edit.adjustments.get_mut(i).map(|a| &mut a.look) else {
             return false;
@@ -286,6 +290,14 @@ pub(crate) fn show_section_resets(st: &State, app: &App, edit: &Edit, target: Op
     if app.get_section_resets() != live {
         app.set_section_resets(live);
     }
+    #[cfg(feature = "mono")]
+    {
+        let original = st
+            .current
+            .filter(|&c| st.culling.cull.is_none() && crate::rows::panel_is_frames(st, c))
+            .and_then(|c| reset_base(st, c, edit));
+        crate::mono::show_resets(app, edit, original.as_ref(), target);
+    }
 }
 
 /// The header's reset of section `name` on the frame on screen: what
@@ -347,7 +359,10 @@ pub(crate) fn reset_on_screen(st: &mut State, app: &App, worker: &Worker, name: 
         );
         reset.geometry = crate::panel::crop::read_geometry(app);
     }
-    if !st.line_mut(c).is_some_and(|line| line.record(reset)) {
+    if !st
+        .line_mut(c)
+        .is_some_and(|line| crate::panel::edit::record(line, reset))
+    {
         return;
     }
     tracing::info!("section reset: {name}");

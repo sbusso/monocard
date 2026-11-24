@@ -158,6 +158,15 @@ pub fn base_edit(edit: &Edit, size: Size) -> Edit {
     // table at Adobe's exposure, so it no longer shares the base's
     // first stages and develops them itself.
     base.camera.tone_curve = false;
+    // A monochrome raw's base reads its denoise alone, and nothing of it
+    // while that is at rest.
+    #[cfg(feature = "mono")]
+    if let Some(m) = &edit.mono {
+        base.mono = Some(Box::new(mono_core::MonoEdit {
+            denoise: m.denoise,
+            ..Default::default()
+        }));
+    }
     if size == Size::Reduced {
         base.geometry = edit.geometry.clone();
         base.detail = edit.detail;
@@ -183,6 +192,7 @@ mod tests {
                 makers: None,
                 lens_corrected: false,
                 monochrome: false,
+                rendered: false,
             },
             identity: Identity {
                 make: "Canon".into(),

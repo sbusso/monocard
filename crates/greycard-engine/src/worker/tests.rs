@@ -5578,6 +5578,8 @@ fn a_masks_sharpen_delta_is_made_on_both_paths() {
     };
     let picture = |image: &Developed, gpu: &Option<greycard_gpu::Context>| -> Vec<f32> {
         match image {
+            #[cfg(feature = "mono")]
+            Developed::Mono(_) => panic!("a color frame"),
             Developed::Texture(t) => read_viewport(gpu.as_ref().unwrap(), t).data,
             Developed::Halves(h) => h
                 .pixels
@@ -8643,5 +8645,119 @@ fn the_worker_reads_an_edited_neighbor_first_and_its_open_takes_the_base() {
         said("pf-rf-run-B.dng")
     );
     worker.stop();
+    crate::testing::remove_dir_retry(&dir);
+}
+
+/// The open monochrome frame's develop hands on its planes, with a device
+/// lent or not, and an export of it goes on from them to the file a frame
+/// not open makes.
+#[cfg(feature = "mono")]
+#[test]
+fn an_open_monochrome_frame_develops_and_exports() {
+    use super::export::render_open;
+    use crate::mono::testing::{frame, scene};
+    let input = Input::Raw(Arc::new(frame(240, 160, 800, 5, scene(240, 160))));
+    let deliver: Deliver = Arc::new(|_| {});
+    let mut edit = Edit::default();
+    let m = edit.mono.insert(Default::default());
+    m.denoise.mode = mono_core::edit::DenoiseMode::Wavelet;
+    m.tone_eq.zones[2] = 0.5;
+    let mut gpus = vec![None];
+    match greycard_gpu::Context::own() {
+        Ok(ctx) => gpus.push(Some(ctx)),
+        Err(_) => skipped("the open monochrome frame with a device"),
+    }
+    for mut gpu in gpus {
+        let mut held = None;
+        let (outcome, picture) = develop_job(
+            &input,
+            &edit,
+            0,
+            1,
+            &mut held,
+            &mut Ai::new(),
+            None,
+            None,
+            &mut gpu,
+            &deliver,
+        );
+        let Outcome::Developed { image, learned, .. } = outcome else {
+            panic!("developed")
+        };
+        let Developed::Mono(shown) = &image else {
+            panic!("its planes")
+        };
+        assert_eq!((image.width(), image.height()), (240, 160));
+        assert!(shown.guide.is_some() && picture.is_none());
+        assert!(matches!(learned, LearnedReport::Off));
+        let held = held.unwrap();
+        assert_eq!(held.frame_size(), (240, 160));
+        assert!(held.bytes() > 0 && held.picture_bytes() > 0);
+        let seen = held.models_image();
+        assert!(
+            seen.data
+                .as_chunks::<3>()
+                .0
+                .iter()
+                .all(|p| p[0] == p[1] && p[1] == p[2])
+        );
+        let settings = greycard_render::export::Settings::default();
+        let mut ai = Ai::new();
+        let mut render = |held: Option<&FrameKept>, gpu: &mut Option<greycard_gpu::Context>| {
+            let mut models = WorkerModels::new(&mut ai, None, &deliver, 0);
+            let (r, left_out) =
+                render_open(&edit, 0, &input, held, &mut models, None, gpu, &settings).unwrap();
+            assert!(left_out.is_empty(), "{left_out:?}");
+            let greycard_render::export::Pixels::Eight(p) = r.pixels else {
+                panic!("eight bits")
+            };
+            assert_eq!(p.len(), 240 * 160, "one channel");
+            p
+        };
+        assert_eq!(render(Some(&held), &mut gpu), render(None, &mut None));
+    }
+}
+
+/// A set's monochrome frame that nothing was done to starts from its
+/// camera's profile, as the window starts it.
+#[cfg(feature = "mono")]
+#[test]
+fn a_sets_new_monochrome_frame_starts_from_its_profile() {
+    let mut f = crate::mono::testing::frame(64, 48, 100, 1, |_, _| 0.2);
+    f.dng.unique_camera_model = Some("RICOH GR IV Monochrome".into());
+    let path = std::path::Path::new("/nowhere/R1.DNG");
+    let want = crate::mono::start(path, &f);
+    assert!(want.is_some());
+    let input = Input::Raw(Arc::new(f));
+    let plain = Edit::default();
+    assert_eq!(seeded(&plain, true, Some(&input), path).mono, want);
+    assert_eq!(seeded(&plain, false, Some(&input), path).mono, None);
+    let own = Edit {
+        mono: Some(Default::default()),
+        ..Edit::default()
+    };
+    assert_eq!(seeded(&own, true, Some(&input), path).mono, own.mono);
+}
+
+/// A model that is there and fails is not asked again on every walk: its
+/// failure stands until the model is another.
+#[cfg(feature = "mono")]
+#[test]
+fn a_failed_mono_model_waits_for_another() {
+    use mono_denoise::learned::Mode;
+    let dir = crate::testing::scratch_dir("mono-model");
+    let path = dir.join("mono.onnx");
+    std::fs::write(&path, b"no model").unwrap();
+    let mut ai = Ai::new();
+    ai.mono_by_test = Some(path.clone());
+    let plane = mono_core::Plane::filled(64, 64, 0.2);
+    let noise = Default::default();
+    assert!(ai.can_denoise_mono(Mode::Fast));
+    let why = ai.denoise_mono(Mode::Fast, &plane, &noise).unwrap_err();
+    assert!(!ai.can_denoise_mono(Mode::Fast), "it failed as it is");
+    assert_eq!(ai.denoise_mono(Mode::Fast, &plane, &noise), Err(why));
+    assert!(ai.can_denoise_mono(Mode::Best), "a mode of its own");
+    std::fs::write(&path, b"another model").unwrap();
+    assert!(ai.can_denoise_mono(Mode::Fast));
     crate::testing::remove_dir_retry(&dir);
 }

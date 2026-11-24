@@ -143,6 +143,9 @@ pub enum Buf {
     Device(Arc<greycard_gpu::Image>),
     /// The viewport's texture, which a run ending at the shader wrote.
     Texture(wgpu::Texture),
+    /// A monochrome raw's plane.
+    #[cfg(feature = "mono")]
+    Plane(Arc<crate::mono::Mono>),
 }
 
 /// What the develop measured of the picture, carried beside it.
@@ -227,6 +230,10 @@ pub struct Taps {
     pub sharpen: Option<SharpenTap>,
     /// The picture the learned masks are made on, and how.
     pub masks: Option<(Masks, Arc<WorkingImage>)>,
+    /// That of a monochrome raw, whose picture in color is made only
+    /// where a model reads it.
+    #[cfg(feature = "mono")]
+    pub mono_masks: Option<(Masks, Arc<mono_core::Plane>)>,
     /// The picture the refined masks are made against.
     pub picture: Option<Arc<greycard_render::refine::MaskPicture>>,
     /// The picture the range masks read, from before the Detail
@@ -271,6 +278,9 @@ impl Taps {
     pub fn guide_for_finish(&self) -> Option<Arc<Guide>> {
         match (&self.guide, &self.picture) {
             (Some(g), Some(p)) => Some(Arc::new(g.with_picture(Some(p.clone())))),
+            // A monochrome raw's guide is its own planes'.
+            #[cfg(feature = "mono")]
+            (None, Some(p)) => Some(Arc::new(Guide::NONE.with_picture(Some(p.clone())))),
             (g, _) => g.clone(),
         }
     }
@@ -416,6 +426,29 @@ pub trait Models {
         patched: Option<Patched<'_>>,
         meta: &Meta,
     ) -> Rasters;
+
+    /// Whether the learned denoiser of a monochrome plane is to be had.
+    #[cfg(feature = "mono")]
+    fn can_denoise_mono(&mut self, _mode: mono_denoise::learned::Mode) -> bool {
+        false
+    }
+
+    /// Its answer, with the provider it ran on; why not.
+    #[cfg(feature = "mono")]
+    fn denoise_mono(
+        &mut self,
+        _mode: mono_denoise::learned::Mode,
+        _plane: &mono_core::Plane,
+        _noise: &mono_denoise::NoiseModel,
+    ) -> Result<(mono_core::Plane, &'static str), String> {
+        Err("the learned denoise is not run here; the profiled denoise is used".into())
+    }
+
+    /// [`Models::rasters`] on a monochrome raw's base.
+    #[cfg(feature = "mono")]
+    fn rasters_mono(&mut self, _how: Masks, _plane: &mono_core::Plane, _meta: &Meta) -> Rasters {
+        Rasters::new()
+    }
 }
 
 /// No models at all: the command line's, and a test's.
@@ -508,6 +541,8 @@ enum KeptBuf {
     },
     Working(Arc<WorkingImage>),
     Device(Arc<greycard_gpu::Image>),
+    #[cfg(feature = "mono")]
+    Plane(Arc<crate::mono::Mono>),
 }
 
 impl KeptBuf {
@@ -519,6 +554,8 @@ impl KeptBuf {
             },
             KeptBuf::Working(image) => Buf::Working(image.clone()),
             KeptBuf::Device(image) => Buf::Device(image.clone()),
+            #[cfg(feature = "mono")]
+            KeptBuf::Plane(m) => Buf::Plane(m.clone()),
         }
     }
 }
@@ -594,6 +631,9 @@ pub struct Kept {
     /// The refined masks' picture, with the steps to the picture it
     /// was tapped from.
     mask_picture: Option<(Vec<Step>, Arc<greycard_render::refine::MaskPicture>)>,
+    /// A monochrome raw's guide and detail planes.
+    #[cfg(feature = "mono")]
+    mono: crate::mono::Cache,
 }
 
 /// An input as a [`Kept`] knows it: its own allocation, held weakly so
@@ -677,7 +717,7 @@ fn keyed(step: &Step) -> Option<Step> {
 }
 
 /// Whether two lists of steps make the same picture ([`keyed`]).
-fn same_picture(a: &[Step], b: &[Step]) -> bool {
+pub(crate) fn same_picture(a: &[Step], b: &[Step]) -> bool {
     a.iter().filter_map(keyed).eq(b.iter().filter_map(keyed))
 }
 
@@ -781,6 +821,21 @@ impl Kept {
                         (Some(a), KeptBuf::Working(image)) if !a.unmade.is_empty() => {
                             !models.could_fill_more(&a.retouch, image)
                         }
+                        #[cfg(feature = "mono")]
+                        (a, KeptBuf::Plane(m)) => {
+                            !m.stood_in_for(|mode| models.can_denoise_mono(mode))
+                                && a.as_ref().is_none_or(|a| {
+                                    a.unmade.is_empty()
+                                        || !models.could_fill_more(
+                                            &a.retouch,
+                                            &crate::mono::under_fills(
+                                                &a.retouch.patches,
+                                                &m.plane,
+                                                1,
+                                            ),
+                                        )
+                                })
+                        }
                         _ => true,
                     };
                 serves.then_some((i, (at, p.steps.len())))
@@ -850,6 +905,8 @@ impl Kept {
                 },
                 KeptBuf::Working(image) => KeptBuf::Working(turn(image)),
                 KeptBuf::Device(_) => unreachable!("fits"),
+                #[cfg(feature = "mono")]
+                KeptBuf::Plane(_) => unreachable!("its steps do not commute with a turn"),
             };
             if let (KeptBuf::Working(image), Some((_, tapped))) = (&p.buf, p.taps.masks.as_mut()) {
                 *tapped = image.clone();
@@ -932,6 +989,10 @@ impl Kept {
         self.planes = None;
         self.sharpen = None;
         self.mask_picture = None;
+        #[cfg(feature = "mono")]
+        {
+            self.mono = Default::default();
+        }
     }
 
     /// Nothing kept at all.
@@ -948,6 +1009,28 @@ impl Kept {
                 KeptBuf::Working(image) => Some(image),
                 _ => None,
             })
+    }
+
+    /// The monochrome raw's plane kept at `keep`.
+    #[cfg(feature = "mono")]
+    pub(crate) fn plane(&self, keep: Keep) -> Option<&Arc<crate::mono::Mono>> {
+        self.points
+            .iter()
+            .find(|p| p.keep == keep)
+            .and_then(|p| match &p.buf {
+                KeptBuf::Plane(m) => Some(m),
+                _ => None,
+            })
+    }
+
+    /// The retouch of the patched picture with the Fill patches it left
+    /// as they were.
+    #[cfg(feature = "mono")]
+    pub(crate) fn applied(&self) -> Option<(&Retouch, &[u64])> {
+        let p = self.points.iter().find(|p| p.keep == Keep::Patched)?;
+        p.retouch
+            .as_ref()
+            .map(|a| (&a.retouch, a.unmade.as_slice()))
     }
 
     /// What the develop measured of the picture kept at `keep`.
@@ -1059,6 +1142,21 @@ impl Kept {
     pub fn bytes(&self) -> u64 {
         let mut seen: Vec<*const WorkingImage> = Vec::new();
         let mut total = 0u64;
+        #[cfg(feature = "mono")]
+        {
+            let mut seen: Vec<*const mono_core::Plane> = Vec::new();
+            let planes = self.points.iter().filter_map(|p| match &p.buf {
+                KeptBuf::Plane(m) => Some(m),
+                _ => None,
+            });
+            for plane in planes.flat_map(|m| m.planes()).chain(self.mono.planes()) {
+                let at = Arc::as_ptr(plane);
+                if !seen.contains(&at) {
+                    seen.push(at);
+                    total += (plane.data.len() * std::mem::size_of::<f32>()) as u64;
+                }
+            }
+        }
         let mut count = |image: &Arc<WorkingImage>| {
             let at = Arc::as_ptr(image);
             if !seen.contains(&at) {
@@ -1074,6 +1172,8 @@ impl Kept {
                 }
                 KeptBuf::Working(image) => count(image),
                 KeptBuf::Device(_) => {}
+                #[cfg(feature = "mono")]
+                KeptBuf::Plane(_) => {}
             }
             // Dehazed, the guide is a picture of its own.
             if let Some(SharpenGuide::Working(guide)) = &p.taps.sharpen_guide {
@@ -1081,6 +1181,11 @@ impl Kept {
             }
         }
         total + self.mask_picture().map_or(0, |p| p.bytes())
+    }
+
+    /// Whether the point at `keep` is a picture in memory.
+    pub(crate) fn in_memory(&self, keep: Keep) -> bool {
+        self.holds(keep) && !self.on_device(keep)
     }
 
     /// Whether the point at `keep` is a picture on the device.
@@ -1357,6 +1462,10 @@ fn walk_held(
                     });
                     walked.rasters = models.rasters(how, &base, patched, &walked.meta);
                 }
+                #[cfg(feature = "mono")]
+                if let Some((how, base)) = walked.taps.mono_masks.clone() {
+                    walked.rasters = models.rasters_mono(how, &base, &walked.meta);
+                }
                 return Ok(walked);
             }
             Err(Retry::Learned(why)) => {
@@ -1438,6 +1547,10 @@ fn start(
             _ => None,
         });
         if let (Some(how), Some((made, _))) = (how, taps.masks.as_mut()) {
+            *made = how;
+        }
+        #[cfg(feature = "mono")]
+        if let (Some(how), Some((made, _))) = (how, taps.mono_masks.as_mut()) {
             *made = how;
         }
         // The masks' bands are made beside the run on the device and land
@@ -1587,6 +1700,8 @@ fn attempt(
                     },
                     Buf::Working(image) => KeptBuf::Working(image.clone()),
                     Buf::Device(image) => KeptBuf::Device(image.clone()),
+                    #[cfg(feature = "mono")]
+                    Buf::Plane(m) => KeptBuf::Plane(m.clone()),
                     _ => unreachable!("a keep follows a picture"),
                 };
                 kept.put(Point {
@@ -1603,6 +1718,26 @@ fn attempt(
             }
             Step::Tap(tap) => {
                 places.push(Place::Cpu);
+                #[cfg(feature = "mono")]
+                if let Buf::Plane(m) = &st.buf {
+                    match tap {
+                        Tap::Masks(how) => st.taps.mono_masks = Some((*how, m.plane.clone())),
+                        Tap::MaskPicture => {
+                            let to = &steps.steps[..i];
+                            let picture = match &kept.mask_picture {
+                                Some((s, picture)) if same_picture(s, to) => picture.clone(),
+                                _ => Arc::new(greycard_render::refine::mask_picture_of_plane(
+                                    &m.plane,
+                                )),
+                            };
+                            kept.mask_picture = Some((to.to_vec(), picture.clone()));
+                            st.taps.picture = Some(picture);
+                        }
+                        _ => unreachable!("no tap of a monochrome raw's"),
+                    }
+                    i += 1;
+                    continue;
+                }
                 let Buf::Working(image) = &st.buf else {
                     unreachable!("a tap reads a picture in memory")
                 };
@@ -1679,6 +1814,8 @@ fn attempt(
             Step::Op(Stage::Finish(_)) => {
                 // The finish is the caller's: the shader's, or the
                 // render crate's on what the walk yields.
+                #[cfg(feature = "mono")]
+                kept.mono.settle(&steps.steps);
                 places.push(plan[i]);
                 i += 1;
             }
@@ -1771,6 +1908,33 @@ fn attempt(
                         });
                     }
                 }
+            }
+            #[cfg(feature = "mono")]
+            Step::Op(Stage::Mono(op)) => {
+                places.push(Place::Cpu);
+                let started = Instant::now();
+                let Input::Raw(frame) = input else {
+                    unreachable!("a monochrome raw's")
+                };
+                let on = crate::mono::On {
+                    frame,
+                    models,
+                    cache: &mut kept.mono,
+                };
+                let mut m = match std::mem::replace(
+                    &mut st.buf,
+                    Buf::Working(Arc::new(WorkingImage::new(0, 0))),
+                ) {
+                    Buf::Plane(m) => m,
+                    _ => Arc::new(crate::mono::Mono::empty()),
+                };
+                crate::mono::run(op, Arc::make_mut(&mut m), on).map_err(failed)?;
+                crate::mono::measured(op, &m, &mut st.meta);
+                st.buf = Buf::Plane(m);
+                walked
+                    .seconds
+                    .push((op.name(), started.elapsed().as_secs_f64()));
+                i += 1;
             }
             Step::Op(stage) => {
                 places.push(Place::Cpu);
@@ -2107,6 +2271,41 @@ fn cpu_op(
             greycard_core::develop::defringe::defringe(&mut image, options);
             st.buf = Buf::Working(Arc::new(image));
         }
+        #[cfg(feature = "mono")]
+        Stage::Retouch(retouch, fills) if matches!(st.buf, Buf::Plane(_)) => {
+            let Buf::Plane(mut m) = take(&mut st.buf) else {
+                unreachable!("just asked")
+            };
+            let chosen = crate::mono::choose_sources(retouch, &m.plane);
+            let applied = retouch.with_sources(&chosen);
+            walked.sources = applied.chosen_patches(&chosen);
+            let factor = match fills {
+                Fills::Run => 1,
+                Fills::Read { factor, .. } => *factor,
+            };
+            let under = |patches: &[Patch], plane: &mono_core::Plane| {
+                crate::mono::under_fills(patches, plane, factor)
+            };
+            let fills_in = |p: &Patch| p.method == greycard_edit::retouch::Method::Fill;
+            if !applied.is_empty() && applied.patches.iter().any(fills_in) {
+                models.fills_ahead(&applied, &under(&applied.patches, &m.plane));
+            }
+            let mut unmade = Vec::new();
+            let plane = Arc::make_mut(&mut Arc::make_mut(&mut m).plane);
+            crate::mono::retouch(&applied, plane, |patch, region, before| {
+                let before = under(std::slice::from_ref(patch), before);
+                let made = fill_for(fills, models, walked, patch, region, &before);
+                if made.is_none() {
+                    unmade.push(patch.id);
+                }
+                made
+            });
+            st.retouch = Some(Applied {
+                retouch: applied,
+                unmade,
+            });
+            st.buf = Buf::Plane(m);
+        }
         Stage::Retouch(retouch, fills) => {
             let image = working(&mut st.buf);
             let chosen = retouch.choose_sources(&image);
@@ -2116,16 +2315,7 @@ fn cpu_op(
             let mut unmade = Vec::new();
             models.fills_ahead(&applied, &picture);
             applied.apply_with(&mut picture, |patch, region, before| {
-                let made = match fills {
-                    Fills::Run => models.fill(patch, region, before),
-                    Fills::Read { factor, full } => {
-                        let read = models.fill_read(patch, region, before, *factor, *full);
-                        if read.is_none() {
-                            walked.without.push(format!("the fill {}", patch.name()));
-                        }
-                        read
-                    }
-                };
+                let made = fill_for(fills, models, walked, patch, region, before);
                 if made.is_none() {
                     unmade.push(patch.id);
                 }
@@ -2193,8 +2383,32 @@ fn cpu_op(
             st.buf = Buf::Working(Arc::new(image));
         }
         Stage::Finish(_) => unreachable!("the finish is the caller's"),
+        #[cfg(feature = "mono")]
+        Stage::Mono(_) => unreachable!("the walk's own arm"),
     }
     Ok(())
+}
+
+/// A fill as `fills` has it, its name noted where one kept was asked
+/// for and there is none.
+fn fill_for(
+    fills: &Fills,
+    models: &mut dyn Models,
+    walked: &mut Walked,
+    patch: &Patch,
+    region: &Region,
+    before: &WorkingImage,
+) -> Option<Vec<f32>> {
+    match fills {
+        Fills::Run => models.fill(patch, region, before),
+        Fills::Read { factor, full } => {
+            let read = models.fill_read(patch, region, before, *factor, *full);
+            if read.is_none() {
+                walked.without.push(format!("the fill {}", patch.name()));
+            }
+            read
+        }
+    }
 }
 
 /// `corrections` made of camera RGB `rgb`, `width` by `height`, in
@@ -3864,6 +4078,7 @@ mod tests {
     /// edit's 3000 K light with a tint develops grey, the edit keeps
     /// it, and a mask's white from the walk's shift moves nothing.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "a mono build develops it on one plane")]
     fn no_white_tints_a_monochrome_raw_on_either_path() {
         let input = Input::Raw(Arc::new(RawFrame {
             layout: SensorLayout::Monochrome,
@@ -3918,6 +4133,7 @@ mod tests {
     /// dehaze, and the sharpen run there; the picture stays grey and is
     /// the CPU's run within the sharpen's tolerance.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "a mono build develops it on one plane")]
     fn a_monochrome_raw_on_a_device_is_the_cpu_s_in_grey() {
         let Some(mut gpu) = device() else {
             return;

@@ -153,6 +153,34 @@ pub fn mask_picture(image: &WorkingImage) -> MaskPicture {
     }
 }
 
+/// [`mask_picture`] of a monochrome frame's plane.
+#[cfg(feature = "mono")]
+pub fn mask_picture_of_plane(plane: &mono_core::Plane) -> MaskPicture {
+    let (w, h) = (plane.width, plane.height);
+    if w == 0 || h == 0 {
+        return MaskPicture::NONE;
+    }
+    let (gw, gh) = grid(w, h);
+    let mut lab = vec![[f16::ZERO; 3]; gw * gh];
+    lab.par_chunks_mut(gw).enumerate().for_each(|(gy, out)| {
+        let (y0, y1) = span(gy, gh, h);
+        for (gx, o) in out.iter_mut().enumerate() {
+            let (x0, x1) = span(gx, gw, w);
+            let sum: f32 = (y0..y1)
+                .map(|y| plane.row(y)[x0..x1].iter().sum::<f32>())
+                .sum();
+            let mean = sum / ((x1 - x0) * (y1 - y0)) as f32;
+            o[0] = f16::from_f32(mean.cbrt());
+        }
+    });
+    MaskPicture {
+        width: gw,
+        height: gh,
+        aspect: h as f32 / w as f32,
+        lab,
+    }
+}
+
 /// Whether `edit` refines a mask: an enabled adjustment, with a shape,
 /// whose Refine edge is on. Only then is a picture made to refine
 /// against.

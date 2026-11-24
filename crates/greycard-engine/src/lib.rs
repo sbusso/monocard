@@ -34,6 +34,8 @@ pub mod measure_baseline;
 pub mod measure_crop;
 pub mod measure_lightroom;
 pub mod merge;
+#[cfg(feature = "mono")]
+pub mod mono;
 pub mod naming;
 pub mod preset_fit;
 pub mod previews;

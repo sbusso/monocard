@@ -114,6 +114,41 @@ pub fn write_linear_dng<W: Write + Seek>(
     )
 }
 
+/// [`write_linear_dng`] of a monochrome frame held as one plane, `size`
+/// across and down.
+#[cfg(feature = "mono")]
+pub fn write_plane_dng<W: Write + Seek>(
+    out: W,
+    frame: &RawFrame,
+    samples: &[f32],
+    size: (usize, usize),
+    options: &LinearDngOptions<'_>,
+) -> Result<()> {
+    if !monochrome(frame) || samples.is_empty() || size.0.checked_mul(size.1) != Some(samples.len())
+    {
+        return Err(Error::Unsupported(format!(
+            "a {size:?} plane of {} samples for a {:?} frame",
+            samples.len(),
+            frame.layout
+        )));
+    }
+    let headroom = options.headroom.unwrap_or(1.0);
+    if !headroom.is_finite() || headroom < 1.0 {
+        return Err(Error::Unsupported(format!("headroom {headroom}")));
+    }
+    let none = CameraImage::from_data(0, 0, Vec::new())?;
+    let mut raw = raw_image_for(frame, &none, [1.0; 3], headroom);
+    (raw.width, raw.height) = size;
+    let store = stored(headroom);
+    raw.data = RawImageData::Integer(samples.iter().map(|&v| store(v)).collect());
+    let compression = match options.compression {
+        Compression::Lossless => DngCompression::Lossless,
+        Compression::Uncompressed => DngCompression::Uncompressed,
+    };
+    let packing = (compression, &CompressionParams::default());
+    write_container(out, frame, &raw, packing, [1.0; 3], options, None)
+}
+
 /// A mosaic to write as a CFA DNG: one sample a pixel, levels normalized
 /// (black at 0, the sensor's clip at 1), no white balance, in `pattern`
 /// from its top left photosite.
@@ -249,6 +284,64 @@ pub fn write_merged_dng<W: Write + Seek>(
     if !monochrome(frame) && calibration_pair(&frame.calibrations).is_empty() {
         return Err(Error::NoCalibration);
     }
+    let store = |v: f32| merged_sample(v, headroom);
+    let data = if monochrome(frame) {
+        plane(&image.data).map(store).collect()
+    } else {
+        image.data.iter().map(|&v| store(v)).collect()
+    };
+    let size = (image.width, image.height);
+    write_merged_samples(out, frame, size, data, gains, options, merged)
+}
+
+/// [`write_merged_dng`] of a monochrome frame's merge held as one plane,
+/// `size` across and down.
+pub fn write_merged_plane_dng<W: Write + Seek>(
+    out: W,
+    frame: &RawFrame,
+    samples: &[f32],
+    size: (usize, usize),
+    options: &LinearDngOptions<'_>,
+    merged: &Merged<'_>,
+) -> Result<()> {
+    let headroom = options.headroom.unwrap_or(1.0);
+    if !headroom.is_finite() || headroom < 1.0 {
+        return Err(Error::Unsupported(format!("headroom {headroom}")));
+    }
+    if !monochrome(frame) || samples.is_empty() || size.0.checked_mul(size.1) != Some(samples.len())
+    {
+        return Err(Error::Unsupported(format!(
+            "a {size:?} plane of {} samples for a {:?} frame",
+            samples.len(),
+            frame.layout
+        )));
+    }
+    let data = samples
+        .iter()
+        .map(|&v| merged_sample(v, headroom))
+        .collect();
+    write_merged_samples(out, frame, size, data, [1.0; 3], options, merged)
+}
+
+/// A merge's sample as it is stored.
+fn merged_sample(v: f32, headroom: f32) -> f32 {
+    if v.is_finite() {
+        (v / headroom).max(0.0)
+    } else {
+        0.0
+    }
+}
+
+/// A merge's stored samples in their container.
+fn write_merged_samples<W: Write + Seek>(
+    out: W,
+    frame: &RawFrame,
+    size: (usize, usize),
+    data: Vec<f32>,
+    gains: [f32; 3],
+    options: &LinearDngOptions<'_>,
+    merged: &Merged<'_>,
+) -> Result<()> {
     let (compression, bits) = MERGED_SAMPLES;
     // No 16-bit samples made only to be replaced.
     let mut raw = raw_image_for(
@@ -257,20 +350,8 @@ pub fn write_merged_dng<W: Write + Seek>(
         gains,
         1.0,
     );
-    raw.width = image.width;
-    raw.height = image.height;
-    let store = |v: f32| {
-        if v.is_finite() {
-            (v / headroom).max(0.0)
-        } else {
-            0.0
-        }
-    };
-    raw.data = RawImageData::Float(if monochrome(frame) {
-        plane(&image.data).map(store).collect()
-    } else {
-        image.data.iter().map(|&v| store(v)).collect()
-    });
+    (raw.width, raw.height) = size;
+    raw.data = RawImageData::Float(data);
     raw.bps = 32;
     raw.whitelevel = WhiteLevel::new(vec![1; raw.cpp]);
     write_container(
@@ -418,8 +499,7 @@ fn raw_image_for(
     gains: [f32; 3],
     headroom: f32,
 ) -> RawImage {
-    let scale = WHITE_LEVEL as f32 / headroom;
-    let store = |v: f32| (v.clamp(0.0, headroom) * scale).round() as u16;
+    let store = stored(headroom);
     // A monochrome frame's three channels are one, and stored as one.
     let (data, cpp): (Vec<u16>, usize) = if monochrome(frame) {
         (plane(&image.data).map(store).collect(), 1)
@@ -453,6 +533,12 @@ fn raw_image_for(
         Some(white),
         false,
     )
+}
+
+/// A linear DNG's sample as it is stored.
+fn stored(headroom: f32) -> impl Fn(f32) -> u16 {
+    let scale = WHITE_LEVEL as f32 / headroom;
+    move |v| (v.clamp(0.0, headroom) * scale).round() as u16
 }
 
 /// Whether `frame` is a monochrome sensor's, written as one.
@@ -694,6 +780,9 @@ mod tests {
         assert!(!read(Some("Adobe Lightroom 14.0")).ours);
         assert!(crate::raw::is_ours("greycard 0.12.0"));
         assert!(!crate::raw::is_ours("grey"));
+        let monocard = cfg!(feature = "mono");
+        assert_eq!(crate::raw::is_ours("Monocard 0.12.0"), monocard);
+        assert_eq!(read(Some("Monocard 0.12.0")).ours, monocard);
         assert!(!crate::raw::is_ours("Pixel 9 HDR+"));
         // A file without the tag is not asked.
         let mut buf = Cursor::new(Vec::new());
@@ -775,6 +864,15 @@ mod tests {
                 ..Default::default()
             };
             write_linear_dng(&mut buf, &frame, &out.image, [1.0; 3], &options).unwrap();
+            // The plane alone makes the same file.
+            #[cfg(feature = "mono")]
+            {
+                let samples: Vec<f32> = plane(&out.image.data).collect();
+                let mut one = Cursor::new(Vec::new());
+                write_plane_dng(&mut one, &frame, &samples, (16, 12), &options).unwrap();
+                assert!(one.get_ref() == buf.get_ref(), "{compression:?}");
+                assert!(write_plane_dng(&mut one, &frame, &samples, (16, 11), &options).is_err());
+            }
             let back = RawlerDecoder.decode_bytes(&buf.into_inner()).unwrap();
             assert_eq!(back.layout, SensorLayout::Monochrome, "{compression:?}");
             assert_eq!((back.width, back.height, back.channels), (16, 12, 1));

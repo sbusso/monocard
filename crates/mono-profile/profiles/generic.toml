@@ -1,0 +1,30 @@
+# Any monochrome DNG without a profile of its own.
+#
+# The noise table is empty on purpose: nothing here was measured. The
+# frame's own noise is used instead, from the DNG's NoiseProfile tag or
+# estimated from the picture.
+schema = 1
+name = "Monochrome DNG"
+calibrated = false
+
+# No camera: matches what no other profile does.
+[camera]
+match = []
+
+# Starting values chosen by hand, not measured.
+[[raw_threshold]]
+iso = 6400
+threshold = 0.0
+
+[[raw_threshold]]
+iso = 51200
+threshold = 10.0
+
+[defaults]
+transform = "sigmoid"
+contrast = 1.5
+shoulder = 0.5
+toe = 0.5
+sharpen = "none"
+sharpen_strength = 0.5
+link_grain_iso = false

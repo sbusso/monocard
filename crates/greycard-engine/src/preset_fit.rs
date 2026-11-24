@@ -189,6 +189,11 @@ pub fn preset_at_start(
     {
         over.noise.learned_strength = greycard_edit::Noise::blend_for_iso(p.iso);
         line.current.noise.learned_strength = over.noise.learned_strength;
+        #[cfg(feature = "mono")]
+        if over.mono.is_none() {
+            over.mono = crate::mono::section_of(file, &over, true);
+            line.current.mono = over.mono.clone();
+        }
     }
     let label = greycard_edit::history::preset_label(&preset.name);
     if !line.record_as(preset.applied(&over), Some(label)) {

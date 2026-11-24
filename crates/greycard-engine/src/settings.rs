@@ -58,6 +58,15 @@ pub struct Shared {
     /// is flipped.
     #[serde(default = "on", deserialize_with = "bool_on_leniently")]
     pub lens_on_new: bool,
+    /// Whether a monochrome raw nothing was done to starts from the look of
+    /// the camera's mode it records, where the user has one (`mono::start`).
+    /// Off by default. Written as the switch is flipped.
+    #[cfg(feature = "mono")]
+    pub mono_start_mode: bool,
+    /// The folders of photos a camera's modes are fitted from. Written as
+    /// the list changes.
+    #[cfg(feature = "mono")]
+    pub mono_fit_folders: Vec<String>,
     /// The absolute path of the last file open, developed and all, so
     /// the next run with no path can jump back to it. Written as soon
     /// as it develops, not waited for the window to close; empty
@@ -91,6 +100,10 @@ impl Default for Shared {
             sidecars_in_folder: false,
             jpegs_apart: false,
             lens_on_new: true,
+            #[cfg(feature = "mono")]
+            mono_start_mode: false,
+            #[cfg(feature = "mono")]
+            mono_fit_folders: Vec::new(),
             last_file: String::new(),
             author: String::new(),
             copyright: String::new(),
@@ -224,7 +237,10 @@ pub fn path() -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .or_else(dirs::config_dir)?;
-    Some(base.join("greycard").join("settings.json"))
+    Some(
+        base.join(greycard_core::brand::APP_DIR)
+            .join("settings.json"),
+    )
 }
 
 #[cfg(test)]
@@ -281,6 +297,16 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "mono")]
+    #[test]
+    fn a_new_frame_starts_from_the_camera_s_mode_only_when_asked() {
+        assert!(!Shared::default().mono_start_mode);
+        let read = |t: &str| serde_json::from_str::<Shared>(t).unwrap().mono_start_mode;
+        assert!(!read("{}"));
+        assert!(read(r#"{"mono_start_mode": true}"#));
+        assert!(Shared::default().mono_fit_folders.is_empty());
+    }
+
     /// The author and copyright: absent from a file that never had
     /// them, which writes back byte for byte; read where set, a value
     /// of the wrong kind costing the rest nothing; and made the export's
@@ -315,7 +341,8 @@ mod tests {
     #[test]
     fn the_path_is_under_the_configuration_directory() {
         let path = path().expect("a configuration directory in the test environment");
-        assert!(path.ends_with("greycard/settings.json"), "{path:?}");
+        let file = std::path::Path::new(greycard_core::brand::APP_DIR).join("settings.json");
+        assert!(path.ends_with(file), "{path:?}");
         assert!(path.is_absolute());
     }
 }

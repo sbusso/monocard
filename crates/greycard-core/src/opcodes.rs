@@ -27,6 +27,7 @@ const OPTIONAL: u32 = 1;
 /// The opcodes' ids.
 const WARP_RECTILINEAR: u32 = 1;
 const WARP_FISHEYE: u32 = 2;
+const FIX_VIGNETTE_RADIAL: u32 = 3;
 const FIX_BAD_PIXELS_CONSTANT: u32 = 4;
 const FIX_BAD_PIXELS_LIST: u32 = 5;
 const MAP_TABLE: u32 = 7;
@@ -175,6 +176,30 @@ impl Warp {
     }
 }
 
+/// A `FixVignetteRadial` opcode: a lens's falloff undone by a gain that
+/// grows with the radius from the optical center,
+/// `1 + k0 r^2 + k1 r^4 + k2 r^6 + k3 r^8 + k4 r^10`, r relative to the
+/// farthest corner as a [`Warp`]'s is. `OpcodeList3`. Read only by the
+/// `mono` feature, and run by the monochrome path alone (`mono-decode`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct VignetteRadial {
+    pub k: [f64; 5],
+    /// The optical center, relative to the image.
+    pub center_x: f64,
+    pub center_y: f64,
+    /// How many of the list's kept warps run before it.
+    pub after_warps: usize,
+}
+
+impl VignetteRadial {
+    /// The gain at the squared relative radius `rr`, held at 1.
+    #[inline]
+    pub fn gain(&self, rr: f64) -> f64 {
+        let rr = rr.min(1.0);
+        1.0 + self.k.iter().rev().fold(0.0, |acc, k| rr * (k + acc))
+    }
+}
+
 /// A `FixBadPixelsConstant` or `FixBadPixelsList` opcode: photosites the
 /// maker knows to be bad, each to be made again from its same-color
 /// neighbors. Mosaic only; `OpcodeList1` or `OpcodeList2`.
@@ -307,6 +332,9 @@ pub struct Corrections {
     /// `OpcodeList3`'s rectilinear warps, a superseded one left out, at
     /// most [`MAX_WARPS`].
     pub warps: Vec<Warp>,
+    /// `OpcodeList3`'s radial vignette corrections; none without the
+    /// `mono` feature, which alone reads them.
+    pub vignettes: Vec<VignetteRadial>,
 }
 
 impl Corrections {
@@ -457,6 +485,17 @@ pub fn corrections(
                             log::warn!("DNG {name}: {op} past the {MAX_WARPS}th warp, left");
                         } else {
                             out.warps.push(warp);
+                        }
+                    })
+                }
+                (OpcodeList::Three, FIX_VIGNETTE_RADIAL) if cfg!(feature = "mono") => {
+                    parse_vignette(op.params).map(|v| {
+                        // As many as warps: a camera writes one.
+                        if out.vignettes.len() < MAX_WARPS {
+                            out.vignettes.push(VignetteRadial {
+                                after_warps: out.warps.len(),
+                                ..v
+                            });
                         }
                     })
                 }
@@ -647,6 +686,31 @@ pub fn parse_warp(id: u32, params: &[u8]) -> Option<Warp> {
     };
     let inside = |c: f64| (0.0..=1.0).contains(&c);
     (inside(warp.center_x) && inside(warp.center_y)).then_some(warp)
+}
+
+/// A `FixVignetteRadial`'s parameters, or `None` when they are out of
+/// shape: a byte count not seven doubles', a coefficient that is not a
+/// number, or a center outside the image.
+pub fn parse_vignette(params: &[u8]) -> Option<VignetteRadial> {
+    if params.len() != 56 {
+        return None;
+    }
+    let mut r = Reader {
+        bytes: params,
+        at: 0,
+    };
+    let mut k = [0.0; 5];
+    for k in &mut k {
+        *k = r.f64()?;
+    }
+    let v = VignetteRadial {
+        k,
+        center_x: r.f64()?,
+        center_y: r.f64()?,
+        after_warps: 0,
+    };
+    let inside = |c: f64| (0.0..=1.0).contains(&c);
+    (k.iter().all(|k| k.is_finite()) && inside(v.center_x) && inside(v.center_y)).then_some(v)
 }
 
 /// A `FixBadPixelsConstant` (`id` 4) or `FixBadPixelsList` (`id` 5)'s
@@ -1238,5 +1302,30 @@ mod tests {
         };
         crate::develop::gain_map::apply_gain_maps(&mut s, 4, 1, at, &[read]);
         assert!(s.iter().all(|&v| v == 0.5), "{s:?}");
+    }
+
+    /// A vignette is read with its place among the warps under the
+    /// `mono` feature and left without it; damage reads as none.
+    #[test]
+    fn a_vignette_is_read_with_its_place() {
+        let bytes = |v: &[f64]| v.iter().flat_map(|v| v.to_be_bytes()).collect::<Vec<u8>>();
+        let good = bytes(&[0.5, 0.25, 0.0, 0.0, 0.0, 0.5, 0.5]);
+        let lens = radial_warp(&[(0, 0.99), (2, 0.02)]);
+        let list = list_bytes(&[
+            (WARP_RECTILINEAR, 0, warp_bytes(&lens, false)),
+            (FIX_VIGNETTE_RADIAL, 1, good.clone()),
+        ]);
+        let read = corrections(None, None, Some(&list));
+        assert_eq!(read.warps.len(), 1);
+        assert_eq!(read.vignettes.len(), usize::from(cfg!(feature = "mono")));
+        if let Some(v) = read.vignettes.first() {
+            assert_eq!(v.after_warps, 1);
+            assert_eq!(v.gain(1.0), 1.75);
+            assert_eq!(v.gain(0.5), 1.0 + 0.25 + 0.0625);
+            assert_eq!(v.gain(4.0), 1.75);
+        }
+        assert!(parse_vignette(&good[..48]).is_none());
+        assert!(parse_vignette(&bytes(&[f64::NAN, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5])).is_none());
+        assert!(parse_vignette(&bytes(&[0.0, 0.0, 0.0, 0.0, 0.0, 1.5, 0.5])).is_none());
     }
 }

@@ -62,7 +62,14 @@ pub(crate) struct ExportArgs {
     /// Neither read nor write sidecars
     #[arg(long)]
     no_sidecars: bool,
-    /// Write sidecars under a hidden `.greycard` folder rather than
+    #[cfg_attr(
+        not(feature = "mono"),
+        doc = " Write sidecars under a hidden `.greycard` folder rather than"
+    )]
+    #[cfg_attr(
+        feature = "mono",
+        doc = " Write sidecars under a hidden `.monocard` folder rather than"
+    )]
     /// beside the frame, over the editor's setting
     #[arg(long)]
     sidecar_folder: bool,
@@ -77,6 +84,11 @@ pub(crate) struct ExportArgs {
     /// setting and the camera's
     #[arg(long, value_name = "TEXT")]
     copyright: Option<String>,
+    /// Put this look on every monochrome frame exported, over the
+    /// edit's, for this run alone (`monocard looks list`)
+    #[cfg(feature = "mono")]
+    #[arg(long, value_name = "NAME")]
+    look: Option<String>,
     /// Develop on the CPU alone, without the GPU the editor would use:
     /// the same pixels on every machine
     #[arg(long)]
@@ -122,12 +134,26 @@ impl ExportArgs {
 pub(crate) fn export(args: ExportArgs) -> Result<u8> {
     let presets = preset::Store::user();
     let cpu = args.cpu;
-    let plan = plan(
+    #[cfg(feature = "mono")]
+    let look = args.look.as_deref().map(crate::mono::look).transpose()?;
+    #[cfg_attr(not(feature = "mono"), allow(unused_mut))]
+    let mut plan = plan(
         &args.request()?,
         &Shared::load(),
         presets.as_ref(),
         greycard_library::Library::user_path(),
     )?;
+    #[cfg(feature = "mono")]
+    if let Some(look) = &look {
+        for frame in &mut plan.frames {
+            let section =
+                greycard_engine::mono::section_of(&frame.source, &frame.edit, frame.seed_blend);
+            if let Some(mut m) = section {
+                crate::mono::put_look(&mut m, look);
+                frame.edit.mono = Some(m);
+            }
+        }
+    }
     let finished = run(plan, lent(cpu));
     // The line a script wants, whichever way it went.
     eprintln!("{}", finished.line);

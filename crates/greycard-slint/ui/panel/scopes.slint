@@ -1,6 +1,7 @@
 // The top of the panel, pinned over the sections: the file and what it
 // was shot at, the undo and redo buttons, and the scopes.
 
+import { Mono } from "../../../mono-ui/ui/state.slint";
 import { Theme } from "../theme.slint";
 import { NameTip, PanelButton, Segmented, ClipMark } from "../controls.slint";
 import { ScopeMark } from "../structs.slint";
@@ -16,6 +17,8 @@ export component PanelHead inherits VerticalLayout {
     in property <string> shot-time;
     in property <image> scope-picture;
     in property <[string]> scopes;
+    // What they are called, by index; their own names past its end.
+    in property <[string]> scope-labels;
     in-out property <string> scope;
     callback scope-changed(string);
     // The color under the pointer on the picture: where it lands on
@@ -143,6 +146,7 @@ export component PanelHead inherits VerticalLayout {
                 height: 14px;
                 color: Theme.text-secondary;
                 font-size: Theme.font-sm;
+                font-family: Mono.figures;
                 overflow: elide;
             }
             if !root.shot-folded: Text {
@@ -289,6 +293,7 @@ export component PanelHead inherits VerticalLayout {
             Segmented {
                 horizontal-stretch: 1;
                 options: root.scopes;
+                labels: root.scope-labels;
                 rounded: false;
                 padded: false;
                 bordered: false;

@@ -141,7 +141,9 @@ fn sync_words(st: &State) -> String {
 /// Put the sync sheet's checks on the sheet: its rows and how tall
 /// the list is.
 pub(crate) fn show_sync_checks(st: &mut State, app: &App) {
+    let hidden = carry::left_out(st);
     let st = &mut *st;
+    st.sheets.sync_checks.hide(hidden);
     let lines = st.sheets.sync_rows.show(&st.sheets.sync_checks);
     app.set_sync_rows(ModelRc::from(st.sheets.sync_rows.model.clone()));
     app.set_sync_lines(lines);
@@ -163,6 +165,12 @@ fn show_shift(st: &State, app: &App) {
         return;
     };
     let preset = Preset::from_choice("", edit, &st.sheets.sync_checks.choice());
+    // The stock white and exposure, which the mono build has not.
+    #[cfg(feature = "mono")]
+    if crate::mono::only() {
+        app.set_sync_shift_shown(false);
+        return;
+    }
     app.set_sync_shift_shown(true);
     app.set_sync_shift_white(preset.sections.contains(&Section::WhiteBalance));
     app.set_sync_shift_light(carries_exposure(&preset));
@@ -2286,6 +2294,9 @@ mod tests {
 
     use super::*;
 
+    /// The sections a sync carries by default: a mono build has one more.
+    const CARRIED: usize = if cfg!(feature = "mono") { 20 } else { 19 };
+
     /// A preset, a paste, or a sync laying a DCP with the tone curve's
     /// switch on keeps the switch only where the profile list says that
     /// DCP carries a curve: not on one without, nor on one not listed.
@@ -2570,7 +2581,10 @@ mod tests {
         assert_eq!(state.borrow().views.loads.whats(), ["sync"]);
         // In, the sync runs on what they said.
         assert_eq!(crate::rows::land_pending(&state, &app, &worker), 1);
-        assert_eq!(app.get_status(), "synced 19 sections onto 3 frames");
+        assert_eq!(
+            app.get_status(),
+            format!("synced {CARRIED} sections onto 3 frames")
+        );
         {
             let st = state.borrow();
             for s in &st.sidecars[1..] {
@@ -2586,7 +2600,10 @@ mod tests {
         app.set_exposure(-0.5);
         app.invoke_sync_open_asked();
         app.invoke_sync_applied();
-        assert_eq!(app.get_status(), "synced 19 sections onto 3 frames");
+        assert_eq!(
+            app.get_status(),
+            format!("synced {CARRIED} sections onto 3 frames")
+        );
         assert_eq!(crate::rows::land_pending(&state, &app, &worker), 0);
         assert_eq!(state.borrow().sidecars[3].current.light.exposure, -0.5);
         crate::rows::HOLD_MOSAICS.with(|h| h.set(false));
@@ -2635,12 +2652,18 @@ mod tests {
         assert!(!ran.get());
         crate::rows::land_mosaics(&state, &app, &worker, mosaics);
         assert!(ran.get());
-        assert_eq!(app.get_status(), "synced 19 sections onto 1 frame");
+        assert_eq!(
+            app.get_status(),
+            format!("synced {CARRIED} sections onto 1 frame")
+        );
         assert!(state.borrow().views.loads.since.is_none());
         let later = std::time::Instant::now() + std::time::Duration::from_secs(90);
         crate::rows::bar_tick(&state, &app, &worker, later);
         assert!(!app.get_loading_shown());
-        assert_eq!(app.get_status(), "synced 19 sections onto 1 frame");
+        assert_eq!(
+            app.get_status(),
+            format!("synced {CARRIED} sections onto 1 frame")
+        );
         crate::rows::HOLD_MOSAICS.with(|h| h.set(false));
         crate::testing::remove_dir_retry(&dir);
     }
@@ -2725,7 +2748,10 @@ mod tests {
         assert!(app.get_sync_open());
         app.invoke_sync_applied();
         assert!(!app.get_sync_open());
-        assert_eq!(app.get_status(), "synced 19 sections onto 1 frame");
+        assert_eq!(
+            app.get_status(),
+            format!("synced {CARRIED} sections onto 1 frame")
+        );
 
         let st = state.borrow();
         // The frame synced from kept what it had and recorded the
@@ -4155,8 +4181,10 @@ mod tests {
         assert_eq!(app.get_exposure(), 0.3);
         assert_eq!(app.get_display_curve(), agx);
         assert!(
-            app.get_status()
-                .starts_with("pasted 18 sections from IMG_0002.JPG"),
+            app.get_status().starts_with(&format!(
+                "pasted {} sections from IMG_0002.JPG",
+                CARRIED - 1
+            )),
             "{}",
             app.get_status()
         );
@@ -4183,7 +4211,8 @@ mod tests {
         app.set_preset_name("Bright".into());
         app.invoke_preset_saved();
         assert!(
-            app.get_status().starts_with("saved Bright (19 sections)"),
+            app.get_status()
+                .starts_with(&format!("saved Bright ({CARRIED} sections)")),
             "{}",
             app.get_status()
         );
@@ -4558,6 +4587,8 @@ mod tests {
                 },
                 look: Default::default(),
                 opacity: 1.0,
+                #[cfg(feature = "mono")]
+                mono: None,
             });
         crate::panel::deliver::deliver(&app, made(&files[0], 10));
         assert_eq!(baked(&state), (Some(10), false), "the source's own");
@@ -4623,6 +4654,8 @@ mod tests {
                 },
                 look: Default::default(),
                 opacity: 1.0,
+                #[cfg(feature = "mono")]
+                mono: None,
             });
         }
         app.invoke_copy_asked();

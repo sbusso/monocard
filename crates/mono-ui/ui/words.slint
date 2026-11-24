@@ -1,0 +1,120 @@
+// The mono build's welcome, over the window and in nobody's way, and the
+// lines its About adds.
+
+import { TextEdit } from "std-widgets.slint";
+import { Theme } from "../../greycard-slint/ui/theme.slint";
+import { PanelButton } from "../../greycard-slint/ui/controls.slint";
+import { Mono } from "state.slint";
+
+export component MonoWelcome inherits Rectangle {
+    width: 400px;
+    height: lines.preferred-height;
+    background: Theme.surface;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.border-strong;
+    drop-shadow-blur: 24px;
+    drop-shadow-color: #00000080;
+    accessible-role: groupbox;
+    accessible-label: Mono.welcome-title;
+    // A click on the card is the card's; the window around it is free.
+    TouchArea { }
+    lines := VerticalLayout {
+        padding: Theme.space-5;
+        spacing: Theme.space-3;
+        Text {
+            text: Mono.welcome-title;
+            color: Theme.text;
+            font-size: Theme.font-lg;
+            font-weight: Theme.weight-medium;
+        }
+        for line in Mono.welcome-lines: Text {
+            text: line;
+            color: Theme.text-secondary;
+            font-size: Theme.font-sm;
+            wrap: word-wrap;
+        }
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            alignment: end;
+            PanelButton {
+                text: "Show Highlights";
+                clicked => { Mono.welcome-closed(true); }
+            }
+            PanelButton {
+                text: "Start";
+                primary: true;
+                clicked => { Mono.welcome-closed(false); }
+            }
+        }
+    }
+}
+
+// What building a camera profile said: text to read and copy.
+export component MonoReport inherits Rectangle {
+    width: 560px;
+    height: 420px;
+    background: Theme.surface;
+    border-radius: Theme.radius-lg;
+    border-width: 1px;
+    border-color: Theme.border-strong;
+    drop-shadow-blur: 24px;
+    drop-shadow-color: #00000080;
+    accessible-role: groupbox;
+    accessible-label: "Camera profile";
+    callback closed();
+    TouchArea { }
+    VerticalLayout {
+        padding: Theme.space-4;
+        spacing: Theme.space-3;
+        Text {
+            text: "Camera profile";
+            color: Theme.text;
+            font-size: Theme.font-lg;
+            font-weight: Theme.weight-medium;
+        }
+        TextEdit {
+            vertical-stretch: 1;
+            read-only: true;
+            wrap: word-wrap;
+            font-size: Theme.font-xs;
+            text: Mono.report;
+        }
+        HorizontalLayout {
+            alignment: end;
+            PanelButton {
+                text: "Close";
+                primary: true;
+                clicked => { root.closed(); }
+            }
+        }
+    }
+}
+
+export component MonoAbout inherits VerticalLayout {
+    spacing: Theme.space-1;
+    Text {
+        text: Mono.credit;
+        color: Theme.text;
+        font-size: Theme.font-sm;
+        wrap: word-wrap;
+    }
+    Text {
+        text: Mono.source-url;
+        color: Theme.accent-text;
+        font-size: Theme.font-xs;
+        accessible-role: button;
+        accessible-label: "Source";
+        accessible-action-default => { Mono.source-asked(); }
+        TouchArea {
+            mouse-cursor: MouseCursor.pointer;
+            clicked => { Mono.source-asked(); }
+        }
+    }
+    Text {
+        text: Mono.trademark;
+        color: Theme.text-secondary;
+        font-size: Theme.font-xs;
+        wrap: word-wrap;
+    }
+}

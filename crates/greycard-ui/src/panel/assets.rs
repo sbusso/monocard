@@ -381,6 +381,10 @@ pub(crate) fn refresh_presets(st: &mut State, app: &App) {
         .as_ref()
         .map(|s| s.list())
         .unwrap_or_default();
+    #[cfg(feature = "mono")]
+    st.develop
+        .presets
+        .retain(|e| crate::mono::preset_shown(&e.preset));
     crate::panel::preset_list::prune(st);
     show_presets(st, app);
     show_presets_missing(st, app);
@@ -1619,7 +1623,9 @@ pub(crate) fn preset_checks(edit: &Edit) -> crate::carry::Checks {
 
 /// Put the save sheet's checks on the sheet.
 pub(crate) fn show_preset_checks(st: &mut State, app: &App) {
+    let hidden = crate::carry::left_out(st);
     let st = &mut *st;
+    st.sheets.preset_checks.hide(hidden);
     let lines = st.sheets.preset_rows.show(&st.sheets.preset_checks);
     app.set_preset_rows(ModelRc::from(st.sheets.preset_rows.model.clone()));
     app.set_preset_lines(lines);
@@ -2224,9 +2230,14 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, worker: &Rc<Worker>) {
                     // The file chooser's filter name for preset files
                     tr!("Presets"),
                     vec![
+                        // The LOOK panel imports Lightroom's in the mono build.
+                        #[cfg(not(feature = "mono"))]
                         "*.xmp".into(),
+                        #[cfg(not(feature = "mono"))]
                         "*.XMP".into(),
+                        #[cfg(not(feature = "mono"))]
                         "*.lrtemplate".into(),
+                        #[cfg(not(feature = "mono"))]
                         "*.LRTEMPLATE".into(),
                         "*.gcp".into(),
                         "*.GCP".into(),

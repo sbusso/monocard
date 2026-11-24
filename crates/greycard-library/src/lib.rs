@@ -47,6 +47,7 @@ pub mod held;
 mod index;
 pub mod lightroom_catalog;
 pub mod lightroom_exports;
+pub mod monochrome;
 pub mod order;
 pub mod pairs;
 pub mod rawtherapee;
@@ -1253,7 +1254,7 @@ impl Library {
 
     /// The library's path under a data directory.
     pub fn path_under(data_dir: &Path) -> PathBuf {
-        data_dir.join("greycard").join(FILE_NAME)
+        data_dir.join(greycard_core::brand::APP_DIR).join(FILE_NAME)
     }
 
     /// Open the user's library, making it if it is not there.
@@ -3079,7 +3080,9 @@ mod tests {
     fn the_user_path_is_under_the_data_directory() {
         assert_eq!(
             Library::path_under(Path::new("/home/x/.local/share")),
-            PathBuf::from("/home/x/.local/share/greycard/library.sqlite")
+            PathBuf::from("/home/x/.local/share")
+                .join(greycard_core::brand::APP_DIR)
+                .join("library.sqlite")
         );
     }
 

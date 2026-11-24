@@ -380,7 +380,7 @@ fn by_hand_in(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<String
 
 /// The marker's place under a cache root.
 fn path_under(cache: &Path) -> PathBuf {
-    cache.join("greycard").join("gpu-setup")
+    cache.join(greycard_core::brand::APP_DIR).join("gpu-setup")
 }
 
 /// The lock beside the marker, held by a start through its setup: the

@@ -1049,7 +1049,7 @@ fn balanced_samples(
 /// normalized samples, in their order. A crop that reaches outside the
 /// area the second list is measured in (which no camera writes) leaves
 /// that list undone, said in the log.
-fn apply_dng_mosaic(
+pub fn apply_dng_mosaic(
     frame: &RawFrame,
     samples: &mut [f32],
     width: usize,
@@ -1138,11 +1138,15 @@ fn fix_bad_pixels(
     stored: bool,
     fix: &BadPixels,
 ) -> usize {
-    let SensorLayout::Cfa(pattern) = &frame.layout else {
-        log::warn!("DNG bad pixels left undone: the frame is not a mosaic");
-        return 0;
+    let pattern = match &frame.layout {
+        SensorLayout::Cfa(pattern) => pattern.shifted(crop.x, crop.y),
+        #[cfg(feature = "mono")]
+        SensorLayout::Monochrome => bad_pixels::one_color(),
+        _ => {
+            log::warn!("DNG bad pixels left undone: the frame is not a mosaic");
+            return 0;
+        }
     };
-    let pattern = pattern.shifted(crop.x, crop.y);
     let mut bad = vec![false; width * height];
     match fix {
         BadPixels::List { .. } => bad_pixels::mark_listed(&mut bad, width, height, at.0, at.1, fix),
@@ -1938,6 +1942,30 @@ pub(crate) mod tests {
                 assert!(close(*m, *p), "{m} != {p}");
             }
         }
+    }
+
+    /// A monochrome frame's listed photosite is made again from the
+    /// adjacent ones under the `mono` feature, and left without it.
+    #[test]
+    fn a_monochrome_frames_bad_pixels() {
+        let mut frame = flat_frame();
+        frame.layout = SensorLayout::Monochrome;
+        frame.dng.mosaic = vec![MosaicOp::BadPixels(
+            OpcodeList::One,
+            BadPixels::List {
+                phase: 0,
+                points: vec![[1, 1]],
+                rects: Vec::new(),
+            },
+        )];
+        let (w, h) = (frame.width, frame.height);
+        let mut samples: Vec<f32> = (0..w * h).map(|i| (i % w) as f32 / 10.0).collect();
+        samples[w + 1] = 0.9;
+        let crop = frame.effective_crop();
+        apply_dng_mosaic(&frame, &mut samples, w, h, crop);
+        // The eight around it are 0, 0, 0, 0.1, 0.1, 0.2, 0.2, 0.2.
+        let want = if cfg!(feature = "mono") { 0.1 } else { 0.9 };
+        assert_eq!(samples[w + 1], want);
     }
 
     /// A DNG's bad photosites are made again on the mosaic: a listed

@@ -1557,7 +1557,7 @@ fn masks_file(st: &State, file: Option<&Path>) -> bool {
 
 /// The open frame's edit as the panel has it developed again, at a new
 /// generation: what a develop in flight was asked under has changed.
-fn develop_again(st: &mut State, app: &App) {
+pub(crate) fn develop_again(st: &mut State, app: &App) {
     if !crate::panel::edit::develops_here(st) {
         return;
     }
@@ -3214,11 +3214,14 @@ mod tests {
         assert_eq!(line(), "101.png");
         app.set_export_subfolder("".into());
         state.borrow_mut().work.export_last_folder = None;
-        assert_eq!(line(), "101.greycard.png");
+        assert_eq!(line(), format!("101.{}.png", greycard_core::brand::APP_DIR));
 
         // A pattern that names no file: the frame's own name, flagged.
         app.set_export_name("{name}-{lens}".into());
-        assert_eq!(line(), "IMG_0002.greycard.png");
+        assert_eq!(
+            line(),
+            format!("IMG_0002.{}.png", greycard_core::brand::APP_DIR)
+        );
         assert!(app.invoke_export_name_refused(app.get_export_name()));
 
         // Kept with the last settings.

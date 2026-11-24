@@ -12,6 +12,8 @@ repository.workspace = true
 workspace = true
 
 [features]
+# Monocard, the monochrome build (docs/monocard).
+mono = ["greycard-core/mono"]
 default = ["webgpu", "coreml"]
 # Which execution providers the build tries; the library that carries
 # them is made by scripts/ort-dylib.sh (WebGPU's) or named by

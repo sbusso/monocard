@@ -86,11 +86,25 @@ fn lens_left_out(
 }
 
 /// A set frame's edit with its learned-denoiser blend seeded from the
-/// raw's ISO when it has no sidecar yet, as its first open would.
-pub(super) fn seeded(edit: &Edit, seed: bool, input: Option<&Input>) -> Edit {
+/// raw's ISO when it has no sidecar yet, as its first open would; `path` is
+/// the file `input` was read from.
+#[cfg_attr(not(feature = "mono"), allow(unused_variables))]
+pub(super) fn seeded(
+    edit: &Edit,
+    seed: bool,
+    input: Option<&Input>,
+    path: &std::path::Path,
+) -> Edit {
     let mut edit = edit.clone();
-    if seed && let Some(Input::Raw(f)) = input {
+    if seed
+        && let Some(Input::Raw(f)) = input
+        && f.dng.rendered.is_none()
+    {
         edit.noise.learned_strength = Noise::blend_for_iso(f.shot.iso);
+        #[cfg(feature = "mono")]
+        if edit.mono.is_none() {
+            edit.mono = crate::mono::start(path, f);
+        }
     }
     edit
 }
@@ -112,7 +126,7 @@ pub(super) fn export_other(
     path: &std::path::Path,
 ) -> Result<(Edit, Vec<String>), String> {
     let (input, metadata) = timed_open(&frame.source).map_err(|e| format!("{e:#}"))?;
-    let edit = seeded(&frame.edit, frame.seed_blend, Some(&input));
+    let edit = seeded(&frame.edit, frame.seed_blend, Some(&input), &frame.source);
     ai.forget(Some(frame.source.clone()));
     let lens_words = lens_left_out(&input, &edit, lenses);
     let (rendered, mut left_out) = walk_export(
@@ -261,6 +275,11 @@ pub(super) fn walk_for_export(
         (None, Some(why)) => LearnedReport::Unavailable(why),
         (None, None) => learned,
     };
+    #[cfg(feature = "mono")]
+    let learned = match &walked.buf {
+        Buf::Plane(m) => crate::mono::learned_report(m, false),
+        _ => learned,
+    };
     let mut left_out = left_out_words(&learned, walked.meta.gave_way.as_ref(), &fills);
     left_out.extend(super::masks::look_left_out(edit));
     left_out.extend(masks);
@@ -268,11 +287,20 @@ pub(super) fn walk_for_export(
     // Neither is read by the finish: the base the masks were made on,
     // and the sharpen's blend, which the viewport alone paints.
     walked.taps.masks = None;
+    #[cfg(feature = "mono")]
+    {
+        walked.taps.mono_masks = None;
+    }
     walked.sharpen_mask = None;
     let mut finish = walked.finish_input();
     finish.camera = facts.camera();
-    let Buf::Working(image) = walked.buf else {
-        unreachable!("an export's walk ends at a picture in memory")
+    let (w, h) = finish.source;
+    let image = match walked.buf {
+        Buf::Working(image) => image,
+        // Its planes are the finish's.
+        #[cfg(feature = "mono")]
+        Buf::Plane(_) => Arc::new(WorkingImage::new(0, 0)),
+        _ => unreachable!("an export's walk ends at a picture in memory"),
     };
     // The develop's line, its denoiser and fills in its words.
     super::develop::warn_failed_fills(&fills);
@@ -287,9 +315,7 @@ pub(super) fn walk_for_export(
         .chain(super::develop::fill_parts(&fills))
         .collect();
     tracing::info!(
-        "developed {}x{} for the export: {}, total {:.2} s",
-        image.width,
-        image.height,
+        "developed {w}x{h} for the export: {}, total {:.2} s",
         parts.join(", "),
         started.elapsed().as_secs_f64()
     );

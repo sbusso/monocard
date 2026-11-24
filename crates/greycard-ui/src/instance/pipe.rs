@@ -60,7 +60,7 @@ pub(super) fn user(key: &str) -> Option<Address> {
 /// The pipe `\\.\pipe\greycard-<SID>-<suffix>`.
 pub(super) fn named(suffix: &str) -> io::Result<Address> {
     let sid = Sid::of_current()?.string()?;
-    let shown = format!(r"\\.\pipe\greycard-{sid}-{suffix}");
+    let shown = format!(r"\\.\pipe\{}-{sid}-{suffix}", greycard_core::brand::APP_DIR);
     Ok(Address {
         pipe: shown.encode_utf16().chain(std::iter::once(0)).collect(),
         sid,

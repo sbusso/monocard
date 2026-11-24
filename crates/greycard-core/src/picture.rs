@@ -196,6 +196,28 @@ pub fn probe_path(path: &Path) -> Result<Probe> {
         .unwrap_or_default())
 }
 
+/// Whether the picture at `path` is a monochrome one by its header: a
+/// monochrome camera's, by the model it names, or of one channel.
+// Ceiling: a grey picture another camera or a scanner kept in three
+// channels is taken for color; only its pixels say otherwise.
+pub fn is_monochrome(path: &Path) -> Result<bool> {
+    use image::ImageDecoder;
+    if names_monochrome(&probe_path(path)?.model) {
+        return Ok(true);
+    }
+    let decoder = image::ImageReader::open(path)?
+        .with_guessed_format()?
+        .into_decoder()
+        .map_err(decode_error)?;
+    Ok(!decoder.color_type().has_color())
+}
+
+/// Whether a camera's model says its sensor is monochrome: "RICOH GR IV
+/// Monochrome", "LEICA Q2 MONOCHROM", "PENTAX K-3 Mark III Monochrome".
+fn names_monochrome(model: &str) -> bool {
+    model.to_ascii_lowercase().contains("monochrom")
+}
+
 /// How much of a picture [`probe_path`] reads first.
 pub const PROBE_HEAD: usize = 128 * 1024;
 

@@ -61,10 +61,15 @@ import { CollectionsSection } from "panel/collections.slint";
 import { MetaSection } from "panel/meta.slint";
 import { CollectionSheet } from "panel/collection-sheet.slint";
 import { KeysSheet } from "panel/keys-sheet.slint";
+import { Mono } from "../../mono-ui/ui/state.slint";
+import { MonoPanels } from "../../mono-ui/ui/panels.slint";
+import { CameraView, CameraWindow } from "../../mono-ui/ui/camera.slint";
+import { MonoWelcome, MonoReport } from "../../mono-ui/ui/words.slint";
+export { Mono, CameraView }
 
 export component App inherits Window {
-    title: "greycard";
-    icon: @image-url("../../../assets/icon/greycard.svg");
+    title: Mono.on ? "Monocard" : "greycard";
+    icon: Mono.on ? @image-url("../../../assets/monocard/icon.svg") : @image-url("../../../assets/icon/greycard.svg");
     // 800 high fits under the menu bar and above the Dock of a 13 or
     // 14 inch laptop, title bar and all; a screen with less has it cut
     // to what the screen has (`window_fit`).
@@ -80,6 +85,7 @@ export component App inherits Window {
     out property <length> least-height: self.min-height;
     background: Theme.canvas;
     default-font-size: Theme.font-md;
+    default-font-family: Mono.font;
 
     // The viewport: the texture the engine renders, at the size of the
     // element in physical pixels, and the interaction on it.
@@ -2390,7 +2396,7 @@ export component App inherits Window {
     /// profile by name, and that the gamut warning is painting. Empty
     /// for none, and in culling, where the camera's JPEG is shown
     /// as it is.
-    out property <string> proof-badge: (root.proofing && !root.culling)
+    out property <string> proof-badge: (root.proofing && !root.culling && !Mono.only)
         ? (root.gamut-warning ? @tr("Proof: {} · gamut", root.proof-shown) : @tr("Proof: {}", root.proof-shown))
         : "";
     property <string> proof-shown: root.proof-profile == "File"
@@ -2415,11 +2421,14 @@ export component App inherits Window {
     // by the Rectangle behind the picture and by the shader outside
     // the frame alike (`canvas-colors`); the index into both.
     in-out property <int> canvas-choice: 0;
-    out property <[color]> canvas-colors: [#0f0f0f, #262626, #2e2e2e, #444444, #ffffff];
+    out property <[color]> canvas-colors: Mono.on ? [#0f0f0f, #262626, #2e2e2e, #444444, #ffffff, #777777]
+        : [#0f0f0f, #262626, #2e2e2e, #444444, #ffffff];
     /// The same five by name, as the settings file and the Settings
     /// sheet's row spell them (`render::CANVAS_NAMES`).
     // The five canvas shades, in Settings and the View menu
-    out property <[string]> canvas-names: [@tr("Black"), @tr("Dark grey"), @tr("Mid grey"), @tr("Light grey"), @tr("White")];
+    out property <[string]> canvas-names: Mono.on
+        ? [@tr("Black"), @tr("Dark grey"), @tr("Mid grey"), @tr("Light grey"), @tr("White"), "18% grey"]
+        : [@tr("Black"), @tr("Dark grey"), @tr("Mid grey"), @tr("Light grey"), @tr("White")];
     /// A light surround, white: the plates and strokes over the
     /// viewport take a denser scrim, so they read on it as on black.
     property <bool> canvas-light: root.canvas-colors[root.canvas-choice].to-hsv().value > 0.5;
@@ -3067,8 +3076,11 @@ export component App inherits Window {
             || root.time-shift-open
             || root.settings-open || root.sync-open || root.import-open || root.match-open
             || root.root-sheet-open || root.collection-sheet-open || root.preset-group-sheet-open || root.preset-report-open
-            || root.lr-open || root.rt-open || root.keys-open;
+            || root.lr-open || root.rt-open || root.keys-open || root.camera-open;
     }
+    // Monocard's camera window.
+    property <bool> camera-open: Mono.only && CameraView.open;
+    changed camera-open => { if (!root.camera-open) { CameraView.closed(); } }
 
     /// A mouse's back (true) or forward button pressed anywhere over
     /// the window, heard from the window's own events before any
@@ -3161,7 +3173,7 @@ export component App inherits Window {
         + (root.match-open ? 1 : 0) + (root.root-sheet-open ? 1 : 0)
         + (root.collection-sheet-open ? 1 : 0) + (root.preset-group-sheet-open ? 1 : 0)
         + (root.preset-report-open ? 1 : 0) + (root.lr-open ? 1 : 0) + (root.rt-open ? 1 : 0)
-        + (root.keys-open ? 1 : 0);
+        + (root.keys-open ? 1 : 0) + (root.camera-open ? 1 : 0);
     property <int> sheets-were: 0;
     changed sheets-up => {
         if (root.sheets-up < root.sheets-were) { keys.focus(); }
@@ -3210,7 +3222,11 @@ export component App inherits Window {
             root.hand-key = false;
             root.shift-held = false;
         }
-        focus-gained(reason) => { root.menu-up = false; }
+        focus-gained(reason) => {
+            root.menu-up = false;
+            // The camera window has keys of its own.
+            if (root.camera-open) { CameraView.keys-back += 1; }
+        }
         key-released(e) => {
             root.shift-held = e.modifiers.shift;
             HeldKeys.modifiers = e.modifiers;
@@ -3247,6 +3263,13 @@ export component App inherits Window {
             // Under a sheet, Tab and Shift+Tab go into it, whatever the
             // table binds them to (`sheet-tab`).
             if (root.sheet-tab(e)) { return reject; }
+            // Monocard's keys, on a monochrome frame in Develop alone:
+            // A, B, S, Z, and C are the views there.
+            if (Mono.frame && !e.modifiers.control && !e.modifiers.shift && !e.modifiers.alt
+                && !e.modifiers.meta && !root.grid-open && !root.cull-mode && !root.lightbox
+                && !root.sheet-open() && !root.tool-in-hand() && !Typing.editing && Typing.boxes == 0
+                && root.snapshot-editing < 0 && root.shown-tab == "Develop"
+                && (e.repeat ? false : Mono.key(e.text))) { return accept; }
             let chord = root.key-chord(e.text, e.modifiers.control, e.modifiers.shift,
                 e.modifiers.alt, e.modifiers.meta);
             if (chord == "") { return reject; }
@@ -3760,6 +3783,8 @@ export component App inherits Window {
             if (chord == "Z" && !root.grid-open) { root.zoom-key(3); return accept; }
             if (chord == "F" && !root.grid-open) { root.mat-key(); return accept; }
             if (chord == "S" && !root.grid-open) {
+                // The mono build's proof is its own, of paper.
+                if (Mono.only) { return accept; }
                 root.proofing = !root.proofing;
                 root.proof-changed();
                 return accept;
@@ -3806,7 +3831,7 @@ export component App inherits Window {
                 // The pipette is in the Develop tab, and in a mask's
                 // look on the Masks tab, where it works under the mask.
                 // A monochrome frame has none to take.
-                if (chord == "W" && !root.monochrome-open) {
+                if (chord == "W" && !root.monochrome-open && !Mono.only) {
                     if (root.panel-tab != "Develop" && !(root.panel-tab == "Masks" && root.target > 0)) {
                         root.tab-chosen("Develop");
                     }
@@ -3874,7 +3899,7 @@ export component App inherits Window {
             // and the filmstrip and takes their clicks besides.
             view := Viewport {
                 typing: root.snapshot-editing >= 0 || SliderKeys.holder != 0 || Typing.editing
-                    || Typing.boxes > 0;
+                    || Typing.boxes > 0 || Mono.split-keys;
                 zoom(a, b, c) => { root.zoom(a, b, c); }
                 pan(a, b) => { root.pan(a, b); }
                 picture-at(a, b) => { return root.picture-at(a, b); }
@@ -3885,6 +3910,7 @@ export component App inherits Window {
                 hand: root.hand-key || (root.shift-held && !self.shift-holds);
                 hand-panned <=> root.hand-panned;
                 placeholder: root.placeholder;
+                no-file: root.file-name == "";
                 original: root.original-on;
                 original-off => { root.original-off(); }
                 compare-tiles: root.compare-tiles;
@@ -4005,7 +4031,9 @@ export component App inherits Window {
                     shot-size: root.shot-size;
                     shot-time: root.shot-time;
                     scope-picture: root.scope-picture;
-                    scopes: root.scopes;
+                    // One channel has no parade and no vectorscope.
+                    scopes: Mono.only ? ["RGB", "Wave"] : root.scopes;
+                    scope-labels: Mono.only ? Mono.scope-labels : [];
                     scope <=> root.scope;
                     scope-changed(a) => { root.scope-changed(a); }
                     scope-marks: root.scope-marks;
@@ -4336,8 +4364,10 @@ export component App inherits Window {
                         // holds nothing on the other and takes no room there.
                         if root.shown-tab == "Develop" || root.shown-tab == "Masks": develop-stack := SectionStack {
                             view: "develop";
-                            count: root.develop-order.length;
-                            movable: true;
+                            // In the mono build the mono panels, in their own order.
+                            property <[string]> sections: Mono.only ? Mono.sections : root.develop-order;
+                            count: self.sections.length;
+                            movable: !Mono.only;
                             viewport-x: panel-view.absolute-position.x;
                             viewport-y: panel-view.absolute-position.y;
                             viewport-width: panel-view.width;
@@ -4348,7 +4378,7 @@ export component App inherits Window {
                                 root.panel-scroll = clamp(root.panel-scroll + d,
                                     min(0px, panel-view.visible-height - panel-view.content-height), 0px);
                             }
-                            for section[i] in root.develop-order: slot := SectionSlot {
+                            for section[i] in develop-stack.sections: slot := SectionSlot {
                                 index: i;
                                 drag: develop-stack.state;
                                 consider(at, top) => { develop-stack.consider(at, top); }
@@ -4435,6 +4465,18 @@ export component App inherits Window {
                                     component-changed(a) => { root.handles-down = false; root.component-changed(a); }
                                     renamed => { root.renamed(); }
                                     view-changed => { root.view-changed(); }
+                                }
+                                if section == "mono" && (root.shown-tab == "Develop" || root.target > 0): MonoPanels {
+                                    tab: root.shown-tab;
+                                    one-of-panel: !root.grid-open;
+                                    curve-picture: root.curve-image;
+                                    curve-resized(w) => {
+                                        if (w != root.curve-side) {
+                                            root.curve-side = w;
+                                            root.curve-resized();
+                                        }
+                                    }
+                                    focus-keys => { keys.focus(); }
                                 }
                                 if section == "look" && root.shown-tab == "Develop": LookSection {
                                     reorderable: develop-stack.movable;
@@ -5772,6 +5814,10 @@ export component App inherits Window {
                                 // The sheets take the focus themselves:
                                 // no `menu-done`, whose timer would take
                                 // it back.
+                                if Mono.camera-offered: MenuItem {
+                                    title: Mono.camera-menu;
+                                    activated => { Mono.camera-asked(); }
+                                }
                                 MenuItem {
                                     // File menu, under Import
                                     title: @tr("From a card or folder...");
@@ -6719,6 +6765,23 @@ export component App inherits Window {
         import-started => { root.import-started(); }
     }
 
+    // Monocard's camera window.
+    if root.camera-open: CameraWindow {
+        destination: root.import-destination;
+        backup: root.import-backup;
+        subfolder <=> root.import-subfolder;
+        name <=> root.import-name;
+        presets: root.import-presets;
+        preset <=> root.import-preset;
+        folders-note: root.import-folders-note;
+        running: root.import-running;
+        stopping: root.import-stopping;
+        status: root.import-status;
+        choose(w) => { root.import-choose(w); }
+        backup-cleared => { root.import-backup-cleared(); }
+        stop => { root.import-stop(); }
+    }
+
     // The settings sheet, over everything, until closed.
     if root.settings-open: SettingsSheet {
         settings-open <=> root.settings-open;
@@ -6956,6 +7019,21 @@ export component App inherits Window {
         y: 0;
         folders: root.recent-folders;
         chosen(p) => { root.recent-chosen(p); root.menu-done(); }
+    }
+
+    // Monocard's welcome: no veil under it and no keys of its own, so
+    // the window around it goes on.
+    if Mono.report != "" && (!root.sheet-open() || root.settings-open) && !Mono.chart-open: MonoReport {
+        x: max(0px, (root.width - self.width) / 2);
+        y: max(0px, (root.height - self.height) / 2);
+        closed => {
+            Mono.report = "";
+            if (!root.settings-open) { keys.focus(); }
+        }
+    }
+    if Mono.welcome && !root.sheet-open(): MonoWelcome {
+        x: max(0px, (root.width - self.width) / 2);
+        y: max(0px, (root.height - self.height) / 2);
     }
 
     // The hover text, over everything and kept inside the window (a

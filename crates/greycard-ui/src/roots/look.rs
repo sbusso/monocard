@@ -443,7 +443,11 @@ fn list_folder(
 ) -> Option<greycard_library::pairs::Paired> {
     match files::list(dir, apart) {
         Ok(listed) if listed.frames.is_empty() => {
-            *said = Some(tr!("no pictures in {}", dir.display()));
+            *said = Some(if greycard_library::monochrome::is_only() {
+                format!("no monochrome photos in {}", dir.display())
+            } else {
+                tr!("no pictures in {}", dir.display())
+            });
             None
         }
         Ok(listed) => Some(listed),

@@ -6999,6 +6999,7 @@ pub(crate) mod tests {
     /// takes the frame home with its sidecar and XMP and the flag off,
     /// and a frame whose name is taken above stays whole, said.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn move_back_takes_the_frame_home_unflagged_and_leaves_a_taken_name_whole() {
         let (dir, shoot, files) = shoot_with_rejects("menu");
         let rejects = cull::rejects_dir(&shoot);
@@ -7077,6 +7078,7 @@ pub(crate) mod tests {
     /// In CULLING, the button is there for a frame in a rejects folder
     /// and gone for one that is not.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn the_culling_section_offers_move_back_for_a_frame_in_rejects() {
         let (dir, shoot, files) = shoot_with_rejects("section");
         let app = window(files.len());

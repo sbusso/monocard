@@ -302,7 +302,7 @@ fn an_export_preset_with_a_border_writes_a_file_larger_by_the_band() {
             .join(format!("greycard-headless-border-{}", std::process::id())),
     );
     greycard_core::testing::remove_dir_retry(&home.0);
-    std::fs::create_dir_all(home.0.join("config").join("greycard")).unwrap();
+    std::fs::create_dir_all(home.0.join("config").join(greycard_core::brand::APP_DIR)).unwrap();
     let source = home.0.join("frame.dng");
     dng(&source, 240, 160);
     // A preset at 120 px on the long edge with a black border a tenth
@@ -320,7 +320,10 @@ fn an_export_preset_with_a_border_writes_a_file_larger_by_the_band() {
         }]
     }"#;
     std::fs::write(
-        home.0.join("config").join("greycard").join("settings.json"),
+        home.0
+            .join("config")
+            .join(greycard_core::brand::APP_DIR)
+            .join("settings.json"),
         settings,
     )
     .unwrap();
@@ -374,7 +377,7 @@ fn a_webp_is_written_by_its_extension_and_by_a_preset() {
             .join(format!("greycard-headless-webp-{}", std::process::id())),
     );
     greycard_core::testing::remove_dir_retry(&home.0);
-    std::fs::create_dir_all(home.0.join("config").join("greycard")).unwrap();
+    std::fs::create_dir_all(home.0.join("config").join(greycard_core::brand::APP_DIR)).unwrap();
     let source = home.0.join("frame.dng");
     dng(&source, 240, 160);
     let out = home.0.join("out.webp");
@@ -401,7 +404,10 @@ fn a_webp_is_written_by_its_extension_and_by_a_preset() {
         }]
     }"#;
     std::fs::write(
-        home.0.join("config").join("greycard").join("settings.json"),
+        home.0
+            .join("config")
+            .join(greycard_core::brand::APP_DIR)
+            .join("settings.json"),
         settings,
     )
     .unwrap();

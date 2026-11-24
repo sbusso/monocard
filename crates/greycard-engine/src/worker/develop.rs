@@ -173,6 +173,8 @@ pub(super) fn develop_round(
     // turned where it stood is too, though it is the base kept.
     let turned = walked.from == Some(Keep::Base) && h.turn != turn && h.stamp > 0;
     let made = matches!(walked.from, None | Some(Keep::Pair));
+    #[cfg(feature = "mono")]
+    let made = made || walked.from == Some(Keep::Prepared);
     if made || turned {
         h.stamp += 1;
     }
@@ -211,7 +213,7 @@ pub(super) fn develop_round(
     // it on the GPU beside the planes.
     h.planes = greycard_render::detail::DetailPlanes::with_sample(
         walked.taps.planes.clone(),
-        edit.samples_before_detail().then(|| h.patched_picture()),
+        (edit.samples_before_detail() && !h.facts.is_mono()).then(|| h.patched_picture()),
         walked.meta.clip_level,
     );
     // Where each stage ran, and whether this walk ran it.
@@ -321,6 +323,11 @@ pub(super) fn develop_round(
         &walked,
         std::mem::replace(&mut models.learned, LearnedReport::Off),
     );
+    #[cfg(feature = "mono")]
+    let learned = match &walked.buf {
+        Buf::Plane(m) => crate::mono::learned_report(m, !made || walked.from == Some(Keep::Pair)),
+        _ => learned,
+    };
     for (name, why) in stood_down(&steps) {
         tracing::debug!("{name} stood down: {why}");
     }
@@ -345,6 +352,8 @@ pub(super) fn develop_round(
         .collect();
     let (image, picture) = match walked.buf {
         Buf::Texture(texture) => (Developed::Texture(texture), None),
+        #[cfg(feature = "mono")]
+        Buf::Plane(m) => (Developed::Mono(Arc::new(m.frame())), None),
         Buf::Working(image) => {
             let halves = Arc::new(timed(&mut stages, "halves", || {
                 Halves::from_image(&image, walked.sharpen_mask.as_deref())
@@ -361,10 +370,7 @@ pub(super) fn develop_round(
             );
         }
     };
-    let (width, height) = match &image {
-        Developed::Texture(t) => (t.width(), t.height()),
-        Developed::Halves(h) => (h.width, h.height),
-    };
+    let (width, height) = (image.width(), image.height());
     let seconds = start.elapsed().as_secs_f64();
     note_developed(&DevelopLog {
         width,

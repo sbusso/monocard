@@ -729,6 +729,10 @@ pub struct DngTags {
     /// The rectilinear warps of `OpcodeList3`, in order: a lens's
     /// distortion, run on the demosaiced picture of the active area.
     pub warps: Vec<crate::opcodes::Warp>,
+    /// `OpcodeList3`'s radial vignette corrections, each with its place
+    /// among the warps. Run by the monochrome path alone; empty without
+    /// the `mono` feature.
+    pub vignettes: Vec<crate::opcodes::VignetteRadial>,
     /// The image `OpcodeList2`'s and `OpcodeList3`'s coordinates are
     /// measured in, in sensor samples: the DNG's `ActiveArea`, or the
     /// whole frame when `None`.
@@ -746,18 +750,38 @@ pub struct DngTags {
     /// carried under it), not the maker's word for the camera. Read
     /// only for a file that carries the tag.
     pub ours: bool,
+    /// `UniqueCameraModel`: what a camera's profile is matched by.
+    pub unique_camera_model: Option<String>,
+    /// `CameraSerialNumber`, or EXIF's `BodySerialNumber`.
+    pub camera_serial: Option<String>,
+    /// Set on a frame made of a picture already rendered (a monochrome
+    /// camera's JPEG, Monocard's): its samples are display light, upright,
+    /// and no sensor's.
+    pub rendered: Option<Rendered>,
+}
+
+/// What a picture says of its samples.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Rendered {
+    /// `Picture::space`.
+    pub space: String,
+    /// `Picture::bits`.
+    pub bits: u8,
 }
 
 /// What greycard's DNG writer puts first in the `Software` tag of every
 /// file it writes (`dng::LinearDngOptions::software` and the default).
 pub const OUR_SOFTWARE: &str = "greycard";
 
-/// Whether a `Software` tag is greycard's ([`OUR_SOFTWARE`] first).
+/// Whether a `Software` tag is greycard's ([`OUR_SOFTWARE`] first), or
+/// this build's own name's.
 pub fn is_ours(software: &str) -> bool {
-    software
-        .trim_start()
-        .get(..OUR_SOFTWARE.len())
-        .is_some_and(|s| s.eq_ignore_ascii_case(OUR_SOFTWARE))
+    [OUR_SOFTWARE, crate::brand::NAME].iter().any(|name| {
+        software
+            .trim_start()
+            .get(..name.len())
+            .is_some_and(|s| s.eq_ignore_ascii_case(name))
+    })
 }
 
 impl DngTags {

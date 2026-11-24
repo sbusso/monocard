@@ -279,7 +279,7 @@ impl Shelf {
     fn takes(held: &FrameKept, stands_in: bool) -> bool {
         held.meta.source != greycard_render::finish::Source::Display
             && (held.meta.stood_in.is_none() || stands_in)
-            && held.kept.picture(crate::stages::Keep::Base).is_some()
+            && held.kept.in_memory(crate::stages::Keep::Base)
     }
 
     /// Put what the frame `file` kept on the shelf ([`crate::walk::Kept::shelve`]);

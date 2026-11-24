@@ -57,6 +57,15 @@ pub fn mark_listed(
 /// The farthest a repair reads, photosites each way.
 const MAX_REACH: usize = 4;
 
+/// The pattern of a monochrome plane: every photosite is the same color.
+pub fn one_color() -> CfaPattern {
+    CfaPattern {
+        width: 1,
+        height: 1,
+        colors: vec![CfaColor::Green],
+    }
+}
+
 /// Make every photosite `bad` flags again from its good same-color
 /// neighbors, `pattern` as seen from the buffer's corner. Answers how
 /// many were made again.
@@ -68,6 +77,13 @@ pub fn repair(
     bad: &[bool],
 ) -> usize {
     let read: &[f32] = samples;
+    // A plane of one color has good neighbors one photosite away; no
+    // mosaic is one color.
+    let reaches: &[usize] = if pattern.colors.len() == 1 {
+        &[1, 2, MAX_REACH]
+    } else {
+        &[2, MAX_REACH]
+    };
     let fixes: Vec<(usize, f32)> = bad
         .par_iter()
         .enumerate()
@@ -75,9 +91,11 @@ pub fn repair(
         .filter_map(|(i, _)| {
             let (x, y) = (i % width, i / width);
             let color = pattern.color_at(y, x);
-            [2, MAX_REACH]
-                .into_iter()
-                .find_map(|reach| median(read, (width, height), pattern, bad, color, (x, y), reach))
+            reaches
+                .iter()
+                .find_map(|&reach| {
+                    median(read, (width, height), pattern, bad, color, (x, y), reach)
+                })
                 .map(|v| (i, v))
         })
         .collect();

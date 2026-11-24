@@ -98,6 +98,12 @@ pub enum Space {
     DisplayP3,
     Rec2020,
     AdobeRgb,
+    /// A monochrome frame's untoned file ([`Space::GREY`]). A picture in
+    /// color takes sRGB in its place.
+    #[cfg(feature = "mono")]
+    GreyGamma22,
+    #[cfg(feature = "mono")]
+    DotGain20,
 }
 
 impl Space {
@@ -114,19 +120,29 @@ impl Space {
             Space::DisplayP3 => "Display P3",
             Space::Rec2020 => "Rec.2020",
             Space::AdobeRgb => "Adobe RGB",
+            #[cfg(feature = "mono")]
+            Space::GreyGamma22 => "Gray Gamma 2.2",
+            #[cfg(feature = "mono")]
+            Space::DotGain20 => "Dot Gain 20%",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
+        #[cfg(feature = "mono")]
+        if let Some(grey) = Self::GREY.into_iter().find(|s| s.name() == name) {
+            return Some(grey);
+        }
         Self::ALL.into_iter().find(|s| s.name() == name)
     }
 
-    fn rgb(self) -> RgbSpace {
+    pub(crate) fn rgb(self) -> RgbSpace {
         match self {
             Space::Srgb => RgbSpace::SRGB,
             Space::DisplayP3 => RgbSpace::DISPLAY_P3,
             Space::Rec2020 => RgbSpace::REC2020,
             Space::AdobeRgb => RgbSpace::ADOBE_RGB,
+            #[cfg(feature = "mono")]
+            Space::GreyGamma22 | Space::DotGain20 => RgbSpace::SRGB,
         }
     }
 
@@ -184,6 +200,10 @@ impl Space {
     }
 
     fn cached_icc(self, finish: bool) -> Result<Vec<u8>> {
+        #[cfg(feature = "mono")]
+        if self.is_grey() {
+            return Space::Srgb.cached_icc(finish);
+        }
         static BUILT: [std::sync::OnceLock<Vec<u8>>; 8] = [const { std::sync::OnceLock::new() }; 8];
         let at = Space::ALL
             .iter()
@@ -854,6 +874,10 @@ pub fn border(rendered: &mut Rendered, settings: &Settings) {
     let Some(border) = &settings.border else {
         return;
     };
+    #[cfg(feature = "mono")]
+    if rendered.is_grey() {
+        return crate::mono::border(rendered, border, settings);
+    }
     let (w, h) = (rendered.width, rendered.height);
     let (width, height) = match &mut rendered.pixels {
         Pixels::Eight(p) => {
@@ -879,6 +903,10 @@ pub fn mark(rendered: &mut Rendered, settings: &Settings) -> Result<()> {
         return Ok(());
     };
     let (w, h) = (rendered.width, rendered.height);
+    #[cfg(feature = "mono")]
+    if rendered.is_grey() {
+        return crate::mono::mark(rendered, mark, settings);
+    }
     let start = std::time::Instant::now();
     match &mut rendered.pixels {
         Pixels::Eight(p) => mark.apply(p, w, h, settings.space)?,
@@ -1024,21 +1052,31 @@ pub fn write(
 ) -> Result<()> {
     use image::codecs::{jpeg::JpegEncoder, png::PngEncoder};
     use image::{ExtendedColorType, ImageEncoder};
-    let icc = if settings.embed_profile {
-        Some(settings.space.icc()?)
-    } else {
-        None
-    };
     let (w, h) = (rendered.width, rendered.height);
+    #[cfg(feature = "mono")]
+    let settings = &crate::mono::settings_for(rendered, settings);
+    #[cfg(feature = "mono")]
+    let grey = rendered.is_grey();
+    #[cfg(not(feature = "mono"))]
+    let grey = false;
+    let eight = match grey {
+        true => ExtendedColorType::L8,
+        false => ExtendedColorType::Rgb8,
+    };
+    let icc = settings.space.icc();
+    #[cfg(feature = "mono")]
+    let icc = if grey { settings.space.grey_icc() } else { icc };
+    let icc = settings.embed_profile.then_some(icc).transpose()?;
     let output = settings.describe();
     let source = source.filter(|_| settings.metadata != Metadata::None);
     let edit = origin
         .edit
         .as_deref()
         .filter(|_| settings.metadata == Metadata::All);
+    let software = software();
     let provenance = source.map(|metadata| Provenance {
         metadata,
-        software: SOFTWARE,
+        software: &software,
         width: w,
         height: h,
         srgb: settings.space == Space::Srgb,
@@ -1079,7 +1117,7 @@ pub fn write(
             if let Some(exif) = payload {
                 enc.set_exif_metadata(exif).context("EXIF in a JPEG")?;
             }
-            enc.write_image(p, w, h, ExtendedColorType::Rgb8)?;
+            enc.write_image(p, w, h, eight)?;
         }
         (Pixels::Eight(p), Format::Png) => {
             let mut enc = PngEncoder::new(&mut bytes);
@@ -1089,7 +1127,13 @@ pub fn write(
             if let Some(exif) = payload {
                 enc.set_exif_metadata(exif).context("EXIF in a PNG")?;
             }
-            enc.write_image(p, w, h, ExtendedColorType::Rgb8)?;
+            enc.write_image(p, w, h, eight)?;
+        }
+        #[cfg(feature = "mono")]
+        (Pixels::Sixteen(p), Format::Tiff) if grey => {
+            let mut cursor = std::io::Cursor::new(&mut bytes);
+            exif::write_grey16_tiff_tagged(&mut cursor, w, h, p, icc.as_deref(), tags)
+                .context("writing the TIFF")?;
         }
         (Pixels::Sixteen(p), Format::Tiff) => {
             let mut cursor = std::io::Cursor::new(&mut bytes);
@@ -1117,7 +1161,8 @@ pub fn write(
             if let Some(packet) = packet(None) {
                 enc.set_xmp_metadata(packet.into_bytes());
             }
-            enc.encode(p, w, h, ColorType::Rgb8)?;
+            let color = if grey { ColorType::L8 } else { ColorType::Rgb8 };
+            enc.encode(p, w, h, color)?;
         }
         _ => bail!("the pixels' depth is not the format's"),
     }
@@ -1133,7 +1178,13 @@ pub fn write(
 pub const WEBP_MAX_SIDE: u32 = 16383;
 
 /// The `Software` tag on what the editor writes.
-const SOFTWARE: &str = concat!("greycard ", env!("CARGO_PKG_VERSION"));
+fn software() -> String {
+    format!(
+        "{} {}",
+        greycard_core::brand::NAME,
+        env!("CARGO_PKG_VERSION")
+    )
+}
 
 #[cfg(test)]
 mod tests {
@@ -2166,7 +2217,7 @@ mod tests {
                 }
             };
             assert!(carries(&exif, b"EOS R6m2"), "{}", format.name());
-            assert!(carries(&exif, SOFTWARE.as_bytes()), "{}", format.name());
+            assert!(carries(&exif, software().as_bytes()), "{}", format.name());
             // The picture still opens.
             let back = image::open(&path).unwrap();
             assert_eq!((back.width(), back.height()), source);
@@ -2695,7 +2746,7 @@ mod tests {
             let exif = image::ImageDecoder::exif_metadata(&mut decoder)
                 .unwrap()
                 .expect("EXIF");
-            assert!(carries(&exif, b"EOS R6m2") && carries(&exif, SOFTWARE.as_bytes()));
+            assert!(carries(&exif, b"EOS R6m2") && carries(&exif, software().as_bytes()));
             let xmp = image::ImageDecoder::xmp_metadata(&mut decoder)
                 .unwrap()
                 .expect("XMP");

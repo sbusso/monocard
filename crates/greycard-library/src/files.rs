@@ -15,7 +15,7 @@ pub fn sidecar_to_raw(p: PathBuf) -> PathBuf {
     if !p
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case("gcd"))
+        .is_some_and(|e| e.eq_ignore_ascii_case(greycard_core::brand::SIDECAR_EXT))
     {
         return p;
     }
@@ -83,15 +83,16 @@ pub fn list(path: &Path, apart: bool) -> Result<crate::pairs::Paired> {
             .filter(|p| crate::is_indexed_path(p) && p.is_file())
             .collect();
         files.sort();
-        Ok(pairs::pair(files, apart))
+        Ok(pairs::pair(crate::monochrome::kept(files), apart))
     } else {
         // For a single file, map .gcd sidecars to their raw files, but
         // ensure the raw actually exists.
         let mapped = sidecar_to_raw(path.to_path_buf());
         anyhow::ensure!(
             opens(&mapped),
-            "{} is not a RAW, JPEG, PNG or TIFF file (or a .gcd sidecar for one)",
-            path.display()
+            "{} is not a RAW, JPEG, PNG or TIFF file (or a .{} sidecar for one)",
+            path.display(),
+            greycard_core::brand::SIDECAR_EXT
         );
         // If it was a .gcd, verify the raw exists.
         if path != mapped && !mapped.exists() {
@@ -101,6 +102,12 @@ pub fn list(path: &Path, apart: bool) -> Result<crate::pairs::Paired> {
                 mapped.display()
             );
         }
+        anyhow::ensure!(
+            crate::monochrome::opens(&mapped),
+            "{} is a color photo: {} opens monochrome photos only",
+            mapped.display(),
+            greycard_core::brand::NAME
+        );
         if apart {
             return Ok(pairs::Paired {
                 frames: vec![mapped],
@@ -195,6 +202,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn list_paths_keeps_each_file_once_and_says_what_it_refused() {
         let dir = std::env::temp_dir().join(format!(
             "greycard-list-paths-{}-{}",
@@ -222,6 +230,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_sidecar_under_the_folder_names_the_frame_above_it() {
         let under = PathBuf::from("/shoot/.greycard/IMG_0001.CR3.gcd");
         assert_eq!(sidecar_to_raw(under), PathBuf::from("/shoot/IMG_0001.CR3"));
@@ -309,6 +318,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_folder_listing_skips_the_hidden_folder() {
         let dir = std::env::temp_dir().join(format!(
             "greycard-list-hidden-{}-{}",
@@ -365,6 +375,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn sidecar_to_raw_maps_gcd_to_raw_and_leaves_others_alone() {
         use std::path::PathBuf;
 
@@ -384,6 +395,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn sidecar_mapping_preserves_directory_paths() {
         use std::path::PathBuf;
 

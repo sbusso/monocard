@@ -158,6 +158,9 @@ pub struct Developed {
     /// The picture after everything up to the finish, at half the
     /// frame's size (or in full for a frame too small to bin).
     pub image: WorkingImage,
+    /// A monochrome raw's planes, in `image`'s place.
+    #[cfg(feature = "mono")]
+    pub mono: Option<mono_core::MonoFrame>,
     /// The full develop's size, oriented: what the learned masks'
     /// rasters are checked by.
     pub full: (u32, u32),
@@ -177,6 +180,26 @@ pub struct Developed {
     pub rest: f64,
 }
 
+impl Developed {
+    /// The picture's size.
+    fn source(&self) -> (u32, u32) {
+        #[cfg(feature = "mono")]
+        if let Some(frame) = &self.mono {
+            return (frame.base.width as u32, frame.base.height as u32);
+        }
+        (self.image.width as u32, self.image.height as u32)
+    }
+
+    /// The edit's pictures of it.
+    fn made(&self, finish: &crate::edited_pictures::Finish) -> crate::edited_pictures::Made {
+        #[cfg(feature = "mono")]
+        if let Some(frame) = &self.mono {
+            return crate::edited_pictures::make_mono(frame, finish);
+        }
+        crate::edited_pictures::make(&self.image, finish)
+    }
+}
+
 /// The learned masks' rasters by adjustment id and component.
 pub type Rasters = std::collections::HashMap<(u64, usize), Arc<Raster>>;
 
@@ -185,6 +208,10 @@ pub type Rasters = std::collections::HashMap<(u64, usize), Arc<Raster>>;
 fn open(path: &Path) -> anyhow::Result<Input> {
     if greycard_core::picture::is_picture_path(path) {
         let mut picture = greycard_core::picture::decode_picture_path(path)?;
+        #[cfg(feature = "mono")]
+        if let Some(f) = crate::mono::frame_of(path, &picture) {
+            return Ok(Input::Raw(Arc::new(f)));
+        }
         let image = std::mem::replace(&mut picture.image, WorkingImage::new(0, 0));
         return Ok(Input::Picture {
             image: Arc::new(image),
@@ -359,10 +386,29 @@ fn walk_reduced(
     drop(input);
     let mut walked = walked;
     walked.taps.masks = None;
-    let Buf::Working(image) = walked.buf else {
-        unreachable!("a walk on the CPU ends at a picture in memory")
+    #[cfg(feature = "mono")]
+    {
+        walked.taps.mono_masks = None;
+    }
+    #[cfg(feature = "mono")]
+    let mut mono = None;
+    let image = match walked.buf {
+        Buf::Working(image) => image,
+        // The models' picture is the one picture made in color.
+        #[cfg(feature = "mono")]
+        Buf::Plane(m) if *purpose == Purpose::ModelsSee => {
+            Arc::new(crate::mono::seen(&m.plane, edit))
+        }
+        #[cfg(feature = "mono")]
+        Buf::Plane(m) => {
+            mono = Some(m.frame());
+            Arc::new(WorkingImage::new(0, 0))
+        }
+        _ => unreachable!("a walk on the CPU ends at a picture in memory"),
     };
     Ok(Developed {
+        #[cfg(feature = "mono")]
+        mono,
         image: Arc::try_unwrap(image).unwrap_or_else(|a| (*a).clone()),
         full: walked.meta.full,
         bin: walked.meta.bin,
@@ -872,7 +918,7 @@ impl Reducer {
         let finish = crate::edited_pictures::Finish {
             edit: edit.clone(),
             turn,
-            source: (developed.image.width as u32, developed.image.height as u32),
+            source: developed.source(),
             full: developed.full,
             rasters,
             clip_level: developed.clip_level,
@@ -882,9 +928,7 @@ impl Reducer {
             detail: developed.detail.clone(),
             camera: developed.camera,
         };
-        let made = self
-            .pool()
-            .install(|| crate::edited_pictures::make(&developed.image, &finish));
+        let made = self.pool().install(|| developed.made(&finish));
         let making =
             started.elapsed().as_secs_f64() - developed.decode - developed.develop - developed.rest;
         let kept = edited
@@ -901,8 +945,8 @@ impl Reducer {
                 developed.bin,
                 started.elapsed().as_secs_f64() * 1e3,
                 developed.decode * 1e3,
-                developed.image.width,
-                developed.image.height,
+                finish.source.0,
+                finish.source.1,
                 developed.develop * 1e3,
                 developed.rest * 1e3,
                 making * 1e3,

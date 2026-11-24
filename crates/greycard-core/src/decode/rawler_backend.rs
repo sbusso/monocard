@@ -722,10 +722,25 @@ fn decode_source(source: &RawSource) -> Result<(RawFrame, RawMetadata)> {
         width: r.d.w,
         height: r.d.h,
     });
+    #[cfg(feature = "mono")]
+    let table = image.linearization_table.clone();
     let mut frame = frame_from_rawler(image)?;
     judge_rows(&frame, up_front)?;
     frame.dng = dng_tags(decoder.as_ref());
-    if !frame.dng.mosaic.is_empty() || !frame.dng.warps.is_empty() {
+    #[cfg(feature = "mono")]
+    if let Some(table) = table
+        && frame.layout == SensorLayout::Monochrome
+    {
+        linearize(&mut frame, &table);
+    }
+    // A DNG always names its model; another raw's tags stay the default.
+    if frame.dng.unique_camera_model.is_some() && frame.dng.camera_serial.is_none() {
+        frame.dng.camera_serial = text(&metadata.exif.serial_number);
+    }
+    if !frame.dng.mosaic.is_empty()
+        || !frame.dng.warps.is_empty()
+        || !frame.dng.vignettes.is_empty()
+    {
         frame.dng.opcode_area = active_area;
     }
     let forward = forward_matrices(decoder.as_ref());
@@ -882,14 +897,27 @@ fn dng_tags(decoder: &dyn ::rawler::decoders::Decoder) -> DngTags {
                     .and_then(|e| e.value.as_string().cloned())
             })
             .is_some_and(|s| crate::raw::is_ours(&s));
+    let string = |ifd: Option<&::rawler::formats::tiff::IFD>, tag| {
+        text(&ifd?.get_entry(tag)?.value.as_string().cloned())
+    };
+    let camera_serial = string(root.as_deref(), DngTag::CameraSerialNumber);
+    // A root tag rawler's virtual DNG root does not copy.
+    let unique_camera_model = string(
+        decoder.ifd(WellKnownIFD::Root).ok().flatten().as_deref(),
+        DngTag::UniqueCameraModel,
+    );
     DngTags {
         baseline_exposure,
         ours,
         mosaic: read.mosaic,
         warps: read.warps,
+        vignettes: read.vignettes,
         opcode_area: None,
         noise_profile,
         merged,
+        unique_camera_model,
+        camera_serial,
+        rendered: None,
     }
 }
 
@@ -1026,6 +1054,14 @@ fn focus_point_of(source: &RawSource, area: (usize, usize)) -> Option<crate::raw
     }
 }
 
+/// A tag's text trimmed; none for an empty one.
+fn text(s: &Option<String>) -> Option<String> {
+    s.as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+}
+
 /// What the frame was shot at, from the metadata: the EXIF tags, and
 /// rawler's own lens table for a lens name when the tag is empty.
 pub(crate) fn shot_of(metadata: &RawMetadata) -> Shot {
@@ -1034,12 +1070,6 @@ pub(crate) fn shot_of(metadata: &RawMetadata) -> Shot {
             .then(|| r.n as f32 / r.d as f32)
             .filter(|v| v.is_finite() && *v > 0.0)
     };
-    fn text(s: &Option<String>) -> Option<String> {
-        s.as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-    }
     let exif = &metadata.exif;
     Shot {
         lens_make: text(&exif.lens_make)
@@ -1069,6 +1099,35 @@ pub(crate) fn iso_of(exif: &::rawler::exif::Exif) -> Option<u32> {
         .or(exif.iso_speed)
         .or(exif.recommended_exposure_index)
         .filter(|&iso| iso > 0)
+}
+
+/// A monochrome DNG's `LinearizationTable` on its stored samples, which
+/// rawler decodes without it: a code past the table's end takes its last
+/// entry. A plain lookup where rawler's own dithers, so a code the table
+/// puts at the white is at the white. The first opcode list runs on the
+/// stored codes, so its constant goes through the table with them.
+#[cfg(feature = "mono")]
+fn linearize(frame: &mut RawFrame, table: &[u16]) {
+    let at = |code: usize| table[code.min(table.len() - 1)];
+    let Samples::U16(samples) = &mut frame.samples else {
+        return;
+    };
+    if table.is_empty() {
+        return;
+    }
+    samples.iter_mut().for_each(|s| *s = at(usize::from(*s)));
+    for op in &mut frame.dng.mosaic {
+        if let crate::opcodes::MosaicOp::BadPixels(
+            crate::opcodes::OpcodeList::One,
+            crate::opcodes::BadPixels::Constant { value, .. },
+        ) = op
+            && *value <= u32::from(u16::MAX)
+        {
+            // Two codes the table puts on one value are both made again.
+            *value = u32::from(at(*value as usize));
+        }
+    }
+    log::info!("DNG LinearizationTable of {} entries applied", table.len());
 }
 
 /// Reshape a decoded rawler image into the engine's frame.
@@ -1859,6 +1918,67 @@ mod tests {
         decoder
             .raw_image(&source, &RawDecodeParams::default(), false)
             .unwrap()
+    }
+
+    /// A monochrome DNG's `LinearizationTable` goes on its samples under the
+    /// `mono` feature, the first opcode list's constant through it as well:
+    /// rawler decodes the stored codes. A color DNG's is left out as
+    /// upstream leaves it. Its model and serial are read either way.
+    #[test]
+    fn a_dngs_linearization_table_and_names_are_read() {
+        linearization_table_read(false);
+        linearization_table_read(true);
+    }
+
+    fn linearization_table_read(monochrome: bool) {
+        use crate::opcodes::{BadPixels, MosaicOp, OpcodeList, list_bytes};
+        use ::rawler::rawimage::BlackLevel;
+        use ::rawler::tags::DngTag;
+
+        let mut raw = a_mosaic(BlackLevel::new(&[100u16], 1, 1, 1));
+        if monochrome {
+            raw.photometric = RawPhotometricInterpretation::LinearRaw;
+        }
+        let codes: Vec<u16> = match &raw.data {
+            RawImageData::Integer(v) => v.clone(),
+            RawImageData::Float(_) => unreachable!(),
+        };
+        let most = usize::from(*codes.iter().max().unwrap());
+        // A code short, so the brightest takes the last entry.
+        let table: Vec<u16> = (0..most).map(|i| (i * i / 64 + 3) as u16).collect();
+        raw.linearization_table = Some(table.clone());
+        let constant: Vec<u8> = [8u32, 0].iter().flat_map(|v| v.to_be_bytes()).collect();
+        let list = list_bytes(&[(4, 0, constant)]);
+        raw.dng_opcodes_1 = Some(::rawler::dng::opcodes::OpcodeList::parse(&list).unwrap());
+        let bytes = dng_bytes(&raw, |root| {
+            root.add_tag(DngTag::UniqueCameraModel, "Test Mono One ");
+            root.add_tag(DngTag::CameraSerialNumber, "0042");
+        });
+        let frame = RawlerDecoder.decode_bytes(&bytes).unwrap();
+        let at = |c: u16| table[usize::from(c).min(table.len() - 1)];
+        assert_eq!(frame.layout == SensorLayout::Monochrome, monochrome);
+        let on = cfg!(feature = "mono") && monochrome;
+        let want = if on {
+            codes.iter().map(|&c| at(c)).collect()
+        } else {
+            codes
+        };
+        assert_eq!(frame.samples, Samples::U16(want));
+        assert_eq!(
+            frame.dng.mosaic,
+            vec![MosaicOp::BadPixels(
+                OpcodeList::One,
+                BadPixels::Constant {
+                    value: if on { u32::from(at(8)) } else { 8 },
+                    phase: 0
+                }
+            )]
+        );
+        assert_eq!(
+            frame.dng.unique_camera_model.as_deref(),
+            Some("Test Mono One")
+        );
+        assert_eq!(frame.dng.camera_serial.as_deref(), Some("0042"));
     }
 
     /// A mosaic DNG's `BlackLevelDeltaH` and `BlackLevelDeltaV` come

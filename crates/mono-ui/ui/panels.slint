@@ -1,0 +1,465 @@
+// The mono panels: the six of a monochrome frame on the Develop tab, and
+// a mask's own on the Masks tab, drawn from the rows of `Mono`.
+
+import { LineEdit } from "std-widgets.slint";
+import { Theme, LabelColumn } from "../../greycard-slint/ui/theme.slint";
+import { Section, EditSlider, Toggle, Segmented, PanelButton, CurveEditor, Typing } from "../../greycard-slint/ui/controls.slint";
+import { Mono, MonoRow, MonoCurve, MonoLook } from "state.slint";
+
+component Looks inherits Rectangle {
+    in property <[MonoLook]> looks;
+    property <length> gap: Theme.space-2;
+    property <length> tile-width: (self.width - 2 * self.gap) / 3;
+    // A mark may take a second line.
+    in property <bool> marks: false;
+    property <length> tile-height: root.marks ? 106px : 92px;
+    height: ceil(root.looks.length / 3) * (self.tile-height + self.gap) - self.gap;
+    opacity: Mono.frame ? 1 : 0.4;
+    for look[i] in root.looks: Rectangle {
+        x: mod(i, 3) * (root.tile-width + root.gap);
+        y: floor(i / 3) * (root.tile-height + root.gap);
+        width: root.tile-width;
+        height: root.tile-height;
+        border-radius: Theme.radius-sm;
+        border-width: look.chosen ? 2px : 1px;
+        border-color: look.chosen ? Theme.accent : fs.has-focus ? Theme.focus-ring : Theme.border;
+        background: area.pressed ? Theme.pressed : area.has-hover ? Theme.hover : Theme.base;
+        accessible-role: button;
+        property <string> name: look.mark == "" ? look.name : look.name + " (" + look.mark + ")";
+        accessible-label: self.name;
+        accessible-enabled: Mono.frame;
+        accessible-description: look.description;
+        accessible-checkable: true;
+        accessible-checked: look.chosen;
+        accessible-action-default => { Mono.look-picked(look.name); }
+        Image {
+            x: 4px;
+            y: 4px;
+            width: parent.width - 8px;
+            height: 64px;
+            source: look.swatch;
+            image-fit: look.picture ? cover : fill;
+            image-rendering: look.picture ? smooth : pixelated;
+        }
+        Text {
+            x: 6px;
+            y: 70px;
+            width: parent.width - 12px;
+            height: parent.height - self.y - 2px;
+            text: parent.name;
+            color: look.chosen ? Theme.text : Theme.text-secondary;
+            font-size: Theme.font-xs;
+            vertical-alignment: root.marks ? top : center;
+            wrap: root.marks ? word-wrap : no-wrap;
+            overflow: elide;
+        }
+        fs := FocusScope {
+            key-pressed(e) => {
+                if (e.text == " " || e.text == Key.Return) {
+                    Mono.look-picked(look.name);
+                    return accept;
+                }
+                return reject;
+            }
+        }
+        area := TouchArea {
+            mouse-cursor: MouseCursor.pointer;
+            enabled: Mono.frame;
+            clicked => {
+                Typing.close-all();
+                Mono.look-picked(look.name);
+            }
+        }
+    }
+}
+
+component PointCurve inherits Rectangle {
+    in property <string> id;
+    in property <MonoCurve> curve;
+    in property <image> picture;
+    callback resized(float);
+    height: self.width;
+    CurveEditor {
+        width: 100%;
+        picture: root.picture;
+        pressed(x, y) => { Mono.curve-press(root.id, x, y); }
+        moved(x, y) => { Mono.curve-move(root.id, x, y); }
+        released => { Mono.curve-release(root.id); }
+        double-clicked(x, y) => { Mono.curve-double(root.id, x, y); }
+        resized(w) => { root.resized(w); }
+    }
+    Path {
+        width: 100%;
+        height: 100%;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        commands: root.curve.path;
+        stroke: Theme.text;
+        stroke-width: 1.5px;
+    }
+    for p[i] in root.curve.points: Rectangle {
+        x: p.x * root.width - self.width / 2;
+        y: (1 - p.y) * root.height - self.height / 2;
+        width: 9px;
+        height: 9px;
+        border-radius: 4.5px;
+        border-width: 1px;
+        border-color: Theme.base;
+        background: i == root.curve.held ? Theme.accent : Theme.text;
+    }
+}
+
+// The contrast equalizer's expert curve: a bar a wavelet scale, the
+// finest first. A double-click puts one back.
+component Scales inherits Rectangle {
+    height: 96px;
+    background: Theme.base;
+    border-radius: Theme.radius-sm;
+    Rectangle {
+        y: parent.height / 2;
+        height: 1px;
+        background: Theme.border-strong;
+    }
+    for v[i] in Mono.scales: Rectangle {
+        property <length> half: root.height / 2;
+        x: i * root.width / Mono.scales.length;
+        width: root.width / Mono.scales.length;
+        accessible-role: slider;
+        accessible-label: "Scale " + (i + 1);
+        accessible-value: round(v);
+        accessible-value-minimum: -100;
+        accessible-value-maximum: 100;
+        accessible-action-increment => { Mono.scale-set(i, v + 5); }
+        accessible-action-decrement => { Mono.scale-set(i, v - 5); }
+        Rectangle {
+            x: 4px;
+            width: parent.width - 8px;
+            y: v >= 0 ? parent.half - self.height : parent.half;
+            height: max(2px, abs(v) / 100 * parent.half);
+            background: ta.pressed || ta.has-hover ? Theme.accent : Theme.text-secondary;
+        }
+        ta := TouchArea {
+            mouse-cursor: MouseCursor.ns-resize;
+            // With Shift held, a tenth as far, from where it was pressed
+            // or Shift went down.
+            property <bool> fine;
+            property <length> from-y;
+            property <float> from-v;
+            function anchor(shift: bool) {
+                self.fine = shift;
+                self.from-y = self.mouse-y;
+                self.from-v = v;
+            }
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down || e.modifiers.shift != self.fine) {
+                    self.anchor(e.modifiers.shift);
+                }
+            }
+            moved => {
+                if (self.pressed) {
+                    Mono.scale-set(i, clamp(self.fine
+                        ? self.from-v + (self.from-y - self.mouse-y) / self.height * 20
+                        : (0.5 - self.mouse-y / self.height) * 200, -100, 100));
+                }
+            }
+            double-clicked => { Mono.scale-set(i, 0); }
+        }
+    }
+}
+
+// Lines of words as tall as they wrap to: a bare Text this deep in the
+// layouts is given the height of one line.
+component Note inherits Rectangle {
+    in property <string> text;
+    height: words.preferred-height;
+    words := Text {
+        width: 100%;
+        text: root.text;
+        color: Theme.text-secondary;
+        font-size: Theme.font-xs;
+        wrap: word-wrap;
+    }
+}
+
+// A name asked in place: Return takes it, Escape leaves.
+component NameField inherits HorizontalLayout {
+    in property <string> name;
+    in property <string> done;
+    callback accepted(string);
+    callback left();
+    spacing: Theme.space-2;
+    field := LineEdit {
+        text: root.name;
+        placeholder-text: "Look name";
+        accessible-label: "Look name";
+        init => {
+            self.focus();
+            self.select-all();
+        }
+        accepted(t) => {
+            root.accepted(t);
+            root.left();
+        }
+        key-pressed(e) => {
+            if (e.text == Key.Escape) {
+                Mono.look-ask = "";
+                root.left();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    PanelButton {
+        text: root.done;
+        clicked => {
+            root.accepted(field.text);
+            root.left();
+        }
+    }
+}
+
+component Rest inherits VerticalLayout {
+    in property <MonoRow> item;
+    in property <image> curve-picture;
+    callback curve-resized(float);
+    callback focus-keys();
+    if root.item.kind == "fold": Rectangle {
+        height: Theme.control-height;
+        accessible-role: button;
+        accessible-label: root.item.label;
+        accessible-expandable: true;
+        accessible-expanded: root.item.on;
+        accessible-action-default => { Mono.fold(root.item.id, !root.item.on); }
+        border-radius: Theme.radius-sm;
+        background: fold-area.has-hover ? Theme.hover : transparent;
+        border-width: fold-keys.has-focus ? 1px : 0px;
+        border-color: Theme.focus-ring;
+        Image {
+            x: 0;
+            y: (parent.height - self.height) / 2;
+            source: @image-url("../../greycard-slint/ui/icons/chevron-down.svg");
+            colorize: Theme.text-secondary;
+            width: Theme.icon;
+            height: Theme.icon;
+            transform-rotation: root.item.on ? 0deg : -90deg;
+        }
+        Text {
+            x: Theme.icon + 4px;
+            height: 100%;
+            text: root.item.label;
+            color: Theme.text-secondary;
+            font-size: Theme.font-sm;
+            font-weight: Theme.weight-medium;
+            vertical-alignment: center;
+        }
+        fold-keys := FocusScope {
+            key-pressed(e) => {
+                if (e.text == " " || e.text == Key.Return) {
+                    Mono.fold(root.item.id, !root.item.on);
+                    return accept;
+                }
+                return reject;
+            }
+        }
+        fold-area := TouchArea {
+            mouse-cursor: MouseCursor.pointer;
+            clicked => {
+                Typing.close-all();
+                Mono.fold(root.item.id, !root.item.on);
+            }
+        }
+    }
+    if root.item.kind == "heading": Text {
+        height: Theme.control-height;
+        text: root.item.label;
+        color: Theme.text-secondary;
+        font-size: Theme.font-sm;
+        font-weight: Theme.weight-medium;
+        vertical-alignment: center;
+    }
+    if root.item.kind == "note": Note {
+        text: root.item.label;
+    }
+    // What there is to do with the chosen look, over Save as look.
+    if root.item.id == "look.save" && Mono.look-chosen != "": HorizontalLayout {
+        padding-top: 2px;
+        padding-bottom: 2px;
+        spacing: Theme.space-2;
+        if Mono.look-own: PanelButton {
+            horizontal-stretch: 1;
+            text: "Rename";
+            accessible-label: "Rename look";
+            clicked => { Mono.pressed("look.rename"); }
+        }
+        PanelButton {
+            horizontal-stretch: 1;
+            text: "Export";
+            accessible-label: "Export look";
+            clicked => { Mono.pressed("look.export"); }
+        }
+        if Mono.look-own: PanelButton {
+            horizontal-stretch: 1;
+            text: "Delete";
+            accessible-label: "Delete look";
+            clicked => { Mono.pressed("look.delete"); }
+        }
+    }
+    if root.item.id == "look.save" && Mono.look-ask == "rename": NameField {
+        name: Mono.look-chosen;
+        done: "Rename";
+        accepted(t) => { Mono.look-renamed(t); }
+        left => { root.focus-keys(); }
+    }
+    if root.item.id == "look.save" && Mono.look-ask == "delete": Note {
+        text: "Delete " + Mono.look-chosen + "? Photos that have it keep their values.";
+    }
+    if root.item.id == "look.save" && Mono.look-ask == "delete": HorizontalLayout {
+        padding-top: 2px;
+        padding-bottom: 2px;
+        spacing: Theme.space-2;
+        PanelButton {
+            horizontal-stretch: 1;
+            text: "Cancel";
+            init => { self.focus(); }
+            clicked => {
+                Mono.look-ask = "";
+                root.focus-keys();
+            }
+        }
+        PanelButton {
+            horizontal-stretch: 1;
+            text: "Delete";
+            accessible-label: "Delete the look for good";
+            primary: true;
+            clicked => {
+                Mono.look-deleted();
+                root.focus-keys();
+            }
+        }
+    }
+    if root.item.kind == "button": HorizontalLayout {
+        padding-top: 2px;
+        padding-bottom: 2px;
+        PanelButton {
+            horizontal-stretch: 1;
+            text: root.item.label;
+            enabled: root.item.enabled;
+            clicked => { Mono.pressed(root.item.id); }
+        }
+    }
+    if root.item.kind == "looks": Looks { looks: Mono.looks; }
+    if root.item.kind == "looks" && Mono.mode-looks.length > 0: Text {
+        height: Theme.control-height;
+        text: "Camera modes";
+        color: Theme.text-secondary;
+        font-size: Theme.font-sm;
+        font-weight: Theme.weight-medium;
+        vertical-alignment: center;
+    }
+    if root.item.kind == "looks" && Mono.mode-looks.length > 0: Looks {
+        looks: Mono.mode-looks;
+        marks: true;
+    }
+    if root.item.kind == "scales": Scales { }
+    if root.item.kind == "curve": PointCurve {
+        id: root.item.id;
+        curve: root.item.id == "curve" ? Mono.curve : Mono.mask-curve;
+        picture: root.curve-picture;
+        resized(w) => { root.curve-resized(w); }
+    }
+    if root.item.id == "look.save" && Mono.look-ask == "save": NameField {
+        done: "Save";
+        accepted(t) => { Mono.look-saved(t); }
+        left => { root.focus-keys(); }
+    }
+    if root.item.kind == "button" && root.item.id == "look.import" && Mono.look-note != "": Note {
+        text: Mono.look-note;
+    }
+}
+
+export component MonoPanels inherits VerticalLayout {
+    in property <string> tab;
+    // The stock curve editor's picture: the histogram and the grid.
+    in property <image> curve-picture;
+    in property <bool> one-of-panel;
+    callback curve-resized(float);
+    callback focus-keys();
+    pure function icon-of(name: string) -> image {
+        return name == "mono-look" ? @image-url("../../greycard-slint/ui/icons/film.svg")
+            : name == "mono-basic" ? @image-url("../../greycard-slint/ui/icons/sliders-horizontal.svg")
+            : name == "mono-light" ? @image-url("../../greycard-slint/ui/icons/sun.svg")
+            : name == "mono-detail" ? @image-url("../../greycard-slint/ui/icons/focus.svg")
+            : name == "mono-highlights" ? @image-url("../../greycard-slint/ui/icons/contrast.svg")
+            : name == "mono-finish" ? @image-url("../../greycard-slint/ui/icons/stamp.svg")
+            : @image-url("../../greycard-slint/ui/icons/layers.svg");
+    }
+    if Mono.rest-note != "": Rectangle {
+        height: rest.preferred-height + 2 * Theme.space-3;
+        rest := Note {
+            x: Theme.space-2;
+            y: Theme.space-3;
+            width: parent.width - 2 * Theme.space-2;
+            text: Mono.rest-note;
+        }
+    }
+    for panel in root.tab == "Masks" ? Mono.mask-panels : Mono.panels: Section {
+        title: panel.title;
+        icon: root.icon-of(panel.name);
+        collapsed <=> panel.collapsed;
+        one-of-panel: root.one-of-panel;
+        has-reset: true;
+        reset-live: panel.resettable;
+        reset-clicked => { Mono.panel-reset(panel.name); }
+        body-spacing: 2px;
+        for row in panel.rows: VerticalLayout {
+            padding-left: row.inset ? Theme.space-2 : 0px;
+            if row.kind == "slider": EditSlider {
+                label: row.label;
+                // Room for "Keep sensor grain".
+                label-width: max(112px, LabelColumn.width);
+                minimum: row.minimum;
+                maximum: row.maximum;
+                default: row.default;
+                step: row.step;
+                steps: { small: row.step, big: row.step * 10, fine: row.step / 10 };
+                scale: row.scale;
+                enabled: row.enabled;
+                value <=> row.value;
+                text: (row.minimum < 0 && self.value > 0 ? "+" : "")
+                    + round(self.value * row.scale * pow(10, row.places)) / pow(10, row.places)
+                    + row.unit;
+                changed(v) => { Mono.slid(row.id, v); }
+            }
+            if row.kind == "toggle": Toggle {
+                label: row.label;
+                tip: row.tip;
+                enabled: row.enabled;
+                checked <=> row.on;
+                toggled => { Mono.toggled(row.id, self.checked); }
+            }
+            if row.kind == "choice": VerticalLayout {
+                padding-bottom: 2px;
+                spacing: 2px;
+                Text {
+                    text: row.label;
+                    color: row.enabled ? Theme.text : Theme.text-muted;
+                    font-size: Theme.font-sm;
+                }
+                for line in row.lines: Segmented {
+                    options: line;
+                    labels: line;
+                    equal-width: true;
+                    enabled: row.enabled;
+                    current <=> row.current;
+                    selected(v) => { Mono.picked(row.id, v); }
+                }
+            }
+            if row.kind != "slider" && row.kind != "toggle" && row.kind != "choice": Rest {
+                item: row;
+                curve-picture: root.curve-picture;
+                curve-resized(w) => { root.curve-resized(w); }
+                focus-keys => { root.focus-keys(); }
+            }
+        }
+    }
+}

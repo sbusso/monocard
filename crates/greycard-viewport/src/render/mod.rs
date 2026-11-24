@@ -23,6 +23,10 @@ mod draw;
 mod inputs;
 mod locals;
 pub(crate) mod minify;
+#[cfg(feature = "mono")]
+mod mono;
+#[cfg(all(test, feature = "mono"))]
+mod mono_tests;
 mod osharp;
 mod peaking;
 pub mod reduce;
@@ -35,6 +39,8 @@ mod tests;
 
 use self::locals::{Brushes, LocalsGpu, locals_gpu, range_reads};
 
+#[cfg(feature = "mono")]
+pub use self::mono::MonoView;
 pub use self::scopes::Tap;
 
 pub use self::peaking::{MOST_RECTS, shown_rect};
@@ -44,13 +50,37 @@ pub use self::sample::{SAMPLE_SIZES, sample_reach, sample_size, texel_of};
 /// `canvas-colors` swatches and the shader's `canvas` uniform:
 /// black, three greys, the third about 18% grey as displayed, and
 /// white.
+#[cfg(not(feature = "mono"))]
 pub const CANVAS_NAMES: [&str; 5] = ["Black", "Dark grey", "Mid grey", "Light grey", "White"];
+/// The mono build's five and 18% grey (#777777), which it opens on.
+#[cfg(feature = "mono")]
+pub const CANVAS_NAMES: [&str; 6] = [
+    "Black",
+    "Dark grey",
+    "Mid grey",
+    "Light grey",
+    "White",
+    "18% grey",
+];
+
+/// The canvas a new install opens on.
+pub const CANVAS_DEFAULT: usize = if cfg!(feature = "mono") { 5 } else { 0 };
 
 /// The same five levels' encoded sRGB fractions: the hex `app.slint`
 /// paints the Rectangle behind the viewport with (#0f0f0f, #262626,
 /// #2e2e2e, #444444, #ffffff), so the shader's margin agrees with it
 /// exactly.
+#[cfg(not(feature = "mono"))]
 const CANVAS_LEVELS: [f32; 5] = [15.0 / 255.0, 38.0 / 255.0, 46.0 / 255.0, 68.0 / 255.0, 1.0];
+#[cfg(feature = "mono")]
+const CANVAS_LEVELS: [f32; 6] = [
+    15.0 / 255.0,
+    38.0 / 255.0,
+    46.0 / 255.0,
+    68.0 / 255.0,
+    1.0,
+    119.0 / 255.0,
+];
 
 fn canvas_index(choice: i32) -> usize {
     (choice.max(0) as usize).min(CANVAS_LEVELS.len() - 1)
@@ -165,6 +195,10 @@ pub struct View {
     /// a frame turned shows turned at once, masks and all, while its
     /// develop is still on the way.
     pub source_turn: u8,
+    /// What a mono frame is finished with; the stock look's fields do
+    /// nothing to one.
+    #[cfg(feature = "mono")]
+    pub mono: Option<MonoView>,
 }
 
 /// The look table on the GPU, and what the shader needs beside it.
@@ -233,6 +267,8 @@ impl View {
             display_curve: greycard_edit::DisplayCurve::Channels,
             profile_tone: None,
             source_turn: 0,
+            #[cfg(feature = "mono")]
+            mono: None,
         }
     }
 
@@ -253,6 +289,8 @@ impl View {
             vignette: edit.vignette,
             grain: edit.grain,
             output_sharpen: edit.output_sharpen,
+            #[cfg(feature = "mono")]
+            mono: Some(MonoView::of(edit)),
             ..View::blank()
         }
     }
@@ -351,6 +389,9 @@ pub struct Renderer {
     most_taps: u32,
     /// The output sharpen's passes and targets.
     osharp: osharp::OutputSharpen,
+    /// The mono shader and planes, made with the first mono frame.
+    #[cfg(feature = "mono")]
+    mono: Option<mono::Mono>,
 }
 
 /// The scopes: the whole image drawn small through the same shader,
@@ -668,6 +709,8 @@ impl Renderer {
             gamut_marks: false,
             most_taps: minify::MOST_TAPS,
             osharp,
+            #[cfg(feature = "mono")]
+            mono: None,
             device: device.clone(),
             queue: queue.clone(),
             pipeline,

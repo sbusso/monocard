@@ -1,0 +1,22 @@
+[package]
+name = "mono-tone"
+version.workspace = true
+description = "Monocard: tone equalizer, local contrast tools, curves, and the display transform on one plane"
+license = "GPL-3.0-or-later"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mono-core = { path = "../mono-core" }
+rayon.workspace = true
+bytemuck.workspace = true
+
+[dev-dependencies]
+# A device for the shader's tests.
+pollster.workspace = true
+wgpu.workspace = true

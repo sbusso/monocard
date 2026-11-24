@@ -43,6 +43,8 @@ image.workspace = true
 rawler = { workspace = true, optional = true }
 
 [features]
+# Monocard, the monochrome build (docs/monocard).
+mono = ["greycard-edit-io/mono"]
 # `fixture`: frames with real EXIF for another crate's tests, the
 # editor's among them. Not for a build anybody runs.
 fixtures = ["dep:rawler"]

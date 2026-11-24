@@ -1,0 +1,9 @@
+# Uncalibrated: the curve is drawn from its description, not fitted to the
+# camera's Solarized Effect type 3. mono_look::fit_solar fits it from a RAW
+# and JPEG pair; the result goes in SOLAR in crates/mono-look/src/finish.rs.
+name = "Solar 3"
+description = "Tone reversed in the shadows. Uncalibrated: not yet matched to the camera."
+
+[tools.solarize]
+kind = "shadows"
+strength = 1

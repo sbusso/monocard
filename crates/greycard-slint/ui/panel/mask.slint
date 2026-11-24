@@ -4,6 +4,7 @@
 // row that adds another to it, the first of those sections.
 
 import { LineEdit } from "std-widgets.slint";
+import { Mono } from "../../../mono-ui/ui/state.slint";
 import { Theme, LabelColumn } from "../theme.slint";
 import { Tips, TipArea, Section, EditSlider, Steps, Toggle, PanelButton, Segmented, Typing, ScrollPane, ButtonKeys } from "../controls.slint";
 
@@ -1039,7 +1040,8 @@ export component AdjustmentsSection inherits Section {
                             icon: @image-url("../icons/sun.svg");
                             clicked => { root.add-shape("Luminance", root.shape-mode); }
                         }
-                        PanelButton {
+                        // The mono build selects by no color.
+                        if !Mono.only: PanelButton {
                             text: @tr("Color");
                             icon: @image-url("../icons/palette.svg");
                             clicked => { root.add-shape("Color", root.shape-mode); }

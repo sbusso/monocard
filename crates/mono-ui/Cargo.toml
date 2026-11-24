@@ -1,0 +1,20 @@
+[package]
+name = "mono-ui"
+version.workspace = true
+description = "Monocard: the mono panel set, its theme, and its onboarding, without a window"
+license = "GPL-3.0-or-later"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mono-core = { path = "../mono-core" }
+mono-look = { path = "../mono-look" }
+mono-tone = { path = "../mono-tone" }
+
+[dev-dependencies]
+serde_json.workspace = true

@@ -32,7 +32,7 @@ pub fn store_dir() -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .or_else(dirs::data_dir)?;
-    Some(base.join("greycard").join("profiles"))
+    Some(base.join(greycard_core::brand::APP_DIR).join("profiles"))
 }
 
 static STORE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();

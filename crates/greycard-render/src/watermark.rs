@@ -371,6 +371,8 @@ fn space_rgb(space: Space) -> RgbSpace {
         Space::DisplayP3 => RgbSpace::DISPLAY_P3,
         Space::Rec2020 => RgbSpace::REC2020,
         Space::AdobeRgb => RgbSpace::ADOBE_RGB,
+        #[cfg(feature = "mono")]
+        Space::GreyGamma22 | Space::DotGain20 => RgbSpace::SRGB,
     }
 }
 

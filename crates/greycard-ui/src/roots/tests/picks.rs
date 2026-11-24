@@ -648,6 +648,7 @@ fn the_rejects_move_and_a_delete_leave_an_offline_root_alone() {
 /// a frame under an offline root is refused with a word, and
 /// nothing changes anywhere.
 #[test]
+#[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
 fn a_turn_on_a_view_frame_reads_its_sidecar_then_writes_it() {
     let (dir, files, writer, app, state, worker) = rated_under_a_root("rows-turn");
     open_view(&state, &app, &worker, View::Roots(None));

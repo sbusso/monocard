@@ -7,6 +7,7 @@ edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
+default-run = "greycard-ui"
 
 [lints]
 workspace = true
@@ -19,7 +20,21 @@ path = "src/lib.rs"
 name = "greycard-ui"
 path = "src/main.rs"
 
+# The same program under Monocard's name; its tests are the one above's.
+# The path is spelled another way so that cargo does not warn, at every
+# command, of one file in two targets.
+[[bin]]
+name = "monocard-ui"
+path = "../greycard-ui/src/main.rs"
+required-features = ["mono"]
+test = false
+
 [dependencies]
+mono-core = { path = "../mono-core", optional = true }
+mono-look = { path = "../mono-look", optional = true }
+mono-tone = { path = "../mono-tone", optional = true }
+mono-profile = { path = "../mono-profile", optional = true }
+mono-ui = { path = "../mono-ui", optional = true }
 greycard-core = { path = "../greycard-core" }
 greycard-version = { path = "../greycard-version" }
 greycard-edit = { path = "../greycard-edit" }
@@ -89,6 +104,8 @@ trash = "5.2"
 sys-locale = "0.3"
 
 [features]
+# Monocard, the monochrome build (docs/monocard).
+mono = ["dep:mono-core", "dep:mono-look", "dep:mono-tone", "dep:mono-profile", "dep:mono-ui", "greycard-engine/mono", "greycard-viewport/mono", "greycard-slint/mono", "dep:objc2-image-capture-core", "dep:block2"]
 # Nikon High Efficiency raws; off by default, see greycard-core.
 nikon-he = ["greycard-core/nikon-he"]
 
@@ -173,3 +190,6 @@ objc2-foundation = { version = "0.3", default-features = false, features = ["std
 objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFData", "CFPreferences", "CFString"] }
 objc2-core-graphics = { version = "0.3", default-features = false, features = ["std", "CGColorSpace", "CGDirectDisplay", "CGDisplayConfiguration", "CGError"] }
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSGraphics", "NSScreen"] }
+# Monocard's import from a camera on a USB cable (docs/monocard).
+objc2-image-capture-core = { version = "0.3.2", default-features = false, optional = true, features = ["std", "ICCameraDevice", "ICCameraFile", "ICCameraFolder", "ICCameraItem", "ICDevice", "ICDeviceBrowser", "ImageCaptureConstants", "block2", "libc", "objc2-core-graphics"] }
+block2 = { version = "0.6", optional = true }

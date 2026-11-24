@@ -10,6 +10,7 @@
 // a preset's row makes it a favorite, and a right-click on the row
 // moves it into a group or out; one on a group's header renames it.
 
+import { Mono } from "../../../mono-ui/ui/state.slint";
 import { Theme } from "../theme.slint";
 import { Tips, TipArea, Section, PanelButton, ScrollPane } from "../controls.slint";
 import { PresetRow } from "../structs.slint";
@@ -279,7 +280,7 @@ export component PresetsSection inherits Section {
         }
     }
     if root.preset-names.length == 0: Text {
-        text: @tr("Save the edit or import a Lightroom preset.");
+        text: Mono.only ? Mono.presets-empty : @tr("Save the edit or import a Lightroom preset.");
         // Held to its lines: the box alone takes the section's share.
         max-height: self.preferred-height;
         font-size: Theme.font-xs;

@@ -14,6 +14,12 @@ workspace = true
 [lib]
 
 [dependencies]
+mono-core = { path = "../mono-core", optional = true }
+mono-decode = { path = "../mono-decode", optional = true }
+mono-denoise = { path = "../mono-denoise", optional = true }
+mono-tone = { path = "../mono-tone", optional = true }
+mono-look = { path = "../mono-look", optional = true }
+mono-profile = { path = "../mono-profile", optional = true }
 greycard-core = { path = "../greycard-core" }
 greycard-edit = { path = "../greycard-edit" }
 greycard-edit-io = { path = "../greycard-edit-io" }
@@ -61,6 +67,8 @@ greycard-render = { path = "../greycard-render", features = ["testing"] }
 greycard-library = { path = "../greycard-library", features = ["fixtures"] }
 
 [features]
+# Monocard, the monochrome build (docs/monocard).
+mono = ["dep:mono-core", "dep:mono-decode", "dep:mono-denoise", "dep:mono-tone", "dep:mono-look", "dep:mono-profile", "greycard-render/mono", "greycard-library/mono", "greycard-ai/mono", "greycard-lens/mono", "greycard-gpu/mono"]
 # The test helpers and the test hooks the window's tests share with
 # these: the worker for a test, the camera picture's reads, the
 # prefetch's quiet. Turned on by greycard-ui's dev-dependency only.

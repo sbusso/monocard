@@ -39,6 +39,7 @@
 //! What this crate deliberately does not contain: any tone mapping, display
 //! transform, edit schema or UI concern. Those belong to consumers.
 
+pub mod brand;
 pub mod color;
 pub mod dcp;
 pub mod decode;

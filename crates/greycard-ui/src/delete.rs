@@ -317,10 +317,10 @@ pub fn shared_xmp(raw: &Path, companions: &[PathBuf], folders: &mut Folders) -> 
     }
     let others = names.iter().any(|name| {
         let p = raw.with_file_name(name);
-        let ours = p
-            .extension()
-            .and_then(|x| x.to_str())
-            .is_some_and(|x| matches!(x.to_ascii_lowercase().as_str(), "xmp" | "gcd" | "tmp"));
+        let ours = p.extension().and_then(|x| x.to_str()).is_some_and(|x| {
+            ["xmp", "gcd", "tmp", greycard_core::brand::SIDECAR_EXT]
+                .contains(&x.to_ascii_lowercase().as_str())
+        });
         let same = p
             .file_stem()
             .is_some_and(|s| s.to_string_lossy().to_lowercase() == stem);
@@ -713,6 +713,7 @@ mod tests {
     /// and the short XMP the two share, said in the summary; apart, or
     /// with the JPEG chosen as a frame of its own, the raw goes alone.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_raw_takes_its_jpeg_and_their_shared_xmp_unless_apart() {
         let dir = scratch("pair");
         for name in [
@@ -817,6 +818,7 @@ mod tests {
     /// its single frame stays, with its own sidecars, and takes none of
     /// the merge's.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn an_orf_takes_the_stems_xmp_and_leaves_its_ori_whole() {
         let dir = scratch("ori");
         for name in [
@@ -906,6 +908,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_frame_gone_between_the_sheet_and_the_confirm_is_counted_gone() {
         let dir = scratch("vanished");
         let files = shoot(&dir);
@@ -944,6 +947,7 @@ mod tests {
     /// sidecars go in one call, and a refusal stops there with the
     /// rest where they were and nothing deleted for good in its place.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_trash_that_refuses_stops_the_delete_and_deletes_nothing_for_good() {
         let dir = scratch("trash");
         let bin = dir.join("bin");
@@ -993,6 +997,7 @@ mod tests {
     /// status says the sidecar stayed rather than that the raw was
     /// refused.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_trash_that_takes_the_raw_and_refuses_the_sidecar_is_said_as_it_was() {
         let dir = scratch("half");
         let bin = dir.join("bin");
@@ -1032,6 +1037,7 @@ mod tests {
     /// sidecar it left: the frame is counted gone already, and the
     /// status does not say the trash took it.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_raw_gone_before_and_its_sidecar_refused_is_not_said_as_trashed() {
         let dir = scratch("gone-refused");
         let files = shoot(&dir);

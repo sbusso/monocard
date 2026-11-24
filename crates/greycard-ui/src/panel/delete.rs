@@ -1169,6 +1169,7 @@ pub(crate) mod tests {
     /// A frame deleted by another hand between the sheet and the
     /// confirm: counted gone, out of the list, and no panic.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_frame_gone_before_the_confirm_leaves_the_list_without_a_panic() {
         let dir = scratch("vanished");
         let files = shoot(&dir);

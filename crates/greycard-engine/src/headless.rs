@@ -233,8 +233,10 @@ pub fn plan(
             presets
                 .and_then(|s| {
                     // The film presets, as the window's first run
-                    // puts them there.
-                    s.seed();
+                    // puts them there; the mono build has none.
+                    if !cfg!(feature = "mono") {
+                        s.seed();
+                    }
                     s.find(name)
                 })
                 .with_context(|| format!("no preset called {name}"))?
@@ -352,6 +354,11 @@ pub fn plan(
         // edit of the frame opened (every frame's, with `--all` or
         // several named) and never onto its sidecar.
         if i == first || req.all || several {
+            // A monochrome frame's exposure is its own section's.
+            #[cfg(feature = "mono")]
+            if req.overrides.exposure.is_some() && edit.mono.is_none() {
+                edit.mono = crate::mono::section_of(&source, &edit, seed);
+            }
             req.overrides.apply(&mut edit);
         }
         frames.push(queue::Frame {
@@ -795,6 +802,10 @@ impl Overrides {
         }
         if let Some(ev) = self.exposure {
             edit.light.exposure = ev;
+            #[cfg(feature = "mono")]
+            if let Some(m) = &mut edit.mono {
+                m.basic.exposure = ev;
+            }
         }
         if let Some(curve) = self.display_curve {
             edit.display_curve = curve;
@@ -1008,6 +1019,8 @@ mod tests {
                         match image {
                             Developed::Texture(_) => "on the GPU",
                             Developed::Halves(_) => "on the CPU",
+                            #[cfg(feature = "mono")]
+                            Developed::Mono(_) => "on the CPU, mono",
                         }
                     );
                     break;

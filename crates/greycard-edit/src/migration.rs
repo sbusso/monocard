@@ -170,6 +170,17 @@ pub fn migrate(mut value: serde_json::Value) -> Result<serde_json::Value> {
     if version > VERSION {
         return Err(Error::Newer(version));
     }
+    // The monochrome section has a schema of its own.
+    #[cfg(feature = "mono")]
+    if let Some(v) = value.pointer("/mono/version")
+        && v.as_u64()
+            .is_none_or(|v| v > mono_core::edit::VERSION.into())
+    {
+        return Err(refused(&format!(
+            "the monochrome section is schema version {v}, this build reads up to {}",
+            mono_core::edit::VERSION
+        )));
+    }
     if let Some(obj) = value.as_object_mut() {
         // Version 3 changed what the three tone shifts mean, not where
         // they are kept, so it has nothing to move; the doc above says
@@ -572,6 +583,37 @@ mod tests {
     fn a_newer_schema_is_refused() {
         let err = Edit::from_json(r#"{"version": 99}"#).unwrap_err();
         assert!(matches!(err, Error::Newer(99)));
+    }
+
+    /// A monochrome section from a later build is not read as this one's,
+    /// in the edit, its history or a version.
+    #[cfg(feature = "mono")]
+    #[test]
+    fn a_newer_monochrome_section_is_refused() {
+        let at = |v: u32| format!(r#"{{"version": 9, "mono": {{"version": {v}}}}}"#);
+        let newest = mono_core::edit::VERSION;
+        assert!(Edit::from_json(&at(newest)).is_ok());
+        let err = Edit::from_json(&at(newest + 1)).unwrap_err().to_string();
+        assert!(err.contains("monochrome section"), "{err}");
+        for place in ["current", "history"] {
+            let edit: serde_json::Value = serde_json::from_str(&at(newest + 1)).unwrap();
+            let edit = match place {
+                "history" => serde_json::json!([edit]),
+                _ => edit,
+            };
+            let line = serde_json::json!({ place: edit });
+            assert!(
+                crate::Sidecar::from_json(&line.to_string()).is_err(),
+                "{place}"
+            );
+            let version = serde_json::json!({
+                "versions": [{"id": "a", "name": "a", "line": line}]
+            });
+            assert!(
+                crate::Sidecar::from_json(&version.to_string()).is_err(),
+                "{place}"
+            );
+        }
     }
 
     #[test]

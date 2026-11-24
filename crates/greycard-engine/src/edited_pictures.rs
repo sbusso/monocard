@@ -1218,6 +1218,41 @@ pub fn make(reduced: &WorkingImage, finish: &Finish) -> Made {
         finish.white.as_ref(),
         detail.as_ref().zip(finish.detail.as_ref().map(|p| &p.meta)),
     );
+    made_of(rendered, edit, finish.turn)
+}
+
+/// [`make`] from a monochrome raw's planes, reduced as its picture is.
+#[cfg(feature = "mono")]
+pub fn make_mono(reduced: &mono_core::MonoFrame, finish: &Finish) -> Made {
+    let (fw, fh) = (finish.full.0 as f32, finish.full.1 as f32);
+    let edit = &Edit {
+        geometry: finish
+            .edit
+            .geometry
+            .with_camera_frame(fw, fh, finish.camera),
+        ..finish.edit.clone()
+    };
+    let settings = greycard_render::export::Settings {
+        sharpen: greycard_render::export::Sharpen::Off,
+        ..greycard_render::export::Settings::default()
+    };
+    let beside = greycard_render::mono::Beside {
+        learned: Some(&finish.rasters),
+        picture: finish.guide.as_ref().and_then(|g| g.picture.as_deref()),
+        full: Some(finish.full),
+        exact: Some(fitted_size(finish.full, &edit.geometry, None)),
+    };
+    let mut rendered = greycard_render::mono::render(reduced, edit, &settings, &beside);
+    // A thumbnail is three bytes a pixel.
+    if rendered.is_grey()
+        && let greycard_render::export::Pixels::Eight(p) = &mut rendered.pixels
+    {
+        *p = p.iter().flat_map(|v| [*v; 3]).collect();
+    }
+    made_of(rendered, edit, finish.turn)
+}
+
+fn made_of(rendered: greycard_render::export::Rendered, edit: &Edit, turn: u8) -> Made {
     let greycard_render::export::Pixels::Eight(rgb) = rendered.pixels else {
         unreachable!("a JPEG's pixels are eight bits")
     };
@@ -1227,7 +1262,7 @@ pub fn make(reduced: &WorkingImage, finish: &Finish) -> Made {
             height: rendered.height,
             rgb,
         },
-        edit.geometry.shown_turns(finish.turn),
+        edit.geometry.shown_turns(turn),
     );
     let thumbs = crate::made::MADE
         .iter()
@@ -1303,6 +1338,9 @@ pub enum Developed {
     Full(Arc<WorkingImage>),
     /// Already reduced, read back from the viewport's texture.
     Reduced(WorkingImage),
+    /// A monochrome raw's planes, at full size.
+    #[cfg(feature = "mono")]
+    Mono(mono_core::MonoFrame),
 }
 
 /// One keeping: the frame, its content hash and key, the picture and
@@ -1329,6 +1367,8 @@ pub struct Keeping {
 pub fn keep(edited: &Edited, job: Keeping, done: impl FnOnce(Key)) {
     let started = Instant::now();
     let reduced;
+    #[cfg(feature = "mono")]
+    let mut mono = None;
     let image = match &job.developed {
         Developed::Full(full) if job.factor > 1 => {
             reduced = reduce(full, job.factor);
@@ -1336,9 +1376,27 @@ pub fn keep(edited: &Edited, job: Keeping, done: impl FnOnce(Key)) {
         }
         Developed::Full(full) => &**full,
         Developed::Reduced(r) => r,
+        #[cfg(feature = "mono")]
+        Developed::Mono(frame) => {
+            mono = Some(greycard_render::mono::map_planes(frame, |p| {
+                greycard_render::mono::reduced(p, job.factor)
+            }));
+            reduced = WorkingImage::new(0, 0);
+            &reduced
+        }
     };
     let (rw, rh) = (image.width, image.height);
+    #[cfg(feature = "mono")]
+    let (rw, rh) = mono
+        .as_ref()
+        .map_or((rw, rh), |f| (f.base.width, f.base.height));
     let reducing = started.elapsed().as_secs_f64();
+    #[cfg(feature = "mono")]
+    let made = match &mono {
+        Some(frame) => make_mono(frame, &job.finish),
+        None => make(image, &job.finish),
+    };
+    #[cfg(not(feature = "mono"))]
     let made = make(image, &job.finish);
     let making = started.elapsed().as_secs_f64() - reducing;
     let stored = edited.store(&job.frame, &job.hash, job.key, job.iso, &made);

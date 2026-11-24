@@ -682,7 +682,7 @@ fn about_paths() -> [Option<PathBuf>; 4] {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
         .or_else(dirs::cache_dir)
-        .map(|c| c.join("greycard"));
+        .map(|c| c.join(greycard_core::brand::APP_DIR));
     [
         parent(settings::path()),
         parent(greycard_library::Library::user_path()),
@@ -1699,7 +1699,10 @@ mod tests {
             crate::testing::count_labeled(&app, greycard_version::LABEL),
             1
         );
-        assert_eq!(crate::testing::count_labeled(&app, "Check now"), 1);
+        assert_eq!(
+            crate::testing::count_labeled(&app, "Check now"),
+            usize::from(crate::update::ON)
+        );
         // Each folder greycard's own; on Windows the logs go in a
         // folder of their own under the library's, and the library and
         // the caches share `%LOCALAPPDATA%\greycard`, so a folder is
@@ -1708,7 +1711,10 @@ mod tests {
         let [_, library, caches, log] = &shown;
         for dir in [library, caches, log] {
             let logs = cfg!(windows) && dir.ends_with(r"greycard\logs");
-            assert!(dir.ends_with("greycard") || logs, "{dir}");
+            assert!(
+                dir.ends_with(greycard_core::brand::APP_DIR) || logs,
+                "{dir}"
+            );
             let rows = shown.iter().filter(|d| *d == dir).count();
             assert_eq!(crate::testing::count_labeled(&app, dir), rows, "{dir}");
         }

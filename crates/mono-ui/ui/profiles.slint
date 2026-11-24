@@ -1,0 +1,383 @@
+// The settings page "Camera profiles": the camera's modes with the state of
+// the look of each, the other values that come of photos, the folders the
+// modes are fitted from, and the test chart.
+
+import { Theme } from "../../greycard-slint/ui/theme.slint";
+import { PanelButton, Typing } from "../../greycard-slint/ui/controls.slint";
+import { Mono, MonoProfile } from "state.slint";
+
+component Heading inherits Text {
+    font-size: Theme.font-xs;
+    font-weight: Theme.weight-medium;
+    color: Theme.text-secondary;
+}
+
+// Words that wrap. Their own width, so a wrapped line counts in the
+// page's height.
+component Words inherits Text {
+    font-size: Theme.font-xs;
+    color: Theme.text-secondary;
+    wrap: word-wrap;
+}
+
+// A line of the table: its columns, with the room of the open row's mark
+// before them.
+component Columns inherits HorizontalLayout {
+    in property <string> mode;
+    in property <string> state;
+    in property <string> error;
+    in property <string> photos;
+    in property <string> date;
+    in property <bool> head: false;
+    spacing: 6px;
+    Text {
+        horizontal-stretch: 1;
+        text: root.mode;
+        font-size: root.head ? Theme.font-xs : Theme.font-sm;
+        color: root.head ? Theme.text-secondary : Theme.text;
+        overflow: elide;
+        vertical-alignment: center;
+    }
+    Text {
+        width: 54px;
+        text: root.state;
+        font-size: Theme.font-xs;
+        color: root.head ? Theme.text-secondary : Theme.text;
+        vertical-alignment: center;
+    }
+    Text {
+        width: 82px;
+        text: root.error;
+        font-size: Theme.font-xs;
+        color: Theme.text-secondary;
+        vertical-alignment: center;
+    }
+    Text {
+        width: 38px;
+        text: root.photos;
+        font-size: Theme.font-xs;
+        color: Theme.text-secondary;
+        vertical-alignment: center;
+    }
+    Text {
+        width: 64px;
+        text: root.date;
+        font-size: Theme.font-xs;
+        color: Theme.text-secondary;
+        vertical-alignment: center;
+    }
+}
+
+component Row inherits Rectangle {
+    in property <MonoProfile> item;
+    in property <bool> open;
+    property <string> needs: root.item.wants == "" ? "" : "Needs: " + root.item.wants;
+    property <string> more: root.item.other-name == "" ? root.needs
+        : root.needs == "" ? "Look: " + root.item.other-name
+        : "Look: " + root.item.other-name + ". " + root.needs;
+    function toggle() {
+        Mono.profile-ask = "";
+        Mono.profile-chosen = root.open ? "" : root.item.key;
+    }
+    height: lines.preferred-height;
+    border-radius: Theme.radius-sm;
+    background: area.has-hover ? Theme.hover : root.open ? Theme.base : transparent;
+    border-width: fs.has-focus ? 1px : 0px;
+    border-color: Theme.focus-ring;
+    accessible-role: button;
+    accessible-label: root.item.label;
+    accessible-description: root.item.state + (root.item.error == "" ? "" : ", error " + root.item.error)
+        + (root.more == "" ? "" : ". " + root.more);
+    accessible-expandable: true;
+    accessible-expanded: root.open;
+    accessible-action-default => { root.toggle(); }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.text == " " || e.text == Key.Return) {
+                root.toggle();
+                return accept;
+            }
+            return reject;
+        }
+    }
+    area := TouchArea {
+        mouse-cursor: MouseCursor.pointer;
+        clicked => {
+            Typing.close-all();
+            fs.focus();
+            root.toggle();
+        }
+    }
+    Image {
+        x: 2px;
+        y: 6px;
+        width: 12px;
+        height: 12px;
+        source: @image-url("../../greycard-slint/ui/icons/chevron-down.svg");
+        colorize: Theme.text-secondary;
+        transform-rotation: root.open ? 0deg : -90deg;
+    }
+    lines := VerticalLayout {
+        padding: 4px;
+        padding-left: 18px;
+        spacing: 2px;
+        Columns {
+            mode: root.item.label;
+            state: root.item.state;
+            error: root.item.error;
+            photos: root.item.photos;
+            date: root.item.date;
+        }
+        if root.more != "": Words {
+            width: root.width - 22px;
+            text: root.more;
+        }
+    }
+}
+
+export component MonoProfiles inherits VerticalLayout {
+    in property <length> inner-width;
+    // What had the keys may be gone.
+    callback focus-keys();
+    padding: Theme.space-5;
+    padding-right: Theme.space-5 + Theme.scrollbar-band;
+    padding-bottom: Theme.space-2;
+    spacing: Theme.space-3;
+    Heading { text: "CAMERA MODES"; }
+    VerticalLayout {
+        spacing: 2px;
+        Words {
+            width: root.inner-width;
+            text: "Good: in the limits. Draft: over them. Adjusted: by hand. Missing: no fit.";
+        }
+        Words {
+            width: root.inner-width;
+            text: "Error: mean / 95 %, in levels of 255.";
+        }
+    }
+    VerticalLayout {
+        spacing: 2px;
+        Columns {
+            padding-left: 18px;
+            padding-right: 4px;
+            head: true;
+            mode: "Mode";
+            state: "State";
+            error: "Error";
+            photos: "Photos";
+            date: "Date";
+        }
+        for item in Mono.profiles: VerticalLayout {
+            property <bool> open: item.key == Mono.profile-chosen;
+            spacing: 2px;
+            if item.camera != "": Heading {
+                height: Theme.control-height;
+                text: item.camera;
+                vertical-alignment: center;
+            }
+            Row {
+                item: item;
+                open: parent.open;
+            }
+            if self.open && Mono.profile-ask == "": HorizontalLayout {
+                padding: 4px;
+                padding-left: 0px;
+                spacing: 6px;
+                alignment: start;
+                if item.look != "": PanelButton {
+                    text: "Use";
+                    accessible-label: "Use " + item.look;
+                    enabled: item.usable;
+                    clicked => { Mono.profile-pressed("use", item.key); }
+                }
+                if item.look != "": PanelButton {
+                    text: "Adjust";
+                    accessible-label: "Adjust " + item.look;
+                    enabled: item.usable;
+                    clicked => { Mono.profile-pressed("adjust", item.key); }
+                }
+                if item.look != "": PanelButton {
+                    text: "Export";
+                    accessible-label: "Export " + item.look;
+                    clicked => { Mono.profile-pressed("export", item.key); }
+                }
+                if item.look != "": PanelButton {
+                    text: "Delete";
+                    accessible-label: "Delete " + item.look;
+                    clicked => { Mono.profile-ask = "delete"; }
+                }
+                PanelButton {
+                    text: item.state == "Missing" ? "Fit" : "Fit again";
+                    accessible-label: "Fit " + item.label;
+                    enabled: Mono.fit-folders.length > 0 && !Mono.fitting;
+                    clicked => { Mono.profile-pressed("fit", item.key); }
+                }
+            }
+            if self.open && item.look != "" && !item.usable: Words {
+                width: root.inner-width;
+                text: "Use and Adjust need an open raw of this camera.";
+            }
+            if self.open && Mono.profile-ask != "": Words {
+                width: root.inner-width;
+                text: Mono.profile-ask == "delete"
+                    ? "Delete " + item.look + "? Photos that have it keep their values."
+                    : "The look " + item.label + " has your changes. Fit again and write over them?";
+            }
+            if self.open && Mono.profile-ask != "": HorizontalLayout {
+                padding: 4px;
+                padding-left: 0px;
+                spacing: 6px;
+                alignment: start;
+                PanelButton {
+                    text: "Cancel";
+                    init => { self.focus(); }
+                    clicked => {
+                        Mono.profile-ask = "";
+                        root.focus-keys();
+                    }
+                }
+                PanelButton {
+                    text: Mono.profile-ask == "delete" ? "Delete" : "Write over";
+                    accessible-label: Mono.profile-ask == "delete" ? "Delete " + item.look + " for good"
+                        : "Write over " + item.label;
+                    primary: true;
+                    clicked => {
+                        Mono.profile-pressed(Mono.profile-ask == "delete" ? "delete" : "fit-over", item.key);
+                        root.focus-keys();
+                    }
+                }
+            }
+        }
+    }
+    if Mono.look-note != "": Words {
+        width: root.inner-width;
+        text: Mono.look-note;
+    }
+    Rectangle { height: Theme.space-1; }
+    Heading { text: "OTHER VALUES"; }
+    VerticalLayout {
+        spacing: 6px;
+        for v in Mono.profile-values: HorizontalLayout {
+            spacing: 6px;
+            Text {
+                width: 96px;
+                text: v.name;
+                font-size: Theme.font-sm;
+                color: Theme.text;
+            }
+            Text {
+                width: 54px;
+                text: v.state;
+                font-size: Theme.font-xs;
+                color: Theme.text;
+                vertical-alignment: center;
+            }
+            Words {
+                horizontal-stretch: 1;
+                text: v.wants;
+                vertical-alignment: center;
+            }
+        }
+    }
+    Rectangle { height: Theme.space-1; }
+    Heading { text: "PHOTOS FOR THE FIT"; }
+    Words {
+        width: root.inner-width;
+        text: "Add the folders that hold the DNGs and the camera's JPEGs of them. A fit uses all the folders. Subfolders are not read. Nothing is written in them.";
+    }
+    for folder[i] in Mono.fit-folders: HorizontalLayout {
+        spacing: Theme.space-2;
+        Words {
+            width: root.inner-width - remove.preferred-width - Theme.space-2;
+            text: folder;
+            wrap: char-wrap;
+            vertical-alignment: center;
+        }
+        remove := PanelButton {
+            text: "Remove from list";
+            accessible-label: "Remove " + folder + " from the list";
+            enabled: !Mono.fitting;
+            clicked => {
+                Mono.folder-remove(i);
+                root.focus-keys();
+            }
+        }
+    }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        PanelButton {
+            text: "Add folder...";
+            enabled: !Mono.fitting;
+            clicked => { Mono.folder-add(); }
+        }
+        PanelButton {
+            text: "Fit all";
+            accessible-label: "Fit all modes";
+            enabled: Mono.fit-folders.length > 0 && !Mono.fitting;
+            clicked => { Mono.fit-all(); }
+        }
+    }
+    if Mono.fit-note != "": Words {
+        width: root.inner-width;
+        text: Mono.fit-note;
+    }
+    Words {
+        width: root.inner-width;
+        text: "Fit all does not write over an adjusted look.";
+    }
+    Rectangle { height: Theme.space-1; }
+    Heading { text: "TEST CHART"; }
+    HorizontalLayout {
+        spacing: Theme.space-2;
+        alignment: start;
+        PanelButton {
+            text: "Test chart";
+            accessible-label: "Show the test chart";
+            clicked => { Mono.chart-shown(true); }
+        }
+        PanelButton {
+            text: "Save chart...";
+            clicked => { Mono.chart-saved(); }
+        }
+    }
+    if Mono.chart-note != "": Words {
+        width: root.inner-width;
+        text: Mono.chart-note;
+    }
+    Words {
+        width: root.inner-width;
+        text: "The chart has 40 gray steps over 10 stops. It fills the screen. Esc or a click closes it.";
+    }
+    Words {
+        width: root.inner-width;
+        text: "1. Make the room dark. Put the camera on a tripod. Set RAW+JPEG, Standard mode, and manual exposure.\n2. Set ISO 160 and a shutter of 1/30 s or longer. Set the corrections of the camera to off.\n3. Make the focus a little soft.\n4. Take two shots. In the first, the brightest step is just under white. Take the second 4 stops darker.\n5. Develop the two DNGs in the camera in each mode. Add the folder with the DNGs and the JPEGs above.";
+    }
+}
+
+// The chart over the whole window, on black.
+export component MonoChart inherits Rectangle {
+    width: 100%;
+    height: 100%;
+    background: black;
+    accessible-role: image;
+    accessible-label: "Gray step chart";
+    Image {
+        width: 100%;
+        height: 100%;
+        source: Mono.chart;
+        image-fit: contain;
+        image-rendering: pixelated;
+    }
+    FocusScope {
+        init => { self.focus(); }
+        key-pressed(e) => {
+            if (e.text == Key.Escape) { Mono.chart-shown(false); }
+            return accept;
+        }
+    }
+    TouchArea {
+        mouse-cursor: MouseCursor.none;
+        clicked => { Mono.chart-shown(false); }
+    }
+}

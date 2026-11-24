@@ -28,3 +28,7 @@ log.workspace = true
 naga.workspace = true
 anyhow.workspace = true
 half.workspace = true
+
+[features]
+# Monocard, the monochrome build (docs/monocard).
+mono = ["greycard-core/mono"]

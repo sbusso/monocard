@@ -71,6 +71,16 @@ pub(crate) fn picture_up(develop: &mut owners::Develop, landed: &crate::panel::d
     develop.drawn_guide = landed.guide.clone();
     develop.drawn_generation = landed.generation;
     develop.drawn_planes = landed.planes.clone();
+    #[cfg(feature = "mono")]
+    {
+        develop.drawn_mono = match &landed.image {
+            Developed::Mono(frame) => Some(frame.clone()),
+            _ => None,
+        };
+        if let Some(frame) = &develop.drawn_mono {
+            crate::mono::picture::went_up(frame);
+        }
+    }
     let Some(renderer) = develop.renderer.as_mut() else {
         return;
     };
@@ -80,10 +90,50 @@ pub(crate) fn picture_up(develop: &mut owners::Develop, landed: &crate::panel::d
             Some(full) => renderer.set_source_sized(texture.clone(), full),
             None => renderer.set_source(texture.clone()),
         },
+        #[cfg(feature = "mono")]
+        Developed::Mono(frame) => renderer.set_mono(frame),
     }
     crate::open_note::put_up();
     renderer.set_guide(&landed.guide);
     renderer.set_detail(landed.planes.as_ref());
+}
+
+/// What the mono frame on the GPU is finished with: `edit`, under what
+/// the mono views show; none over a stock picture. The split's before is
+/// the frame's Original.
+#[cfg(feature = "mono")]
+pub(crate) fn mono_view(
+    st: &State,
+    edit: &greycard_edit::Edit,
+) -> Option<greycard_viewport::render::MonoView> {
+    use greycard_viewport::render::MonoView;
+    if !st.develop.renderer.as_ref()?.is_mono() {
+        return None;
+    }
+    let ui = crate::mono::ui_state();
+    let before = || {
+        let original = crate::panel::reset::original_of(st, st.current?)?;
+        Some((ui.split_at, original.mono.unwrap_or_default()))
+    };
+    Some(MonoView {
+        zone_view: ui.zone_view.then_some(ui.zone_count),
+        clip_map: ui.clip_map,
+        paper: ui.proof.paper(),
+        split: (ui.split == mono_ui::Split::Both).then(before).flatten(),
+        ..MonoView::of(edit)
+    })
+}
+
+/// The scope a picture is binned for: of a mono one, which has no color,
+/// the histogram in the parade's and the vectorscope's place.
+pub(crate) fn scope_of(st: &State) -> scope::Scope {
+    #[cfg(feature = "mono")]
+    if st.develop.renderer.as_ref().is_some_and(|r| r.is_mono())
+        && st.develop.scope != scope::Scope::Waveform
+    {
+        return scope::Scope::Rgb;
+    }
+    st.develop.scope
 }
 
 /// The camera's frame on the develop the viewport draws
@@ -1263,7 +1313,14 @@ pub(crate) fn sync_display(
     let space =
         export::Space::from_name(app.get_export_space().as_str()).unwrap_or(export::Space::Srgb);
     renderer.set_output(space.matrix());
-    let proof = app.get_proofing().then(|| proof_settings(app)).flatten();
+    // The mono build's proof is its own paper, in the mono view.
+    #[cfg(feature = "mono")]
+    let stock = !crate::mono::only() && !crate::mono::on(app);
+    #[cfg(not(feature = "mono"))]
+    let stock = true;
+    let proof = (stock && app.get_proofing())
+        .then(|| proof_settings(app))
+        .flatten();
     let (monitor, from) = monitor_settings(app, monitors);
     let key = (space, proof.clone(), monitor.clone());
     if lut_for.as_ref() != Some(&key) {
@@ -2205,6 +2262,8 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, worker: &Rc<Worker>) {
         let app_weak = app.as_weak();
         app.on_canvas_changed(move || {
             if let Some(app) = app_weak.upgrade() {
+                #[cfg(feature = "mono")]
+                crate::mono::refresh(&app);
                 app.window().request_redraw();
             }
         });
@@ -6978,7 +7037,11 @@ pub(crate) mod tests {
         let (_state, _worker) = crate::testing::state_for(&app, crate::testing::folder(3));
         assert_eq!(crate::testing::count_labeled(&app, "Help menu"), 1);
         app.invoke_guide_asked();
-        assert_eq!(app.get_status(), "the guide is open in the browser");
+        if greycard_core::brand::REPOSITORY.is_some() {
+            assert_eq!(app.get_status(), "the guide is open in the browser");
+        } else {
+            assert!(app.get_status().ends_with("has no guide online yet"));
+        }
         assert_eq!(Shown::sheet("keys"), Ok(Shown::Keys));
         assert_eq!(Shown::sheet("help"), Ok(Shown::Help));
         Shown::Keys.open(&app);

@@ -16,6 +16,8 @@
 //! is [`pano`]'s, and the focus stack [`focus`]'s.
 
 pub mod focus;
+#[cfg(feature = "mono")]
+mod mono;
 pub mod pano;
 
 use std::path::{Path, PathBuf};
@@ -232,6 +234,16 @@ pub struct Head {
     pub shot: Shot,
 }
 
+/// The `Software` tag of a merge, which says it is ours
+/// (`greycard_core::raw::is_ours`).
+fn software() -> String {
+    format!(
+        "{} {}",
+        greycard_core::brand::NAME,
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
 /// The frames of a merge: files on disk, or made up for a measurement.
 /// Each is read when the merge comes to it, and let go after.
 pub trait Sources {
@@ -354,6 +366,10 @@ pub fn edit_for_merge(reference: &Edit) -> Edit {
     let mut edit = reference.clone();
     edit.light.exposure = 0.0;
     edit.noise.learned = greycard_edit::Learned::Off;
+    #[cfg(feature = "mono")]
+    if let Some(m) = &mut edit.mono {
+        m.basic.exposure = 0.0;
+    }
     edit
 }
 
@@ -585,6 +601,10 @@ pub fn hdr_of(
         None => default_out.to_path_buf(),
     };
     let reserved = hold(sources, &out, options.on_exists)?;
+    #[cfg(feature = "mono")]
+    if mono::takes(sources, reference, options) {
+        return mono::merged(sources, &exif, reserved, progress);
+    }
     let out = reserved.out().to_path_buf();
     let mut warnings = Vec::new();
     let mut reports: Vec<Option<FrameReport>> = vec![None; of];
@@ -924,11 +944,11 @@ pub fn hdr_of(
         }),
     };
     let preview = merge::preview(&image, &r.white_balance, 1024)?;
-    let software = concat!("greycard ", env!("CARGO_PKG_VERSION"));
+    let software = software();
     let dng = LinearDngOptions {
         metadata: Some(&ref_meta),
         preview: Some(&preview),
-        software: Some(software),
+        software: Some(&software),
         headroom: Some(headroom),
         ..Default::default()
     };

@@ -1176,6 +1176,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn the_sheet_lists_the_rejects_with_their_copies_and_moves_them() {
         let c = culled("move");
         assert_eq!(
@@ -1220,6 +1221,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn the_delete_is_a_click_offering_the_trash_or_permanent_as_190_does() {
         let c = culled("delete");
         // An answer the sheet did not offer is a no: the permanent

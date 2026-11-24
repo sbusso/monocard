@@ -99,6 +99,8 @@ fn state_name(sidecar: &greycard_edit::Line, i: usize) -> String {
         None if {
             let mut plain = state.clone();
             plain.noise.learned_strength = Edit::default().noise.learned_strength;
+            #[cfg(feature = "mono")]
+            let plain = crate::mono::unseeded(&plain);
             Edit::raw_defaults().contains(&plain) || Edit::picture_defaults().contains(state)
         } =>
         {
@@ -435,6 +437,10 @@ fn take_current_settled_with(st: &mut State, app: &App, worker: &Worker, save: b
 /// frame's list; this one only saves asking for a develop that would
 /// change nothing.
 fn same_develop(a: &Edit, b: &Edit) -> bool {
+    #[cfg(feature = "mono")]
+    if !crate::mono::same_develop(a, b) {
+        return false;
+    }
     a.white_balance == b.white_balance
         && a.noise == b.noise
         && a.demosaic == b.demosaic

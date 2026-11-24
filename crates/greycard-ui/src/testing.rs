@@ -203,6 +203,10 @@ pub(crate) fn state_with(
     let state = Rc::new(Shared::new(State::empty(files, app)));
     app.set_patch_handles(ModelRc::from(state.borrow().develop.patch_handles.clone()));
     install_callbacks(app, state.clone(), worker);
+    // The stock panels' tests are the mono build's too; its own put them
+    // away again.
+    #[cfg(feature = "mono")]
+    crate::mono::stock_panels(app, true);
     state
 }
 

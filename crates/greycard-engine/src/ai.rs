@@ -457,6 +457,17 @@ fn fetch_core_ml_quietly(store: &Store, model: &'static Model) {
 /// The long side of the preview the models see.
 const PREVIEW: u32 = 2048;
 
+/// A learned mode's model of a monochrome plane, as a failure is kept by.
+#[cfg(feature = "mono")]
+#[derive(Debug, Clone, PartialEq)]
+struct MonoModel {
+    mode: mono_denoise::learned::Mode,
+    path: PathBuf,
+    stat: Option<(u64, Option<std::time::SystemTime>)>,
+    /// Whether the runtime was there.
+    runs: bool,
+}
+
 pub struct Ai {
     store: Option<Store>,
     /// The open file, for the disk cache's key.
@@ -577,6 +588,18 @@ pub struct Ai {
     /// is carried along so a hit here still says where its run
     /// happened and still turns Show mask on, as an actual run does.
     subject_matte: Option<(u64, Vec<u8>, Provider)>,
+    /// The size of the frame the next pictures stand for, when they are
+    /// smaller ([`Ai::stand_for`]).
+    stands_for: Option<(usize, usize)>,
+    #[cfg(feature = "mono")]
+    mono_denoiser: Option<(mono_denoise::learned::Mode, mono_denoise::learned::Model)>,
+    /// The learned modes whose model failed here, and why: not asked again
+    /// before the model or the runtime is another.
+    #[cfg(feature = "mono")]
+    mono_failed: Vec<(MonoModel, String)>,
+    /// Where a test has the model of any mode.
+    #[cfg(all(test, feature = "mono"))]
+    pub(crate) mono_by_test: Option<PathBuf>,
     /// A Whole person keeps SAM's edge whatever the store has: for a
     /// test to set the two edges side by side.
     #[cfg(any(test, feature = "testing"))]
@@ -2273,6 +2296,13 @@ impl Ai {
             // Never in a test build, whichever constructor it uses.
             quiet_fetch: !cfg!(any(test, feature = "testing")),
             subject_matte: None,
+            stands_for: None,
+            #[cfg(feature = "mono")]
+            mono_denoiser: None,
+            #[cfg(feature = "mono")]
+            mono_failed: Vec::new(),
+            #[cfg(all(test, feature = "mono"))]
+            mono_by_test: None,
             #[cfg(any(test, feature = "testing"))]
             sams_edge_only: false,
             #[cfg(any(test, feature = "testing"))]
@@ -3500,6 +3530,13 @@ impl Ai {
             disk: _,
             quiet_fetch: _,
             subject_matte: _,
+            stands_for: _,
+            #[cfg(feature = "mono")]
+            mono_denoiser,
+            #[cfg(feature = "mono")]
+            mono_failed,
+            #[cfg(all(test, feature = "mono"))]
+                mono_by_test: _,
             #[cfg(any(test, feature = "testing"))]
                 sams_edge_only: _,
             #[cfg(any(test, feature = "testing"))]
@@ -3535,6 +3572,12 @@ impl Ai {
         *fill = None;
         *remove = None;
         *denoiser = None;
+        #[cfg(feature = "mono")]
+        {
+            *mono_denoiser = None;
+            // What failed for the card's memory may not now.
+            mono_failed.clear();
+        }
         *sam3 = None;
         // A test's card has what its sessions held back.
         #[cfg(any(test, feature = "testing"))]
@@ -3584,6 +3627,13 @@ impl Ai {
             disk: _,
             quiet_fetch: _,
             subject_matte: _,
+            stands_for: _,
+            #[cfg(feature = "mono")]
+            mono_denoiser,
+            #[cfg(feature = "mono")]
+                mono_failed: _,
+            #[cfg(all(test, feature = "mono"))]
+                mono_by_test: _,
             #[cfg(any(test, feature = "testing"))]
                 sams_edge_only: _,
             #[cfg(any(test, feature = "testing"))]
@@ -3619,6 +3669,8 @@ impl Ai {
             || remove.is_some()
             || denoiser.is_some()
             || sam3.is_some();
+        #[cfg(feature = "mono")]
+        let held = held || mono_denoiser.is_some();
         // A test's sessions are what it says they hold back.
         #[cfg(any(test, feature = "testing"))]
         let held = held || *freed_by_test > 0;
@@ -4275,8 +4327,87 @@ impl Ai {
         shape: &Shape,
         model: Option<&'static Model>,
     ) -> Result<Made, String> {
-        let frame = (image.width, image.height);
+        let frame = self.stands_for.unwrap_or((image.width, image.height));
         self.raster_for(frame, base, image, edit, kind, turn, key, shape, model)
+    }
+
+    /// The rasters made from here on are of a frame of this size, which
+    /// the pictures given stand for; none for the pictures' own.
+    pub(crate) fn stand_for(&mut self, frame: Option<(usize, usize)>) {
+        self.stands_for = frame;
+    }
+
+    /// The learned denoise of a monochrome plane, its model loaded the
+    /// first time, with the provider it ran on; why not.
+    #[cfg(feature = "mono")]
+    pub(crate) fn denoise_mono(
+        &mut self,
+        mode: mono_denoise::learned::Mode,
+        plane: &mono_core::Plane,
+        noise: &mono_denoise::NoiseModel,
+    ) -> Result<(mono_core::Plane, &'static str), String> {
+        let found = self.mono_model(mode)?;
+        if let Some((_, why)) = self.mono_failed.iter().find(|(m, _)| *m == found) {
+            return Err(why.clone());
+        }
+        let ran = self.run_mono(&found, plane, noise);
+        if let Err(why) = &ran {
+            self.mono_failed.retain(|(m, _)| m.mode != mode);
+            self.mono_failed.push((found, why.clone()));
+        }
+        ran
+    }
+
+    #[cfg(feature = "mono")]
+    fn run_mono(
+        &mut self,
+        found: &MonoModel,
+        plane: &mono_core::Plane,
+        noise: &mono_denoise::NoiseModel,
+    ) -> Result<(mono_core::Plane, &'static str), String> {
+        greycard_ai::runtime::status().map_err(|e| e.to_string())?;
+        let mode = found.mode;
+        if self.mono_denoiser.as_ref().is_none_or(|(m, _)| *m != mode) {
+            self.mono_denoiser = None;
+            if self.providers.is_empty() {
+                self.providers = Provider::available();
+            }
+            let model = mono_denoise::learned::Model::load(&found.path, &self.providers)
+                .map_err(|e| e.to_string())?;
+            self.mono_denoiser = Some((mode, model));
+        }
+        let Some((_, model)) = &mut self.mono_denoiser else {
+            unreachable!("just loaded")
+        };
+        let provider = model.provider().label();
+        model
+            .run(plane, noise)
+            .map(|p| (p, provider))
+            .map_err(|e| e.to_string())
+    }
+
+    /// Whether a learned mode has a model that has not failed as it is.
+    #[cfg(feature = "mono")]
+    pub(crate) fn can_denoise_mono(&self, mode: mono_denoise::learned::Mode) -> bool {
+        self.mono_model(mode)
+            .is_ok_and(|found| !self.mono_failed.iter().any(|(m, _)| *m == found))
+    }
+
+    /// The model of `mode` as it is now.
+    #[cfg(feature = "mono")]
+    fn mono_model(&self, mode: mono_denoise::learned::Mode) -> Result<MonoModel, String> {
+        let find = || mono_denoise::learned::find(mode).map_err(|e| e.to_string());
+        #[cfg(test)]
+        let path = self.mono_by_test.clone().map_or_else(find, Ok)?;
+        #[cfg(not(test))]
+        let path = find()?;
+        let stat = std::fs::metadata(&path).ok();
+        Ok(MonoModel {
+            mode,
+            stat: stat.map(|s| (s.len(), s.modified().ok())),
+            runs: greycard_ai::runtime::status().is_ok(),
+            path,
+        })
     }
 
     /// [`Ai::raster`] on a picture of a frame whose full develop is

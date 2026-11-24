@@ -28,3 +28,7 @@ rawcolor.workspace = true
 [dev-dependencies]
 # The scratch folder's removal the tests share.
 greycard-core = { path = "../greycard-core", features = ["testing"] }
+
+[features]
+# Monocard, the monochrome build (docs/monocard).
+mono = ["greycard-edit/mono"]

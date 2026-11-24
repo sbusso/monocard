@@ -121,6 +121,17 @@ pub fn take_seed(
     }
     let mut seeded = line.current.clone();
     seeded.noise.learned_strength = rendered.noise.learned_strength;
+    // A monochrome frame was rendered from its camera profile's start, as
+    // its first open would start it; a look laid over one run is not kept.
+    #[cfg(feature = "mono")]
+    if seeded.mono.is_none()
+        && rendered
+            .mono
+            .as_deref()
+            .is_some_and(|m| m.look.name.is_empty())
+    {
+        seeded.mono = rendered.mono.clone();
+    }
     if seeded != *rendered {
         let lens = seeded.lens.enabled;
         seeded.lens.enabled = rendered.lens.enabled;
@@ -206,6 +217,42 @@ mod tests {
             !take_seed(&mut picture, Path::new("/shoot/scan.tif"), None, &rendered),
             "a picture has no ISO to seed from"
         );
+    }
+
+    /// The export of a monochrome frame nobody opened is noted on the
+    /// profile's start it was rendered from; one with a look or an exposure
+    /// for that run alone is not, and its sidecar keeps neither.
+    #[cfg(feature = "mono")]
+    #[test]
+    fn an_untouched_monochrome_frame_s_export_is_noted() {
+        let dir = std::env::temp_dir().join(format!("gl-mono-export-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut start = Edit::default();
+        start.mono.get_or_insert_default().display.contrast = 2.0;
+        start.noise.learned_strength = 0.42;
+        let mut look = start.clone();
+        look.mono.get_or_insert_default().look.name = "Street".into();
+        let mut exposed = start.clone();
+        exposed.light.exposure = 1.0;
+        exposed.mono.get_or_insert_default().basic.exposure = 1.0;
+        for (name, edit, noted) in [
+            ("a", &start, true),
+            ("b", &look, false),
+            ("c", &exposed, false),
+        ] {
+            let raw = dir.join(format!("{name}.DNG"));
+            std::fs::write(&raw, b"no raw").unwrap();
+            let exported = Exported::default();
+            let wrote = record_export_on_disk(&raw, edit, None, exported, Placement::Beside, false);
+            assert_eq!(wrote, noted, "{name}");
+            let (back, _) = read_sidecar_said(&raw);
+            assert_eq!(
+                back.current.mono,
+                if noted { start.mono.clone() } else { None }
+            );
+            assert_eq!(!back.current_exports.is_empty(), noted, "{name}");
+        }
+        greycard_core::testing::remove_dir_retry(&dir);
     }
 
     /// A raw read at the default and exported from the window at the

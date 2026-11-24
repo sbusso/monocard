@@ -390,7 +390,7 @@ pub fn named_as(
             };
             let mut path = folder.join(format!("{stem}.{ext}"));
             if beside || same_file(&path, source) {
-                path = folder.join(format!("{stem}.greycard.{ext}"));
+                path = folder.join(format!("{stem}.{}.{ext}", greycard_core::brand::APP_DIR));
             }
             let base = path.clone();
             let mut n = 1;
@@ -616,6 +616,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own export")]
     fn a_set_s_names_never_meet_each_other_or_their_sources() {
         let folder = Path::new("out");
         let files = vec![
@@ -930,6 +931,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own export")]
     fn a_version_s_export_is_named_beside_the_original_s_as_the_file_s_own_would_be() {
         let folder = Path::new("out");
         let set = vec![

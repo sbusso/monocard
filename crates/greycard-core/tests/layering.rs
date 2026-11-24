@@ -19,19 +19,47 @@ use std::sync::OnceLock;
 /// page's short names: `core` is `greycard-core`.
 const EDGES: &[(&str, &[&str])] = &[
     ("greycard-core", &[]),
-    ("greycard-edit", &["core"]),
+    ("greycard-edit", &["core", "mono-core"]),
     ("greycard-edit-io", &["core", "edit"]),
     ("greycard-lens", &["core"]),
     ("greycard-gpu", &["core"]),
     ("greycard-ai", &["core"]),
     ("greycard-match", &["core"]),
-    ("greycard-render", &["core", "edit"]),
+    (
+        "greycard-render",
+        &["core", "edit", "mono-core", "mono-tone", "mono-look"],
+    ),
     ("greycard-library", &["core", "edit", "edit-io"]),
-    ("greycard-viewport", &["core", "edit", "gpu", "render"]),
+    (
+        "greycard-viewport",
+        &[
+            "core",
+            "edit",
+            "gpu",
+            "render",
+            "mono-core",
+            "mono-tone",
+            "mono-look",
+        ],
+    ),
     (
         "greycard-engine",
         &[
-            "core", "edit", "edit-io", "lens", "gpu", "render", "ai", "match", "library",
+            "core",
+            "edit",
+            "edit-io",
+            "lens",
+            "gpu",
+            "render",
+            "ai",
+            "match",
+            "library",
+            "mono-core",
+            "mono-decode",
+            "mono-denoise",
+            "mono-tone",
+            "mono-look",
+            "mono-profile",
         ],
     ),
     ("greycard-slint", &[]),
@@ -40,19 +68,53 @@ const EDGES: &[(&str, &[&str])] = &[
     (
         "greycard-ui",
         &[
-            "core", "edit", "edit-io", "lens", "gpu", "render", "ai", "library", "match", "engine",
-            "viewport", "slint", "version",
+            "core",
+            "edit",
+            "edit-io",
+            "lens",
+            "gpu",
+            "render",
+            "ai",
+            "library",
+            "match",
+            "engine",
+            "viewport",
+            "slint",
+            "version",
+            "mono-core",
+            "mono-look",
+            "mono-tone",
+            "mono-profile",
+            "mono-ui",
         ],
     ),
     (
         "greycard-cli",
         &[
-            "core", "edit", "edit-io", "lens", "gpu", "ai", "library", "engine", "version",
+            "core",
+            "edit",
+            "edit-io",
+            "lens",
+            "gpu",
+            "ai",
+            "library",
+            "engine",
+            "version",
+            "mono-core",
+            "mono-profile",
+            "mono-look",
         ],
     ),
     ("greycard-bench", &["core", "ai"]),
     ("ort-dylib", &[]),
     ("greycard-fuzz", &["core", "edit", "edit-io", "library"]),
+    ("mono-core", &[]),
+    ("mono-decode", &["mono-core", "core"]),
+    ("mono-denoise", &["mono-core", "core", "ai"]),
+    ("mono-tone", &["mono-core"]),
+    ("mono-look", &["mono-core", "mono-tone"]),
+    ("mono-profile", &["mono-core", "mono-decode", "core"]),
+    ("mono-ui", &["mono-core", "mono-look", "mono-tone"]),
 ];
 
 /// The looser set: a dev-dependency may name any crate the crate's
@@ -72,7 +134,7 @@ const DEVELOP_IN_THE_WINDOW: &[(&str, &str, usize)] = &[(
 )];
 
 fn full(short: &str) -> String {
-    if short == "ort-dylib" {
+    if short == "ort-dylib" || short.starts_with("mono-") {
         short.to_string()
     } else {
         format!("greycard-{short}")

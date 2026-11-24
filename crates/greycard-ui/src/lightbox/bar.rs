@@ -535,7 +535,10 @@ fn the_surround_is_the_canvas_shade() {
         "the default renders as before"
     );
     let crate::settings::Settings { canvas_color, .. } = crate::settings::Settings::default();
-    assert_eq!(crate::render::canvas_choice(&canvas_color), 0);
+    assert_eq!(
+        crate::render::canvas_choice(&canvas_color),
+        if cfg!(feature = "mono") { 5 } else { 0 },
+    );
     // The sheet draws `grid-ground` and makes no choice of its own: the
     // grid's grey whatever the shade.
     key(&app, "g");

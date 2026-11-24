@@ -582,6 +582,8 @@ mod tests {
                 mask: Mask::default(),
                 look: Default::default(),
                 opacity: 1.0,
+                #[cfg(feature = "mono")]
+                mono: None,
             });
             st.develop.target = Some(0);
             st.develop.source_size = (1200, 800);

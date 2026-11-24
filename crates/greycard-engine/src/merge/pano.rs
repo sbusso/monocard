@@ -56,7 +56,7 @@ use greycard_core::{CameraImage, decode::RawMetadata};
 use greycard_edit::Edit;
 use rayon::prelude::*;
 
-use super::{Files, Progress, Sources, Step, Walked, heads, walk_loaded};
+use super::{Files, Progress, Sources, Step, Walked, heads, software, walk_loaded};
 use crate::stages::{CaFitRef, Facts, MergeCa, MergeInput};
 use crate::walk::Models;
 
@@ -1105,13 +1105,13 @@ fn laid(
         }),
     };
     let preview = merge::preview(&image, &ref_walked.white_balance, 1024)?;
-    let software = concat!("greycard ", env!("CARGO_PKG_VERSION"));
+    let software = software();
     let (ref_frame, ref_meta) = frame_tags[reference].take().expect("every frame walked");
     let metadata = without_lens(&ref_meta);
     let dng = LinearDngOptions {
         metadata: Some(&metadata),
         preview: Some(&preview),
-        software: Some(software),
+        software: Some(&software),
         headroom: Some(headroom),
         ..Default::default()
     };

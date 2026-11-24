@@ -19,18 +19,21 @@ pub(super) fn learned_masks(
     let Some(b) = base else {
         return (Rasters::new(), left_out);
     };
+    let image = b.models_image();
+    ai.stand_for(Some(b.frame_size()));
     let (rasters, masks) = learned_rasters(
         edit,
         ai,
         &On {
             base: b.base(),
-            image: &b.image,
+            image: &image,
             retouched: retouched_of(b, Some(edit)),
             edit: &b.edit,
             source: b.meta.source,
             turn: b.turn,
         },
     );
+    ai.stand_for(None);
     left_out.extend(masks);
     (rasters, left_out)
 }
@@ -149,7 +152,7 @@ pub(super) fn kept_for_open(
     file: Option<&PathBuf>,
 ) -> Vec<Outcome> {
     let started = Instant::now();
-    let frame = (b.image.width, b.image.height);
+    let frame = b.frame_size();
     let retouched = retouched_of(b, None);
     let mut kept = Vec::new();
     for &(key, model) in learned {
@@ -492,6 +495,12 @@ pub(super) fn picture_for(
 ) -> Option<Arc<greycard_render::refine::MaskPicture>> {
     if !greycard_render::refine::refines(edit) {
         return None;
+    }
+    #[cfg(feature = "mono")]
+    if let Some(m) = b.kept.plane(crate::stages::Keep::Patched) {
+        return Some(b.kept.mask_picture().cloned().unwrap_or_else(|| {
+            Arc::new(greycard_render::refine::mask_picture_of_plane(&m.plane))
+        }));
     }
     let patched = b.patched_picture();
     Some(mask_picture(b, &patched))

@@ -96,6 +96,19 @@ pub(super) fn keep_open(
         .filter(|(edit, turn)| of_keep(edit, *turn))
         .and_then(|_| base.kept.picture(crate::stages::Keep::Developed).cloned())
         .map(|image| (image, base.left_out.clone()));
+    #[cfg(feature = "mono")]
+    let mono = base
+        .developed_as
+        .as_ref()
+        .filter(|(edit, turn)| of_keep(edit, *turn))
+        .and_then(|_| base.kept.plane(crate::stages::Keep::Developed))
+        .map(|m| m.frame());
+    // Its picture is its planes; the empty one stands for them here.
+    #[cfg(feature = "mono")]
+    let cpu = match &mono {
+        Some(_) => Some((Arc::new(WorkingImage::new(0, 0)), base.left_out.clone())),
+        None => cpu,
+    };
     let gpu = hand.shown.filter(|s| of_keep(&s.edit, s.turn));
     let (cpu, gpu) = match (cpu, gpu, hand.gpu) {
         (Some(l), _, _) => (Some(l), None),
@@ -133,6 +146,17 @@ pub(super) fn keep_open(
         crate::edited_pictures::factor_for(source, &keep.edit.geometry, camera)
     };
     let (developed, source, factor, read_back) = match (cpu, gpu) {
+        #[cfg(feature = "mono")]
+        _ if mono.is_some() => {
+            let frame = mono.expect("just asked");
+            let source = (frame.base.width as u32, frame.base.height as u32);
+            (
+                crate::edited_pictures::Developed::Mono(frame),
+                source,
+                factor(source),
+                None,
+            )
+        }
         (Some((image, _)), _) => {
             let source = (image.width as u32, image.height as u32);
             (
@@ -188,7 +212,8 @@ pub(super) fn keep_open(
                 base.planes_for(&keep.edit),
                 keep.edit
                     .samples_before_detail()
-                    .then(|| base.patched_picture()),
+                    .then(|| base.patched_picture())
+                    .filter(|p| p.width > 0),
                 base.meta.clip_level,
             ),
             edit: keep.edit,

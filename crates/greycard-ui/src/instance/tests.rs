@@ -153,13 +153,13 @@ fn the_socket_is_in_a_private_runtime_folder_else_the_cache_s() {
     mode(0o700);
     assert_eq!(
         socket_path(Some(runtime.clone()), Some(cache.clone()), uid, "k"),
-        Some(runtime.join(format!("greycard-{uid}-k.sock")))
+        Some(runtime.join(format!("{}-{uid}-k.sock", greycard_core::brand::APP_DIR)))
     );
     mode(0o755);
     let in_cache = Some(
         cache
-            .join("greycard")
-            .join(format!("greycard-{uid}-k.sock")),
+            .join(greycard_core::brand::APP_DIR)
+            .join(format!("{}-{uid}-k.sock", greycard_core::brand::APP_DIR)),
     );
     assert_eq!(
         socket_path(Some(runtime.clone()), Some(cache.clone()), uid, "k"),
@@ -169,11 +169,11 @@ fn the_socket_is_in_a_private_runtime_folder_else_the_cache_s() {
     mode(0o700);
     assert_eq!(
         socket_path(Some(runtime.clone()), Some(cache.clone()), uid + 1, "k"),
-        Some(
-            cache
-                .join("greycard")
-                .join(format!("greycard-{}-k.sock", uid + 1))
-        )
+        Some(cache.join(greycard_core::brand::APP_DIR).join(format!(
+            "{}-{}-k.sock",
+            greycard_core::brand::APP_DIR,
+            uid + 1
+        )))
     );
     assert_eq!(
         socket_path(Some(dir.join("gone")), Some(cache.clone()), uid, "k"),

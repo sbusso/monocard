@@ -1,0 +1,21 @@
+[package]
+name = "mono-profile"
+version.workspace = true
+description = "Monocard: camera noise profiles, their fit, and the defaults per body"
+license = "GPL-3.0-or-later"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mono-core = { path = "../mono-core" }
+mono-decode = { path = "../mono-decode" }
+greycard-core = { path = "../greycard-core" }
+serde.workspace = true
+toml.workspace = true
+thiserror.workspace = true
+rayon.workspace = true

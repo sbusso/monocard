@@ -1,0 +1,38 @@
+# Ricoh GR IV Monochrome. Ricoh and GR are trademarks of Ricoh Imaging;
+# this profile is not made or approved by them.
+#
+# NOT CALIBRATED. No calibration shots from this camera were available
+# when this file was written, so it holds no measurements:
+# - The noise table is empty. The frame's own noise is used instead, from
+#   the DNG's NoiseProfile tag or estimated from the picture.
+# - The hot pixel maps, the lens fallback and the learned model bands are
+#   empty.
+# - The match strings are the names the camera is expected to write in
+#   UniqueCameraModel. They have not been checked against a file.
+# `monocard profile build <folder>` writes the measured profile from the
+# calibration shots that docs/monocard/SPEC.md lists.
+schema = 1
+name = "Ricoh GR IV Monochrome"
+calibrated = false
+
+[camera]
+match = ["RICOH GR IV Monochrome", "GR IV Monochrome"]
+
+# Starting values chosen by hand, not measured.
+[[raw_threshold]]
+iso = 6400
+threshold = 0.0
+
+[[raw_threshold]]
+iso = 51200
+threshold = 10.0
+
+[defaults]
+transform = "sigmoid"
+contrast = 1.5
+shoulder = 0.5
+toe = 0.5
+# The sensor has no anti-aliasing filter: little capture sharpening.
+sharpen = "capture-sharpen"
+sharpen_strength = 0.25
+link_grain_iso = true

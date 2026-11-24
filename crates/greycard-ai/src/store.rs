@@ -52,7 +52,9 @@ impl Store {
     /// `%LOCALAPPDATA%` on Windows.
     pub fn user() -> Result<Self> {
         let base = cache_home().ok_or(Error::NoCacheDir)?;
-        Ok(Self::at(base.join("greycard").join("models")))
+        Ok(Self::at(
+            base.join(greycard_core::brand::APP_DIR).join("models"),
+        ))
     }
 
     /// The [`RETIRED`] files removed from the user's store on a thread
@@ -542,7 +544,10 @@ mod tests {
     fn the_user_store_follows_xdg() {
         // Only the shape: the variable may or may not be set here.
         let s = Store::user().expect("a cache directory in the test environment");
-        assert!(s.root().ends_with("greycard/models"));
+        assert!(
+            s.root()
+                .ends_with(Path::new(greycard_core::brand::APP_DIR).join("models"))
+        );
     }
 
     /// A runtime laid out in the store as a fetch leaves it is had,

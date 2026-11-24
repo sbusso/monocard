@@ -67,6 +67,9 @@ pub use self::{
 pub enum Developed {
     Halves(Arc<Halves>),
     Texture(greycard_gpu::wgpu::Texture),
+    /// A mono develop's planes, for the viewport's mono shader.
+    #[cfg(feature = "mono")]
+    Mono(Arc<mono_core::MonoFrame>),
 }
 
 impl Developed {
@@ -74,6 +77,8 @@ impl Developed {
         match self {
             Developed::Halves(h) => h.width,
             Developed::Texture(t) => t.width(),
+            #[cfg(feature = "mono")]
+            Developed::Mono(f) => f.base.width as u32,
         }
     }
 
@@ -81,6 +86,8 @@ impl Developed {
         match self {
             Developed::Halves(h) => h.height,
             Developed::Texture(t) => t.height(),
+            #[cfg(feature = "mono")]
+            Developed::Mono(f) => f.base.height as u32,
         }
     }
 }
@@ -1001,6 +1008,10 @@ impl FrameDevelop {
         if !matches!(input, Input::Raw(_)) {
             return Err("not a raw".into());
         }
+        #[cfg(feature = "mono")]
+        if matches!(&input, Input::Raw(f) if mono_decode::is_mono(&f.layout)) {
+            return Err("a monochrome raw, which has no color to match".into());
+        }
         let mut ai = Ai::new();
         let deliver: Deliver = Arc::new(|_| {});
         let (image, input, left_out) = walk_for_export(
@@ -1045,6 +1056,8 @@ impl FrameDevelop {
                 clip_level: f32::INFINITY,
                 kind: Default::default(),
                 camera: None,
+                #[cfg(feature = "mono")]
+                mono: None,
             },
             left_out: Vec::new(),
         }
@@ -1197,7 +1210,7 @@ impl Input {
     /// Whether the file is the sensor's data rather than a rendered
     /// picture.
     fn is_raw(&self) -> bool {
-        matches!(self, Input::Raw(_))
+        matches!(self, Input::Raw(f) if f.dng.rendered.is_none())
     }
 
     /// What the file says of its body and its lens.

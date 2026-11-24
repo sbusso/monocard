@@ -1,0 +1,228 @@
+// Monocard's shared state: one global the window's files and the mono
+// panels read, and greycard-ui sets. Imports nothing, so the theme may
+// read it. Off in a stock build, where nothing here shows.
+
+// A control of a panel, as `mono_ui::panel::RowView` has it.
+export struct MonoRow {
+    id: string,
+    kind: string,
+    label: string,
+    minimum: float,
+    maximum: float,
+    default: float,
+    step: float,
+    scale: float,
+    places: int,
+    unit: string,
+    value: float,
+    on: bool,
+    current: string,
+    // A choice's options, a line each.
+    lines: [[string]],
+    enabled: bool,
+    inset: bool,
+    tip: string,
+}
+
+export struct MonoPanel {
+    name: string,
+    title: string,
+    collapsed: bool,
+    resettable: bool,
+    rows: [MonoRow],
+}
+
+export struct MonoLook {
+    name: string,
+    // What is said beside the name; empty for nothing.
+    mark: string,
+    description: string,
+    // Its tones, or the open picture under it.
+    swatch: image,
+    picture: bool,
+    chosen: bool,
+}
+
+// A camera mode of the "Camera profiles" page, or a look of it.
+export struct MonoProfile {
+    key: string,
+    // Over the first row of a camera.
+    camera: string,
+    mode: string,
+    label: string,
+    // The look, empty for none, and its name where it is not the mode's.
+    look: string,
+    other-name: string,
+    state: string,
+    error: string,
+    photos: string,
+    date: string,
+    wants: string,
+    // The look may go on the open photo.
+    usable: bool,
+}
+
+// A value of that page that is no look.
+export struct MonoValue {
+    name: string,
+    state: string,
+    wants: string,
+}
+
+// A zone of the zone view's legend.
+export struct MonoZone {
+    numeral: string,
+    grey: color,
+    dark: bool,
+}
+
+export struct MonoPoint {
+    x: float,
+    y: float,
+}
+
+// The point curve of the edit or of a mask.
+export struct MonoCurve {
+    path: string,
+    points: [MonoPoint],
+    // The point in hand, -1 for none.
+    held: int,
+}
+
+export global Mono {
+    /// The mono build.
+    in-out property <bool> on: false;
+    /// The open frame is a monochrome sensor's, in the mono build: the
+    /// panels are the mono ones.
+    in-out property <bool> frame: false;
+    /// For the tests of the stock panels alone, which the mono build does
+    /// not show.
+    in-out property <bool> stock-panels: false;
+    /// The panels are the mono ones and no color tool shows, whatever is
+    /// open: a monochrome frame, a color one, or none.
+    out property <bool> only: self.frame || (self.on && !self.stock-panels);
+    /// What the panels say over a color frame, or with none open; empty on
+    /// a monochrome one.
+    in-out property <string> rest-note;
+    /// Develop's and the Masks tab's sections on a mono frame: "mask",
+    /// "mono", and "lens" while FINISH shows it.
+    in-out property <[string]> sections: ["mask", "mono"];
+    in-out property <[MonoPanel]> panels;
+    in-out property <[MonoPanel]> mask-panels;
+    in-out property <[MonoLook]> looks;
+    /// The looks of the open photo's camera's modes; none on a JPEG.
+    in-out property <[MonoLook]> mode-looks;
+    /// The look the edit has on, while it is there, and whether it is the
+    /// user's own.
+    in-out property <string> look-chosen;
+    in-out property <bool> look-own: false;
+    in-out property <MonoCurve> curve: { held: -1 };
+    in-out property <MonoCurve> mask-curve: { held: -1 };
+    in-out property <[float]> scales;
+
+    /// What the views show (`mono_ui::MonoUiState`), for drawing over the
+    /// picture.
+    in-out property <bool> zone-view: false;
+    in-out property <bool> clip-map: false;
+    in-out property <string> split: "After";
+    in-out property <float> split-at: 0.5;
+    /// The split's handle has the keys.
+    in-out property <bool> split-keys: false;
+    callback split-moved(float);
+    in-out property <[MonoZone]> zones;
+    in-out property <string> proof: "Off";
+
+    /// The scopes' names on a mono frame: one channel is no RGB.
+    out property <[string]> scope-labels: ["Histogram", "Wave"];
+
+    callback slid(string, float);
+    callback toggled(string, bool);
+    callback picked(string, string);
+    callback pressed(string);
+    callback fold(string, bool);
+    callback panel-reset(string);
+    callback look-picked(string);
+    callback curve-press(string, float, float);
+    callback curve-move(string, float, float);
+    callback curve-release(string);
+    callback curve-double(string, float, float);
+    callback scale-set(int, float);
+    /// A key of the Develop view with no modifier held: whether it was
+    /// taken.
+    callback key(string) -> bool;
+
+    /// What the export sheet says of the file's channels.
+    in-out property <string> export-hint;
+
+    /// What is asked under the LOOK panel's buttons: the name of "save" or
+    /// "rename", or "delete" once more; empty for nothing.
+    in-out property <string> look-ask;
+    callback look-saved(string);
+    callback look-renamed(string);
+    callback look-deleted();
+    /// A line on what was last done to a look; empty for none.
+    in-out property <string> look-note;
+
+    /// The setting for a new edit's start.
+    in-out property <bool> start-mode: false;
+    callback start-mode-changed();
+    out property <string> start-mode-label: "Start from the camera's mode";
+    out property <string> start-mode-note: "A raw with no edit starts from the look you fitted to its camera's mode.";
+
+    /// The settings page of the camera's modes: its name, its rows, the
+    /// key of the one that is open, and what that one asks: "delete" or
+    /// "fit", empty for nothing.
+    out property <string> profiles-title: "Camera profiles";
+    in-out property <[MonoProfile]> profiles;
+    in-out property <[MonoValue]> profile-values;
+    in-out property <string> profile-chosen;
+    in-out property <string> profile-ask;
+    /// An action on the row with this key.
+    callback profile-pressed(string, string);
+    /// The folders the modes are fitted from, a fit under way, and what it
+    /// is at.
+    in-out property <[string]> fit-folders;
+    in-out property <bool> fitting: false;
+    in-out property <string> fit-note;
+    callback fit-all();
+    callback folder-add();
+    callback folder-remove(int);
+    /// The test chart over the window.
+    in-out property <bool> chart-open: false;
+    in-out property <image> chart;
+    in-out property <string> chart-note;
+    callback chart-shown(bool);
+    callback chart-saved();
+
+    /// The camera window: where it is offered, its place in the import menu,
+    /// and whether it opens as a camera is connected.
+    out property <bool> camera-offered: self.only && Platform.os == OperatingSystemType.macos;
+    out property <string> camera-menu: "From the camera...";
+    callback camera-asked();
+    in-out property <bool> camera-popup: true;
+    out property <string> camera-popup-label: "Open the camera window when a camera is connected";
+    callback camera-popup-changed();
+
+    /// Where the mono build's sidecars go, in words.
+    out property <string> sidecar-hidden: "In a hidden .monocard folder.";
+    out property <string> sidecar-beside: "IMG_0001.CR3.mcd, beside the raw.";
+    out property <string> profile-label: "Profile";
+    out property <string> sync-note: "Crop and retouch never copy. A part copied alone leaves the rest of its section as each frame has it.";
+    out property <string> presets-empty: "Save the edit as a preset. LOOK imports a Lightroom preset.";
+
+    /// The faces, the system's own while empty.
+    in-out property <string> font;
+    in-out property <string> figures;
+
+    /// What building a camera profile said; none while empty.
+    in-out property <string> report;
+
+    in-out property <bool> welcome: false;
+    in-out property <string> welcome-title;
+    in-out property <[string]> welcome-lines;
+    callback welcome-closed(bool);
+    in-out property <string> credit;
+    in-out property <string> trademark;
+    in-out property <string> source-url;
+    callback source-asked();
+}

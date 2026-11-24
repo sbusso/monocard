@@ -84,6 +84,11 @@ pub struct Edit {
     /// Spots and strokes healed or cloned, on the developed picture
     /// before its look.
     pub retouch: retouch::Retouch,
+    /// Monocard's own section, for a monochrome frame (docs/monocard);
+    /// left out of a sidecar while nothing in it was touched.
+    #[cfg(feature = "mono")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mono: Option<Box<mono_core::MonoEdit>>,
 }
 
 /// The part of an edit that is a look: what the viewport and the
@@ -175,6 +180,10 @@ pub struct Adjustment {
     /// reads and writes as it did. Read through [`Adjustment::strength`].
     #[serde(skip_serializing_if = "is_whole")]
     pub opacity: f32,
+    /// The mask's mono tools, on a monochrome frame (docs/monocard).
+    #[cfg(feature = "mono")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mono: Option<Box<mono_core::MonoLocal>>,
 }
 
 fn is_whole(v: &f32) -> bool {
@@ -190,6 +199,8 @@ impl Default for Adjustment {
             mask: Mask::default(),
             look: Look::default(),
             opacity: 1.0,
+            #[cfg(feature = "mono")]
+            mono: None,
         }
     }
 }
@@ -477,6 +488,8 @@ impl Default for Edit {
             demosaic: Demosaic::default(),
             camera: Camera::default(),
             retouch: retouch::Retouch::default(),
+            #[cfg(feature = "mono")]
+            mono: None,
         }
     }
 }
@@ -940,7 +953,7 @@ mod tests {
             enabled: true,
             mask: mask::Mask::default(),
             look: Look::default(),
-            opacity: 1.0,
+            ..Default::default()
         });
         // One slider moved: the shadows.
         let mut touched = before.clone();
@@ -1098,7 +1111,7 @@ mod tests {
                     ..Default::default()
                 },
                 look,
-                opacity: 1.0,
+                ..Default::default()
             });
         }
         edit

@@ -4,6 +4,7 @@
 // everything until a choice is made.
 
 import { ComboBox, LineEdit } from "std-widgets.slint";
+import { Mono } from "../../../mono-ui/ui/state.slint";
 import { Theme } from "../theme.slint";
 import { EditSlider, Steps, Toggle, PanelButton, Segmented, ScrollPane, SliderKeys } from "../controls.slint";
 import { QueueRow } from "../structs.slint";
@@ -388,8 +389,21 @@ export component ExportSheet inherits Rectangle {
                         HorizontalLayout {
                             spacing: Theme.space-2;
                             // Export sheet: the color profile row
-                            Text { text: @tr("Color"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
-                            Segmented { options: ["sRGB", "Display P3", "Rec.2020", "Adobe RGB"]; current <=> root.export-space; }
+                            Text { text: Mono.only ? Mono.profile-label : @tr("Color"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                            // The mono build's color spaces are for a toned picture.
+                            Segmented { options: Mono.only ? ["sRGB", "Display P3"] : ["sRGB", "Display P3", "Rec.2020", "Adobe RGB"]; current <=> root.export-space; }
+                        }
+                        // The mono build's grey profiles, for a picture with no tint.
+                        if Mono.on: HorizontalLayout {
+                            spacing: Theme.space-2;
+                            Rectangle { width: 68px; }
+                            Segmented { options: ["Gray Gamma 2.2", "Dot Gain 20%"]; labels: ["Grey Gamma 2.2", "Dot Gain 20%"]; current <=> root.export-space; }
+                        }
+                        if Mono.frame: Text {
+                            text: Mono.export-hint;
+                            color: Theme.text-secondary;
+                            font-size: Theme.font-xs;
+                            wrap: word-wrap;
                         }
                         Toggle {
                             label: @tr("Embed profile");

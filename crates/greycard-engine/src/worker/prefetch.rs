@@ -898,7 +898,7 @@ pub(super) fn prefetch(
         ahead,
         told: Cell::new(false),
     };
-    let edit = seeded(&n.edit, n.seed_blend, Some(&input));
+    let edit = seeded(&n.edit, n.seed_blend, Some(&input), &n.path);
     let purpose = Purpose::Prefetch;
     let steps = stages(&edit, &purpose, &facts, lenses);
     let places = plan(&steps, &purpose, gpu.is_some());

@@ -398,7 +398,12 @@ pub fn look(
 fn destination_refused(archive: &Path, folder: &Path) -> Option<String> {
     let dest = rejects_dir(folder);
     let root = dunce::canonicalize(archive).ok()?;
-    for d in [dest.clone(), dest.join(greycard_edit::SIDECAR_FOLDER)] {
+    // The hidden folder, and greycard's where Monocard moves it too.
+    for d in [
+        dest.clone(),
+        dest.join(greycard_edit::SIDECAR_FOLDER),
+        dest.join(".greycard"),
+    ] {
         match std::fs::symlink_metadata(&d) {
             Ok(m) if m.file_type().is_symlink() => {
                 return Some(format!(
@@ -1035,6 +1040,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_move_takes_each_copy_into_a_rejects_folder_beside_it_with_its_sidecars() {
         let c = culled("move");
         let look = look(&c.rejects, &c.nas, true, Some(&c.db), &no_beat()).unwrap();
@@ -1070,6 +1076,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_name_taken_in_the_rejects_folder_there_leaves_the_copy_whole() {
         let c = culled("taken");
         let out = rejects_dir(&c.there);

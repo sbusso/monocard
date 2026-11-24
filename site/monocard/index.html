@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="description" content="Monocard is a free, open source raw editor for monochrome sensors, built on Greycard.">
+<title>Monocard: the darkroom for monochrome sensors</title>
+<!-- assets/monocard/icon.svg, inline: the page makes no request. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3CclipPath id='c'%3E%3Cpath d='M64 32H224V96H288V32H448A32 32 0 0 1 480 64V448A32 32 0 0 1 448 480H64A32 32 0 0 1 32 448V64A32 32 0 0 1 64 32Z'/%3E%3C/clipPath%3E%3Cg clip-path='url(%23c)'%3E%3Cpath fill='%23f2f2f2' d='M32 32h160v448H32z'/%3E%3Cpath fill='%23777' d='M192 32h128v448H192z'/%3E%3Cpath fill='%231a1a1a' d='M320 32h160v448H320z'/%3E%3C/g%3E%3C/svg%3E">
+<style>
+  :root {
+    --ground: #f4f4f4;
+    --card: #fff;
+    --line: #cfcfcf;
+    --text: #1a1a1a;
+    --soft: #4d4d4d;
+    --accent: #6f4700;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground: #161616;
+      --card: #202020;
+      --line: #3d3d3d;
+      --text: #ededed;
+      --soft: #b4b4b4;
+      --accent: #d8a24a;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font: 1.0625rem/1.6 system-ui, -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  }
+  .wrap { max-width: 62rem; margin-inline: auto; padding-inline: 1.25rem; }
+  a { color: var(--accent); text-underline-offset: 0.15em; }
+  :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+  .skip { position: absolute; left: -999rem; }
+  .skip:focus { left: 1rem; top: 1rem; background: var(--card); padding: 0.5rem 1rem; }
+  header { padding-block: 4rem 2.5rem; }
+  .name { display: flex; align-items: center; gap: 0.9rem; }
+  .name svg { width: 3.25rem; height: 3.25rem; flex: none; }
+  h1 { font-size: clamp(2rem, 6vw, 3.25rem); line-height: 1.1; margin: 0; letter-spacing: -0.02em; }
+  h2 { font-size: 1.4rem; margin: 3rem 0 1rem; }
+  h3 { font-size: 1rem; margin: 0 0 0.35rem; }
+  .line { font-size: clamp(1.2rem, 3vw, 1.6rem); margin: 1.5rem 0 0.75rem; }
+  .lead { color: var(--soft); max-width: 42rem; margin: 0; }
+  .steps { display: flex; height: 1rem; margin: 0; }
+  .steps span { flex: 1; }
+  .grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); list-style: none; padding: 0; margin: 0; }
+  .grid li { background: var(--card); border: 1px solid var(--line); padding: 1.1rem 1.2rem; }
+  .grid p { margin: 0; color: var(--soft); }
+  .limits li { margin-bottom: 0.5rem; }
+  pre { background: var(--card); border: 1px solid var(--line); padding: 1rem 1.2rem; overflow-x: auto; font: 0.9rem/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  footer { border-top: 1px solid var(--line); margin-top: 4rem; padding-block: 2rem 3rem; color: var(--soft); font-size: 0.9375rem; }
+  footer p { margin: 0 0 0.75rem; max-width: 46rem; }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="wrap">
+  <div class="name">
+    <svg viewBox="0 0 512 512" aria-hidden="true">
+      <clipPath id="card"><path d="M64 32H224V96H288V32H448A32 32 0 0 1 480 64V448A32 32 0 0 1 448 480H64A32 32 0 0 1 32 448V64A32 32 0 0 1 64 32Z"/></clipPath>
+      <g clip-path="url(#card)"><path fill="#f2f2f2" d="M32 32h160v448H32z"/><path fill="#777" d="M192 32h128v448H192z"/><path fill="#1a1a1a" d="M320 32h160v448H320z"/><path fill="none" stroke="#777" stroke-width="12" d="M64 32H224V96H288V32H448A32 32 0 0 1 480 64V448A32 32 0 0 1 448 480H64A32 32 0 0 1 32 448V64A32 32 0 0 1 64 32Z"/></g>
+    </svg>
+    <h1>Monocard</h1>
+  </div>
+  <p class="line">The darkroom for monochrome sensors.</p>
+  <p class="lead">Monocard is a free, open source raw editor for cameras with no color filter on the sensor. It develops one channel from the raw data to the print. Its first camera is the Ricoh GR IV Monochrome. It opens any true monochrome DNG.</p>
+</header>
+
+<div class="steps" aria-hidden="true">
+  <span style="background:#000"></span><span style="background:#1a1a1a"></span><span style="background:#333"></span><span style="background:#4d4d4d"></span><span style="background:#777"></span><span style="background:#999"></span><span style="background:#b8b8b8"></span><span style="background:#d6d6d6"></span><span style="background:#fff"></span>
+</div>
+
+<main class="wrap" id="main">
+  <!-- PHOTOS. A place for photographs made by users of the camera. Each
+       needs the photographer's written permission and a credit under it,
+       and an alt text. None has been given yet, so there is none here. -->
+
+  <h2>What it does</h2>
+  <ul class="grid">
+    <li><h3>One channel</h3><p>No demosaic, no white balance, no color conversion. A monochrome camera's JPEG is edited the same way. Color photos are not listed, and no color tool is offered.</p></li>
+    <li><h3>Profiled denoise</h3><p>A noise model for each ISO, with non-local means or wavelets, and a slider that keeps some of the sensor's grain.</p></li>
+    <li><h3>Dodge and burn by zone</h3><p>A nine zone tone equalizer that keeps to edges, and a view of the picture in zones 0 to X.</p></li>
+    <li><h3>Contrast by scale</h3><p>Local contrast, a contrast equalizer from fine texture to large forms, and deblurring for a sensor with no anti-aliasing filter.</p></li>
+    <li><h3>Highlights</h3><p>A map of what the sensor clipped, a shoulder into white, a smooth edge around clipped light, and a bracket merge.</p></li>
+    <li><h3>Looks, grain, and toning</h3><p>Ten built-in looks that stay editable, grain that follows the tones, solarize, and split toning. Looks are small text files.</p></li>
+    <li><h3>Masks</h3><p>Brush, gradient, luminance range, subject, and sky. Each drives the same tone tools.</p></li>
+    <li><h3>Grey output</h3><p>Grey JPEG and 16-bit grey TIFF, a grey proof on matte, baryta, and newsprint, and color only where a print is toned.</p></li>
+    <li><h3>Beside Greycard</h3><p>Monocard keeps its own settings, library, and sidecars. It reads Greycard's edits as a start and never changes them.</p></li>
+  </ul>
+
+  <h2>Limits</h2>
+  <ul class="limits">
+    <li>There is no release yet. Monocard is built from source.</li>
+    <li>The profile for the Ricoh GR IV Monochrome is not calibrated. It holds no measurements until calibration frames have been shot.</li>
+    <li>The learned monochrome denoiser is not trained. The profiled and the wavelet denoisers are what works now.</li>
+    <li>The Solar looks are not yet matched against the camera's own files.</li>
+    <li>Clipped light is lost. A monochrome sensor has no other channel to recover it from, so Monocard shapes the way into white and does not claim more.</li>
+    <li>There are no red, yellow, or green filters in software. The color was not recorded. Use a filter on the lens.</li>
+  </ul>
+
+  <h2>Build it</h2>
+<pre tabindex="0" aria-label="Build commands"><code>cargo build --release -p greycard-ui --features mono --bin monocard-ui
+cargo build --release -p greycard-cli --features mono --bin monocard</code></pre>
+  <p>The source tree's <code>docs/monocard/README.md</code> has the rest. <!-- SOURCE LINK. Add Monocard's repository here when it has one. --></p>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Built on <a href="https://github.com/jessolmstead/greycard">Greycard</a> by Jess Olmstead, GPL-3.0. Monocard is a separate project, under the same license.</p>
+    <p>Denoise, tone, and detail tools are ported from <a href="https://github.com/darktable-org/darktable">darktable</a>, GPL-3.0. The Lightroom preset import is adapted from <a href="https://github.com/pch/rawmakase">RAWmakase</a>, MIT.</p>
+    <p>Ricoh, GR, and GR IV Monochrome belong to Ricoh Imaging Company, Ltd. Monocard is not affiliated with Ricoh Imaging.</p>
+  </div>
+</footer>
+</body>
+</html>

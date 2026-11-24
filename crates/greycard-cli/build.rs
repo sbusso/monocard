@@ -12,12 +12,17 @@ fn main() {
 // See crates/greycard-ui/build.rs for why it is gated on the host.
 #[cfg(windows)]
 fn windows_resource() {
-    let icon = "../../assets/icon/greycard.ico";
+    let mono = std::env::var_os("CARGO_FEATURE_MONO").is_some();
+    let (icon, name) = if mono {
+        ("../../assets/monocard/icon.ico", "Monocard")
+    } else {
+        ("../../assets/icon/greycard.ico", "greycard")
+    };
     println!("cargo:rerun-if-changed={icon}");
     winresource::WindowsResource::new()
         .set_icon(icon)
-        .set("ProductName", "greycard")
-        .set("FileDescription", "greycard command line")
+        .set("ProductName", name)
+        .set("FileDescription", &format!("{name} command line"))
         .set("CompanyName", "Jess Olmstead")
         // As the editor's: see crates/greycard-ui/build.rs.
         .set("LegalCopyright", "Copyright © Jess Olmstead. GPL-3.0.")

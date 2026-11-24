@@ -5,6 +5,9 @@
 import { Theme } from "../theme.slint";
 import { SliderKeys } from "../controls.slint";
 import { Pt, MaskBox, MaskPick, PersonBox, CompareTile } from "../structs.slint";
+import { Mono } from "../../../mono-ui/ui/state.slint";
+import { MonoOverlay } from "../../../mono-ui/ui/overlay.slint";
+import { MonoSplash } from "../../../mono-ui/ui/splash.slint";
 import { CropHandle, ThumbBadges, PanelButton, TipArea } from "../controls.slint";
 
 // The dark copy under a light stroke over the viewport: wider, so it
@@ -108,6 +111,8 @@ export component Viewport inherits Rectangle {
     /// icon is missing, and then the cursor stays a crosshair.
     property <image> dropper: @image-url("../icons/pipette.svg");
     in property <bool> placeholder;
+    // No file is open.
+    in property <bool> no-file;
     // The frame's Original shows in place of the edit: the tools'
     // overlays are hidden, as over the placeholder, and a press with
     // a tool in hand turns the edit back rather than act on a picture
@@ -366,6 +371,7 @@ export component Viewport inherits Rectangle {
         height: 100%;
         image-fit: fill;
     }
+    if Mono.on && root.no-file: MonoSplash { }
     // Putting the tool down, or picking another, drops a part of a
     // step the wheel had added up.
     changed placing => {
@@ -1427,6 +1433,12 @@ export component Viewport inherits Rectangle {
                 vertical-alignment: center;
             }
         }
+    }
+    // Monocard's split handle and zone legend, on a develop.
+    if Mono.frame && !root.culling && !root.placeholder && !root.original: MonoOverlay {
+        width: 100%;
+        height: 100%;
+        focus-keys => { root.focus-keys(); }
     }
     // Status, bottom left, on a soft plate; a bar runs while
     // a develop is on its way. Nothing to say, no plate.

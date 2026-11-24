@@ -62,6 +62,8 @@ pub(super) struct EditKey {
     source: Source,
     display_curve: greycard_edit::DisplayCurve,
     profile_tone: Option<greycard_render::profile_tone::ProfileTone>,
+    #[cfg(feature = "mono")]
+    mono: Option<MonoView>,
 }
 
 impl EditKey {
@@ -87,6 +89,8 @@ impl EditKey {
             source: v.source,
             display_curve: v.display_curve,
             profile_tone: v.profile_tone.clone(),
+            #[cfg(feature = "mono")]
+            mono: v.mono.as_ref().map(MonoView::plain),
         }
     }
 }
@@ -599,6 +603,11 @@ impl Renderer {
                 }
             }
         }
+        #[cfg(feature = "mono")]
+        {
+            let (curves, locals) = (tap == Tap::AfterCurves, tap != Tap::BeforeCurves);
+            before.mono = v.mono.as_ref().map(|m| m.tapped(curves, locals));
+        }
         let taken = Taken {
             key: EditKey::of(&before),
             scope: Scope::Rgb,
@@ -768,6 +777,8 @@ fn whole_frame(v: &View, weigh_by: Option<usize>, most: u32) -> View {
         mask_alone: false,
         weigh_by,
         warn: Warn::default(),
+        #[cfg(feature = "mono")]
+        mono: v.mono.as_ref().map(MonoView::plain),
         ..v.clone()
     }
 }

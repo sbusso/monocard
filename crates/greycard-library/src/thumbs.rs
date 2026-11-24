@@ -206,7 +206,10 @@ impl Thumbs {
             .filter(|p| p.is_absolute())
             .or_else(dirs::cache_dir)
             .ok_or(Error::NoCacheDir)?;
-        Ok(Self::at(base.join("greycard").join("thumbs"), cap))
+        Ok(Self::at(
+            base.join(greycard_core::brand::APP_DIR).join("thumbs"),
+            cap,
+        ))
     }
 
     /// The cache under `root`, which is made on the first write. Every

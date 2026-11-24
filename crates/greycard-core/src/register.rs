@@ -1536,7 +1536,7 @@ impl Kernel {
     /// `sin(pi (t - o)) = (-1)^o sin(pi t)`, and the third-period sine
     /// of `t - o` by the angle-difference rule.
     #[inline]
-    pub(crate) fn taps(self, t: f64) -> [f64; 6] {
+    pub fn taps(self, t: f64) -> [f64; 6] {
         let mut w = [0.0f64; 6];
         let reach = self.reach();
         if self == Kernel::Lanczos3 {

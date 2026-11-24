@@ -7,6 +7,7 @@ edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
 repository.workspace = true
+default-run = "greycard"
 
 [lints]
 workspace = true
@@ -15,7 +16,19 @@ workspace = true
 name = "greycard"
 path = "src/main.rs"
 
+# The same program under Monocard's name; its tests are the one above's.
+# The path is spelled another way so that cargo does not warn, at every
+# command, of one file in two targets.
+[[bin]]
+name = "monocard"
+path = "../greycard-cli/src/main.rs"
+required-features = ["mono"]
+test = false
+
 [dependencies]
+mono-core = { path = "../mono-core", optional = true }
+mono-profile = { path = "../mono-profile", optional = true }
+mono-look = { path = "../mono-look", optional = true }
 greycard-core = { path = "../greycard-core" }
 greycard-version = { path = "../greycard-version" }
 greycard-ai = { path = "../greycard-ai" }
@@ -42,6 +55,8 @@ greycard-core = { path = "../greycard-core", features = ["testing"] }
 greycard-library = { path = "../greycard-library", features = ["fixtures"] }
 
 [features]
+# Monocard, the monochrome build (docs/monocard).
+mono = ["dep:mono-core", "dep:mono-profile", "dep:mono-look", "greycard-engine/mono"]
 # Nikon High Efficiency raws; off by default, see greycard-core.
 nikon-he = ["greycard-core/nikon-he"]
 

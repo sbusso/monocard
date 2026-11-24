@@ -1372,10 +1372,10 @@ fn stem_sharers(frame: &Path) -> Option<Vec<PathBuf>> {
         .flatten()
         .map(|e| PathBuf::from(e.file_name()))
         .filter(|entry| {
-            let sidecar = entry
-                .extension()
-                .and_then(|x| x.to_str())
-                .is_some_and(|x| matches!(x.to_ascii_lowercase().as_str(), "xmp" | "gcd" | "tmp"));
+            let sidecar = entry.extension().and_then(|x| x.to_str()).is_some_and(|x| {
+                ["xmp", "gcd", "tmp", greycard_core::brand::SIDECAR_EXT]
+                    .contains(&x.to_ascii_lowercase().as_str())
+            });
             !sidecar
                 && entry
                     .file_stem()

@@ -489,6 +489,9 @@ impl Renderer {
         if v.output_sharpen.acting().is_none() && !matches!(through, Through::Tap(_)) {
             self.osharp.release();
         }
+        // No mono frame takes it (`MonoView`).
+        #[cfg(feature = "mono")]
+        let taps = taps.filter(|_| encoded || !self.is_mono());
         // The overlays alone keep what they paint and discard every
         // other pixel: no sharpened picture is wanted of them.
         let taps = taps.filter(|_| layer != Layer::Overlays);
@@ -533,6 +536,12 @@ impl Renderer {
             "viewport profile curve",
             bytemuck::cast_slice(profile.map_or(&[0.0f32][..], |p| p.table())),
         );
+        // A mono frame's own group, for each part of the view.
+        #[cfg(feature = "mono")]
+        let mono = self.mono.as_ref().filter(|m| m.on && !encoded).map(|m| {
+            let monitor = through == Through::Monitor;
+            (m, m.sides(&self.device, &self.queue, v, monitor))
+        });
         // One draw of the shader with `params` through `pipeline` into
         // `into`, the output sharpen's blur across read from `across`.
         let shade = |encoder: &mut gpu::CommandEncoder,
@@ -572,6 +581,8 @@ impl Renderer {
             let Some(source) = source else {
                 return;
             };
+            #[cfg(feature = "mono")]
+            let source = mono.as_ref().map_or(source, |(m, _)| &m.none);
             let source_view = source.create_view(&Default::default());
             let lut = if encoded {
                 &self.lut_encoded
@@ -641,6 +652,11 @@ impl Renderer {
             });
             pass.set_pipeline(pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
+            #[cfg(feature = "mono")]
+            if let Some((m, sides)) = &mono {
+                m.draw(&mut pass, sides, (into.width(), into.height()));
+                return;
+            }
             pass.draw(0..3, 0..1);
         };
         // A tile is drawn over what the target holds, and so are the
@@ -708,6 +724,10 @@ impl Renderer {
     /// [`Renderer::set_source`] later, it shows again without another
     /// upload.
     pub fn developed(&self) -> Option<&gpu::Texture> {
+        #[cfg(feature = "mono")]
+        if self.is_mono() {
+            return None;
+        }
         self.source.as_ref().filter(|_| !self.encoded)
     }
 
@@ -730,6 +750,8 @@ impl Renderer {
     /// [`Self::set_source`] of a texture that stands for a picture of
     /// `full`: one [`Self::developed`] gave back, reduced from it.
     pub fn set_source_sized(&mut self, texture: gpu::Texture, full: (u32, u32)) {
+        #[cfg(feature = "mono")]
+        self.mono_off();
         self.full = full;
         if (texture.width(), texture.height()) == full {
             self.reduced_said = None;
@@ -882,6 +904,8 @@ impl Renderer {
     /// fits ([`reduce`]). The view stays in the picture's own pixels;
     /// 1:1 then shows the reduced picture magnified.
     pub fn upload(&mut self, image: &Halves) {
+        #[cfg(feature = "mono")]
+        self.mono_off();
         self.redraw = true;
         let full = (image.width, image.height);
         let k = reduce::factor(full.0, full.1, self.most_side);
@@ -1018,6 +1042,8 @@ impl Renderer {
             };
             tracing::info!("viewport drawn: {why}");
         }
+        #[cfg(feature = "mono")]
+        self.sync_mono(v);
         self.redraw = false;
         self.drawn = Some((width, height, v.clone()));
         let locals = locals_gpu(&v.locals, self.most_side);
@@ -1049,6 +1075,11 @@ impl Renderer {
                 || v.show_mask.is_some()
                 || v.show_sharpen
                 || self.gamut_marks;
+            #[cfg(feature = "mono")]
+            let overlays = overlays
+                || v.mono
+                    .as_ref()
+                    .is_some_and(|m| m.clip_map || m.zone_view.is_some());
             if overlays {
                 self.draw_layer(&mut encoder, &target, v, true, Layer::Overlays);
             }

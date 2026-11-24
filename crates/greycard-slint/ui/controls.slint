@@ -2,6 +2,7 @@
 // (rest, hover, pressed, disabled) and a focus ring where it takes
 // focus. Icons are Lucide (ISC, see icons/LICENSE), tinted here.
 
+import { Mono } from "../../mono-ui/ui/state.slint";
 import { Theme, ScrollBars, LabelColumn } from "theme.slint";
 
 // The window's one hover text, written by whatever has rested under the
@@ -1184,6 +1185,7 @@ export component ValueField inherits Rectangle {
         text: root.shown;
         color: root.enabled ? Theme.text-secondary : Theme.text-muted;
         font-size: Theme.font-sm;
+        font-family: Mono.figures;
         horizontal-alignment: root.alignment;
         vertical-alignment: center;
         overflow: elide;
@@ -1196,6 +1198,7 @@ export component ValueField inherits Rectangle {
         single-line: true;
         color: Theme.text;
         font-size: Theme.font-sm;
+        font-family: Mono.figures;
         horizontal-alignment: root.alignment;
         vertical-alignment: center;
         init => {
@@ -1583,7 +1586,7 @@ export component EditSlider inherits Rectangle {
             background: !root.enabled ? Theme.text-muted
                 : ta.pressed ? Theme.accent-pressed
                 : root.active ? Theme.accent-hover
-                : Theme.accent;
+                : Theme.fill;
         }
     }
     handle := Rectangle {
@@ -2056,6 +2059,8 @@ export component Toggle inherits Rectangle {
     in-out property <bool> checked: false;
     in property <bool> enabled: true;
     in property <bool> follows: false;
+    /// Its tooltip; none while empty.
+    in property <string> tip;
     callback toggled();
     // To a screen reader a switch named by its label, on or off, and
     // whether it takes a hand; the label's Text says nothing itself,
@@ -2102,7 +2107,7 @@ export component Toggle inherits Rectangle {
         height: 18px;
         border-radius: 9px;
         background: !root.enabled ? Theme.border
-            : root.checked ? (root.active ? Theme.accent-hover : Theme.accent)
+            : root.checked ? (root.active ? Theme.accent-hover : Theme.fill)
             : (root.active ? Theme.hover : Theme.border-strong);
         border-width: fs.has-focus ? 2px : 0;
         border-color: Theme.focus-ring;
@@ -2141,7 +2146,8 @@ export component Toggle inherits Rectangle {
     }
     // The click's target, and the pointer's: the label, the gap, and
     // the switch, never the empty run of the row past them.
-    ta := TouchArea {
+    ta := TipArea {
+        words: root.tip;
         x: min(lbl.x, knob-track.x);
         width: knob-track.x + knob-track.width - self.x;
         enabled: root.enabled;

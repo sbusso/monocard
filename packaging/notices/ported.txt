@@ -124,6 +124,12 @@ shadows:
     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+From RAWmakase (https://github.com/pch/rawmakase), MIT License,
+copyright (c) 2026 RAWmakase contributors, in Monocard builds only:
+the import of Lightroom's monochrome presets. Its license in full, and
+what Monocard's own crates port from darktable, are in
+docs/monocard/THIRD-PARTY-NOTICES.md.
+
 
 ================================================================================
 4. DOWNLOADED ON FIRST USE, NOT SHIPPED

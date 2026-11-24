@@ -1,0 +1,20 @@
+name = "Night Push"
+description = "Pushed film, for ISO 12800 and up."
+
+[tools.basic]
+blacks = -25
+
+[tools.display]
+contrast = 1.7
+toe = 0.15
+
+[tools.denoise]
+mode = "profiled"
+strength = 80
+detail = 40
+shadows = 50
+
+[tools.grain]
+amount = 0.5
+size = 0.6
+roughness = 0.7

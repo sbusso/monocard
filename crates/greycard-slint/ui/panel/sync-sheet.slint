@@ -4,6 +4,7 @@
 // frames' own sidecars. A paste opens the same sheet, the settings of
 // the frame copied going over the whole selection.
 
+import { Mono } from "../../../mono-ui/ui/state.slint";
 import { Theme } from "../theme.slint";
 import { PanelButton, Segmented } from "../controls.slint";
 import { CarryList } from "carry-list.slint";
@@ -110,7 +111,7 @@ export component SyncSheet inherits Rectangle {
                     wrap: word-wrap;
                 }
                 Text {
-                    text: @tr("Crop and retouch never copy; camera profiles only to the same camera. A part copied alone leaves the rest of its section as each frame has it.");
+                    text: Mono.only ? Mono.sync-note : @tr("Crop and retouch never copy; camera profiles only to the same camera. A part copied alone leaves the rest of its section as each frame has it.");
                     font-size: Theme.font-xs;
                     color: Theme.text-secondary;
                     wrap: word-wrap;

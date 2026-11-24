@@ -143,7 +143,7 @@ pub fn warp_rgb(
 }
 
 /// The warp's center and scale in the buffer's placement.
-struct Geometry {
+pub struct Geometry {
     at: WarpPlacement,
     cx: f64,
     cy: f64,
@@ -151,7 +151,7 @@ struct Geometry {
 }
 
 impl Geometry {
-    fn new(at: WarpPlacement, warp: &Warp) -> Self {
+    pub fn new(at: WarpPlacement, warp: &Warp) -> Self {
         let cx = warp.center_x * at.image_width;
         let cy = warp.center_y * at.image_height;
         let far_x = cx.max(at.image_width - cx);
@@ -166,7 +166,7 @@ impl Geometry {
 
     /// Where the buffer's point (`x`, `y`) is read from, in the
     /// buffer's coordinates.
-    fn source(&self, x: f64, y: f64, plane: &WarpPlane, reciprocal: bool) -> (f64, f64) {
+    pub fn source(&self, x: f64, y: f64, plane: &WarpPlane, reciprocal: bool) -> (f64, f64) {
         let dx = (x + self.at.x - self.cx) / self.radius;
         let dy = (y + self.at.y - self.cy) / self.radius;
         let rr = (dx * dx + dy * dy).min(1.0);

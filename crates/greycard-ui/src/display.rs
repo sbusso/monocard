@@ -75,7 +75,7 @@ fn profile_cache() -> Option<std::path::PathBuf> {
         .map(std::path::PathBuf::from)
         .filter(|p| p.is_absolute())
         .or_else(dirs::cache_dir)
-        .map(|c| c.join("greycard").join("monitors"))
+        .map(|c| c.join(greycard_core::brand::APP_DIR).join("monitors"))
 }
 
 /// The displays as monitors, primary first, each display's ICC data

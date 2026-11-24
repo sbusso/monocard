@@ -1,0 +1,11 @@
+name = "Street"
+description = "Neutral, full tonal range, a gentle shoulder."
+
+[tools.display]
+transform = "sigmoid"
+contrast = 1.5
+shoulder = 0.65
+toe = 0.5
+
+[tools.local_contrast]
+amount = 15

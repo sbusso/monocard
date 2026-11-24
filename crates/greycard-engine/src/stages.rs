@@ -166,6 +166,8 @@ pub enum InputKind {
         /// A monochrome sensor's: one channel developed as three equal
         /// ones, which no lateral aberration correction may part.
         monochrome: bool,
+        /// A picture's one channel (`DngTags::rendered`), not a sensor's.
+        rendered: bool,
     },
     /// A picture is turned by its tag at decode, so its size is the
     /// size it stands at. Its white is its color space's, as a
@@ -225,6 +227,7 @@ impl Facts {
                 makers: greycard_edit::baseline::makers(frame),
                 lens_corrected: frame.dng.merged.as_ref().is_some_and(|m| m.lens_corrected),
                 monochrome: frame.layout == SensorLayout::Monochrome,
+                rendered: frame.dng.rendered.is_some(),
             },
             identity: Identity {
                 make: frame.make.clone(),
@@ -257,7 +260,13 @@ impl Facts {
     }
 
     pub fn is_raw(&self) -> bool {
-        matches!(self.input, InputKind::Raw { .. })
+        matches!(
+            self.input,
+            InputKind::Raw {
+                rendered: false,
+                ..
+            }
+        )
     }
 
     /// What the file's own warps correct of its lens.
@@ -286,6 +295,11 @@ impl Facts {
                 ..
             }
         )
+    }
+
+    /// Whether the develop is Monocard's own, on one plane.
+    pub fn is_mono(&self) -> bool {
+        cfg!(feature = "mono") && self.is_monochrome()
     }
 
     /// The orientation the develop shows a raw in: the camera's tag
@@ -355,13 +369,17 @@ impl Facts {
             } if bin > 1 && p.is_xtrans() => {
                 bin.div_ceil(reduced::XTRANS_BIN) * reduced::XTRANS_BIN
             }
+            #[cfg(feature = "mono")]
+            InputKind::Raw {
+                monochrome: true, ..
+            } => bin,
             InputKind::Raw { pattern: None, .. } => 1,
             _ => bin,
         }
     }
 
     /// The size of the picture a bin of `bin` makes, as it stands.
-    fn binned(&self, bin: usize) -> (usize, usize) {
+    pub(crate) fn binned(&self, bin: usize) -> (usize, usize) {
         let (w, h) = self.full();
         if bin <= 1 {
             return (w, h);
@@ -383,7 +401,7 @@ impl Facts {
 }
 
 /// Whether an orientation stands a picture on its side.
-fn swaps(o: Orientation) -> bool {
+pub(crate) fn swaps(o: Orientation) -> bool {
     matches!(
         o,
         Orientation::Transpose
@@ -544,6 +562,9 @@ pub enum Stage {
     Sharpen(SharpenOptions, Delta),
     /// Working to what the purpose ends at.
     Finish(Finish),
+    /// A step of a monochrome raw's develop, on its one plane.
+    #[cfg(feature = "mono")]
+    Mono(crate::mono::Op),
 }
 
 /// What the sharpen makes for the masks' Sharpen: nothing; its delta
@@ -630,6 +651,10 @@ impl Stage {
     pub fn commutes_with_turn(&self) -> bool {
         match self {
             Stage::Lens(_) | Stage::Defringe(_) | Stage::Reduce(_) => false,
+            // Its turn is before its lens, and everything before that is
+            // kept apart.
+            #[cfg(feature = "mono")]
+            Stage::Mono(_) => false,
             Stage::Prepare(_)
             | Stage::Ca(_)
             | Stage::CaFit(_)
@@ -673,6 +698,8 @@ impl Stage {
             Stage::Dehaze(_) => "dehaze",
             Stage::Sharpen(..) => "sharpen",
             Stage::Finish(_) => "finish",
+            #[cfg(feature = "mono")]
+            Stage::Mono(op) => op.name(),
         }
     }
 }
@@ -758,6 +785,9 @@ pub enum Tap {
 /// Where a walk leaves what it has for the next to start from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keep {
+    /// A monochrome raw's plane before its denoise.
+    #[cfg(feature = "mono")]
+    Prepared,
     /// The learned denoiser's pair, before the blend.
     Pair,
     /// The base: everything before the retouch.
@@ -997,6 +1027,10 @@ pub fn stages(
 ) -> Steps {
     if let Purpose::MergeInput(merge) = purpose {
         return merge_input(edit, merge, facts);
+    }
+    #[cfg(feature = "mono")]
+    if facts.is_mono() {
+        return crate::mono::stages(edit, purpose, facts, lenses);
     }
     let reduced = purpose.is_reduced();
     let bin = if reduced {
@@ -1243,7 +1277,13 @@ pub fn stages(
         (None, false) => {}
     }
     s.keep(Keep::Developed);
-    s.op(Stage::Finish(match purpose {
+    s.op(Stage::Finish(finish_of(purpose)));
+    s
+}
+
+/// Where a develop for `purpose` ends.
+pub(crate) fn finish_of(purpose: &Purpose) -> Finish {
+    match purpose {
         Purpose::Viewport => Finish::Shader,
         Purpose::Export(settings) => Finish::Cpu {
             settings: settings.clone(),
@@ -1253,8 +1293,7 @@ pub fn stages(
             settings: Box::new(reduced_settings()),
             fit: Fit::Exact(BIG),
         },
-    }));
-    s
+    }
 }
 
 /// A merge's frame: the prepare with nothing clipped after the gains,
@@ -1378,6 +1417,17 @@ fn corrections(
     lens: &greycard_edit::Lens,
     db: Option<&greycard_lens::Database>,
 ) -> Vec<LensCorrection> {
+    lens.corrections(profile_of(w, h, facts, lens, db))
+}
+
+/// The lens's profile for a picture `w` by `h` of the frame.
+pub(crate) fn profile_of(
+    w: usize,
+    h: usize,
+    facts: &Facts,
+    lens: &greycard_edit::Lens,
+    db: Option<&greycard_lens::Database>,
+) -> Option<LensCorrection> {
     let id = &facts.identity;
     let identity = (
         id.make.as_str(),
@@ -1391,8 +1441,7 @@ fn corrections(
         .orientation()
         .or_else(|| quarters(facts.turn))
         .unwrap_or_default();
-    let profile = crate::lens::profile_correction((w, h), orientation, identity, lens, db);
-    lens.corrections(profile)
+    crate::lens::profile_correction((w, h), orientation, identity, lens, db)
 }
 
 /// A whole number of quarter turns clockwise as an orientation, for
@@ -1454,6 +1503,7 @@ mod tests {
                 makers: None,
                 lens_corrected: false,
                 monochrome: false,
+                rendered: false,
             },
             identity: identity(),
             turn,
@@ -1472,6 +1522,7 @@ mod tests {
                 makers: None,
                 lens_corrected: false,
                 monochrome: false,
+                rendered: false,
             },
             ..raw(0)
         }
@@ -1553,6 +1604,7 @@ mod tests {
                 makers: None,
                 lens_corrected: false,
                 monochrome: false,
+                rendered: false,
             },
             ..raw(0)
         };
@@ -2157,6 +2209,8 @@ mod tests {
             .ops()
             .find_map(|o| match o {
                 Stage::Lens(c) => c.first().copied(),
+                #[cfg(feature = "mono")]
+                Stage::Mono(crate::mono::Op::Lens(l)) => l.corrections.first().copied(),
                 _ => None,
             })
             .expect("the profile's correction");
@@ -2484,6 +2538,7 @@ mod tests {
                 makers: None,
                 lens_corrected: false,
                 monochrome: false,
+                rendered: false,
             },
             ..raw(0)
         };

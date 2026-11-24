@@ -1668,6 +1668,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_reject_takes_its_sidecar_under_the_folder_along() {
         let dir = std::env::temp_dir().join(format!(
             "greycard-rejects-folder-{}-{}",
@@ -1715,6 +1716,7 @@ mod tests {
     /// is; a sidecar of its names there with no raw beside it is an
     /// orphan of an earlier cull and goes under the frame's own.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn the_rejects_move_with_their_sidecars_and_nothing_is_deleted() {
         let dir = std::env::temp_dir().join(format!("greycard-rejects-{}", std::process::id()));
         crate::testing::remove_dir_retry(&dir);
@@ -1924,6 +1926,7 @@ mod tests {
     /// The plain move back: the raw into the folder above, its sidecar
     /// beside it still, and both of its XMPs along.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn move_back_takes_a_frame_home_with_its_sidecar_and_xmps() {
         let (dir, rejects) = shoot_with_rejects("plain");
         let a = rejects.join("A.CR3");
@@ -1955,6 +1958,7 @@ mod tests {
     /// A sidecar under the rejects folder's hidden folder goes under
     /// the folder above's own, not beside.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn move_back_keeps_a_sidecar_under_the_hidden_folder() {
         let (dir, rejects) = shoot_with_rejects("hidden");
         let a = rejects.join("A.CR3");
@@ -1974,6 +1978,7 @@ mod tests {
     /// frame whole in the rejects folder, the clash named; the files
     /// there are as they were.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn move_back_leaves_a_frame_whose_name_is_taken_whole() {
         let (dir, rejects) = shoot_with_rejects("taken");
         let (a, b) = (rejects.join("A.CR3"), rejects.join("B.CR3"));
@@ -2008,6 +2013,7 @@ mod tests {
     /// culled; the frame's sidecar, which carries the flag and the
     /// newer edits, goes over it.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn move_back_writes_the_frames_sidecar_over_its_own_orphan() {
         let (dir, rejects) = shoot_with_rejects("orphan");
         let a = rejects.join("A.CR3");
@@ -2031,6 +2037,7 @@ mod tests {
     /// A frame not in a rejects folder stays where it is, said; the
     /// rest of the list goes on.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn move_back_leaves_a_frame_not_in_a_rejects_folder() {
         let (dir, rejects) = shoot_with_rejects("not");
         let (a, b) = (dir.join("A.CR3"), rejects.join("B.CR3"));
@@ -2054,6 +2061,7 @@ mod tests {
     /// frame's own by a higher saved count; kept, on an archive, the
     /// frame stays whole and it is named.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn an_orphan_under_the_other_placement_goes_or_keeps_the_frame_whole() {
         let (dir, rejects) = shoot_with_rejects("other-placement");
         let hidden = greycard_edit::SIDECAR_FOLDER;
@@ -2108,6 +2116,7 @@ mod tests {
     /// an unrelated file of the stem there owns neither: a hidden
     /// orphan beside the camera's JPEG of the frame is still an orphan.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_jpeg_of_the_stem_owns_no_gcd() {
         let (dir, rejects) = shoot_with_rejects("jpeg-gcd");
         let a = rejects.join("A.CR3");
@@ -2178,6 +2187,7 @@ mod tests {
     /// the raw chosen, the XMP was nobody's while the pair was together
     /// and stays with the JPEG left behind, whose it then is.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_raw_and_its_jpeg_move_with_their_short_xmp_together() {
         let meta = greycard_edit::meta::Meta {
             flag: greycard_edit::meta::Flag::Reject,
@@ -2244,6 +2254,7 @@ mod tests {
     /// ORI out first and the ORF after, and the ORF out alone and back,
     /// each moves whole, the ORI never an owner of `P.xmp`.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn an_orf_and_its_ori_move_out_and_back_with_their_xmps() {
         let meta = greycard_edit::meta::Meta {
             flag: greycard_edit::meta::Flag::Reject,
@@ -2392,6 +2403,7 @@ mod tests {
     /// home; a JPEG of its name in the rejects folder already keeps the
     /// pair whole where it is; apart, the raw goes alone.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_raw_takes_its_companion_out_and_back() {
         let names = |d: &Path| {
             let mut all: Vec<String> = std::fs::read_dir(d)

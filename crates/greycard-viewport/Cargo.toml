@@ -14,6 +14,9 @@ workspace = true
 [lib]
 
 [dependencies]
+mono-core = { path = "../mono-core", optional = true }
+mono-tone = { path = "../mono-tone", optional = true }
+mono-look = { path = "../mono-look", optional = true }
 greycard-core = { path = "../greycard-core" }
 greycard-edit = { path = "../greycard-edit" }
 # The device and its types; the window lends Slint's.
@@ -34,6 +37,8 @@ tracing.workspace = true
 pollster = { workspace = true, optional = true }
 
 [features]
+# Monocard, the monochrome build (docs/monocard).
+mono = ["dep:mono-core", "dep:mono-tone", "dep:mono-look", "greycard-render/mono", "greycard-gpu/mono"]
 # The scopes' test pictures and a test device, which the window's
 # tests of their drawing share with these. Turned on by greycard-ui's
 # dev-dependency only.

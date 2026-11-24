@@ -23,8 +23,21 @@ use slint::ComponentHandle;
 
 use crate::{App, Shared, settings, tr};
 
-/// The one address asked.
-pub const LATEST: &str = "https://api.github.com/repos/jessolmstead/greycard/releases/latest";
+/// Whether this build has releases to ask about: Monocard has none yet,
+/// and greycard's are never offered in its place.
+pub const ON: bool = greycard_core::brand::RELEASES.is_some();
+
+/// The one address asked; no address where there is nothing to ask.
+pub const LATEST: &str = match greycard_core::brand::RELEASES {
+    Some(url) => url,
+    None => "",
+};
+
+/// The repository a release's page is under.
+const REPOSITORY: &str = match greycard_core::brand::REPOSITORY {
+    Some(url) => url,
+    None => env!("CARGO_PKG_REPOSITORY"),
+};
 
 /// How long a check's answer stands before the launch asks again.
 pub const DAY: u64 = 24 * 60 * 60;
@@ -162,9 +175,12 @@ pub fn parse_release(body: &str) -> Option<Release> {
     let url = value
         .get("html_url")
         .and_then(|u| u.as_str())
-        .filter(|u| u.starts_with(concat!(env!("CARGO_PKG_REPOSITORY"), "/")))
+        .filter(|u| {
+            u.strip_prefix(REPOSITORY)
+                .is_some_and(|r| r.starts_with('/'))
+        })
         .map(str::to_string)
-        .unwrap_or_else(|| format!("{}/releases/latest", env!("CARGO_PKG_REPOSITORY")));
+        .unwrap_or_else(|| format!("{REPOSITORY}/releases/latest"));
     Some(Release { tag, url })
 }
 
@@ -238,6 +254,9 @@ fn offline(_: &str) -> Result<String, FetchError> {
 
 /// Ask, and read the answer.
 pub fn check(fetch: Fetch) -> Outcome {
+    if !ON {
+        return Outcome::Refused;
+    }
     match fetch(LATEST) {
         Ok(body) => match parse_release(&body) {
             Some(r) => Outcome::Found(r),
@@ -300,7 +319,7 @@ pub fn words(outcome: &Outcome, current: &str) -> String {
 
 /// The left pane's entry, from what the settings keep.
 pub(crate) fn show(app: &App, kept: &Kept) {
-    let (version, url) = offer(kept, VERSION).unwrap_or_default();
+    let (version, url) = offer(kept, VERSION).filter(|_| ON).unwrap_or_default();
     app.set_update_version(version.into());
     app.set_update_url(url.into());
 }
@@ -359,9 +378,9 @@ fn spawn(app: &App, fetch: Fetch, persist: bool, asked: Option<u64>) {
 /// At startup: the entry from what was kept, and the check if this
 /// launch is due one.
 pub(crate) fn start(app: &App, batch: bool, kept: &Kept) {
-    app.set_update_check(kept.check);
+    app.set_update_check(kept.check && ON);
     show(app, kept);
-    if cfg!(test) || !at_launch(batch, kept, now()) {
+    if !ON || cfg!(test) || !at_launch(batch, kept, now()) {
         return;
     }
     tracing::info!("update: asking GitHub for the latest release");
@@ -387,6 +406,16 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>) {
             let Some(app) = app_weak.upgrade() else {
                 return;
             };
+            if !ON {
+                app.set_update_note(
+                    format!(
+                        "{} has no releases to check yet",
+                        greycard_core::brand::NAME
+                    )
+                    .into(),
+                );
+                return;
+            }
             // One at a time: the button waits for this answer.
             if app.get_update_checking() {
                 return;
@@ -551,7 +580,16 @@ mod tests {
         assert_eq!(parse_release("<html>rate limited</html>"), None);
     }
 
+    /// Monocard asks nothing and offers nothing until it has releases.
     #[test]
+    #[cfg(feature = "mono")]
+    fn no_release_of_greycards_is_ever_asked_for() {
+        const { assert!(!ON) };
+        assert_eq!(check(|_| panic!("asked")), Outcome::Refused);
+    }
+
+    #[test]
+    #[cfg_attr(feature = "mono", ignore = "Monocard has no releases to ask for")]
     fn a_check_is_its_fetch_read() {
         fn found(url: &str) -> Result<String, FetchError> {
             assert_eq!(url, LATEST);
@@ -684,6 +722,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "Monocard has no releases to ask for")]
     fn the_pane_shows_the_kept_release_and_the_sheet_the_check() {
         let app = crate::testing::window(1);
         let _state = crate::testing::state_for(&app, Vec::new());

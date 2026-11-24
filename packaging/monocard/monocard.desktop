@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Monocard
+Comment=The darkroom for monochrome sensors
+Exec=monocard-ui %f
+Icon=monocard
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;Photography;
+MimeType=image/x-adobe-dng;image/jpeg;image/png;image/tiff;
+StartupWMClass=monocard

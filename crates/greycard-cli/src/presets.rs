@@ -36,7 +36,10 @@ pub(crate) fn presets(
             // once. Only the user's own store — a `--dir` is somewhere
             // the caller named, a staging directory or a copy, and
             // dropping three presets into it is not what was asked.
-            store.seed();
+            // The mono build ships none: they are color looks.
+            if !cfg!(feature = "mono") {
+                store.seed();
+            }
             store
         }
     };

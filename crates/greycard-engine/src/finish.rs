@@ -28,6 +28,9 @@ pub struct FinishInput {
     /// which frames an edit with no crop; none where the camera framed
     /// all of it, or where the caller frames the picture its own way.
     pub camera: Option<greycard_edit::geometry::Crop>,
+    /// A monochrome raw's planes, finished in the picture's place.
+    #[cfg(feature = "mono")]
+    pub mono: Option<mono_core::MonoFrame>,
 }
 
 impl Walked {
@@ -37,6 +40,8 @@ impl Walked {
             Buf::Working(image) => (image.width as u32, image.height as u32),
             Buf::Device(image) => (image.width(), image.height()),
             Buf::Texture(texture) => (texture.width(), texture.height()),
+            #[cfg(feature = "mono")]
+            Buf::Plane(m) => (m.plane.width as u32, m.plane.height as u32),
             _ => (0, 0),
         };
         FinishInput {
@@ -49,6 +54,11 @@ impl Walked {
             clip_level: self.meta.clip_level,
             kind: self.meta.source,
             camera: None,
+            #[cfg(feature = "mono")]
+            mono: match &self.buf {
+                Buf::Plane(m) => Some(m.frame()),
+                _ => None,
+            },
         }
     }
 }
@@ -65,6 +75,20 @@ pub fn render(
     input: &FinishInput,
     settings: &export::Settings,
 ) -> export::Rendered {
+    #[cfg(feature = "mono")]
+    if let Some(frame) = &input.mono {
+        let (w, h) = (frame.base.width as f32, frame.base.height as f32);
+        let edit = Edit {
+            geometry: edit.geometry.with_camera_frame(w, h, input.camera),
+            ..edit.clone()
+        };
+        let beside = greycard_render::mono::Beside {
+            learned: Some(&input.rasters),
+            picture: input.guide.as_ref().and_then(|g| g.picture.as_deref()),
+            ..Default::default()
+        };
+        return greycard_render::mono::render(frame, &edit, settings, &beside);
+    }
     let (w, h) = (image.width as f32, image.height as f32);
     let edit = &Edit {
         geometry: edit.geometry.with_camera_frame(w, h, input.camera),
@@ -152,6 +176,8 @@ mod tests {
             clip_level: f32::INFINITY,
             kind: Source::Display,
             camera: None,
+            #[cfg(feature = "mono")]
+            mono: None,
         }
     }
 

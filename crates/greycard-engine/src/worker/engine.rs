@@ -807,7 +807,12 @@ pub(super) fn run(
                             // it was.
                             let written = if opened_path.as_deref() == Some(frame.source.as_path())
                             {
-                                let edit = seeded(&frame.edit, frame.seed_blend, input.as_ref());
+                                let edit = seeded(
+                                    &frame.edit,
+                                    frame.seed_blend,
+                                    input.as_ref(),
+                                    &frame.source,
+                                );
                                 rendered = edit.clone();
                                 export_open(
                                     &edit,
@@ -1087,7 +1092,9 @@ pub(super) fn run(
                             .and_then(greycard_library::normalize_taken);
                         metadata = Some(Arc::new(m));
                         let blend = match &opened {
-                            Input::Raw(f) if seed_blend => Some(Noise::blend_for_iso(f.shot.iso)),
+                            Input::Raw(f) if seed_blend && f.dng.rendered.is_none() => {
+                                Some(Noise::blend_for_iso(f.shot.iso))
+                            }
                             _ => None,
                         };
                         let edit = {
@@ -1105,7 +1112,14 @@ pub(super) fn run(
                                     .and_then(|p| as_shot_temp_tint(f, p).ok())
                                     .map(|tt| (tt.cct, tt.duv))
                                     .unwrap_or((5500.0, 0.0));
-                                (as_shot, Some(f.clone()), profile, SourceKind::Raw)
+                                let kind = match &f.dng.rendered {
+                                    Some(r) => SourceKind::Picture {
+                                        space: r.space.clone(),
+                                        bits: r.bits,
+                                    },
+                                    None => SourceKind::Raw,
+                                };
+                                (as_shot, Some(f.clone()), profile, kind)
                             }
                             // A picture's "as shot" is its own white,
                             // which its offset sliders are reckoned from.
@@ -1442,9 +1456,10 @@ pub(super) fn run(
                 );
                 let outcome = match &base {
                     Some(b) => {
+                        ai.stand_for(Some(b.frame_size()));
                         match ai.raster_retouched(
                             b.base(),
-                            &b.image,
+                            &b.models_image(),
                             masks::retouched_of(b, None),
                             &b.edit,
                             b.meta.source,
@@ -1474,6 +1489,7 @@ pub(super) fn run(
                         message: "nothing developed yet".into(),
                     },
                 };
+                ai.stand_for(None);
                 open_frame_masks_done(&mut ai);
                 deliver(outcome);
                 // A mask the card was short of, made on the CPU: given
@@ -1535,7 +1551,7 @@ pub(super) fn run(
                 );
                 let people = match &base {
                     Some(b) => ai
-                        .people(b.stamp, &b.image, b.meta.source, b.turn)
+                        .people(b.stamp, &b.models_image(), b.meta.source, b.turn)
                         .map(|(found, provider, seconds)| (found, provider.label(), seconds)),
                     None => Err("nothing developed yet".into()),
                 };
@@ -1565,7 +1581,7 @@ pub(super) fn run(
                 );
                 let offers = match &base {
                     Some(b) => ai
-                        .landscape(b.stamp, &b.image, &b.edit, b.meta.source)
+                        .landscape(b.stamp, &b.models_image(), &b.edit, b.meta.source)
                         .map(|(found, provider, seconds)| (found, provider.label(), seconds)),
                     None => Err("nothing developed yet".into()),
                 };

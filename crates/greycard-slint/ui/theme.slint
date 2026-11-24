@@ -13,6 +13,8 @@
 // accent's fills are the one blue in all three, and the picture's
 // surround is the viewport's own setting, not the theme's.
 
+import { Mono } from "../../mono-ui/ui/state.slint";
+
 struct Tones {
     canvas: color,
     base: color,
@@ -164,30 +166,34 @@ export global Theme {
     // enough to read on a pale one, and greener than any foliage.
     out property <color> peaking: #3cff28;
 
-    // Accent.
-    out property <color> accent: #6ea8ff;
-    out property <color> accent-hover: #8dbbff;
-    out property <color> accent-pressed: #5b95ec;
-    out property <color> accent-muted: #6ea8ff40;
+    // Accent. The mono build's is a safelight's amber, and the only color
+    // on its panels.
+    out property <color> accent: Mono.on ? #d8a24a : #6ea8ff;
+    out property <color> accent-hover: Mono.on ? #e6b866 : #8dbbff;
+    out property <color> accent-pressed: Mono.on ? #c08f3d : #5b95ec;
+    out property <color> accent-muted: Mono.on ? #d8a24a40 : #6ea8ff40;
+    // A slider's fill and a switch's on, at rest: grey in the mono build,
+    // where the accent is the active control's alone.
+    out property <color> fill: Mono.on ? now.text-secondary : accent;
     // The ring of a frame in the strip's set and not current: the
     // accent at 60%, a full ring the eye finds over a dark picture or
     // a bright one, and still a step below the current frame's
     // (`accent-text`, the accent itself on the dark themes and
     // Light's darker blue there, and a pixel wider). The same in
     // every theme.
-    out property <color> selection-ring: #6ea8ff99;
+    out property <color> selection-ring: Mono.on ? #d8a24a99 : #6ea8ff99;
     // The accent on a ground light in every theme (the lightbox on a
     // white canvas), where the blue itself is lost: Light's darker
     // blue, 8.6:1 on white, and its muted ring.
-    out property <color> accent-dark: #174a96;
-    out property <color> accent-dark-muted: #174a9666;
+    out property <color> accent-dark: Mono.on ? #6f4700 : #174a96;
+    out property <color> accent-dark-muted: Mono.on ? #6f470066 : #174a9666;
     // A chosen row's fill and the keyboard's focus: the blue on the
     // dark themes, darker on Light, where it would not show.
-    out property <color> selection: now.selection;
-    out property <color> focus-ring: now.focus-ring;
+    out property <color> selection: !Mono.on ? now.selection : light ? #00000026 : #ffffff1f;
+    out property <color> focus-ring: !Mono.on ? now.focus-ring : light ? #6f4700 : #d8a24a99;
     // The accent as words, darker on Light where the blue itself
     // would not read.
-    out property <color> accent-text: now.accent-text;
+    out property <color> accent-text: !Mono.on ? now.accent-text : light ? #6f4700 : #d8a24a;
     // Ink over an accent fill (a primary button's words, a tick),
     // and a switch's knob: the same in every theme, as the accent is.
     out property <color> on-accent: #101010;
@@ -205,9 +211,9 @@ export global Theme {
     // Red, yellow, and green as words (a warning, a missing file, a
     // match): the labels' colors on the dark themes, darker on Light
     // to read on its surfaces.
-    out property <color> warn-red: now.warn-red;
-    out property <color> warn-yellow: now.warn-yellow;
-    out property <color> ok-green: now.ok-green;
+    out property <color> warn-red: Mono.on ? now.text-strong : now.warn-red;
+    out property <color> warn-yellow: Mono.on ? now.text : now.warn-yellow;
+    out property <color> ok-green: Mono.on ? now.text-secondary : now.ok-green;
     out property <color> label-blue: #5b9ce6;
     out property <color> label-purple: #a179dd;
 

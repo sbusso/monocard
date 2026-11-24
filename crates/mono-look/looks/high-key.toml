@@ -1,0 +1,13 @@
+name = "High Key"
+description = "Bright and airy, few true blacks."
+
+[tools.basic]
+exposure = 0.7
+blacks = 15
+
+[tools.display]
+contrast = 1.3
+shoulder = 0.8
+
+[tools.contrast_eq]
+coarse = -25

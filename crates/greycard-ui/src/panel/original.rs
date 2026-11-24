@@ -55,6 +55,9 @@ struct Shown {
     /// The picture's own size as the texture stands, which a texture
     /// that went up reduced to fit the device is not.
     texture_size: Option<(u32, u32)>,
+    /// A mono picture, which goes up again from its planes.
+    #[cfg(feature = "mono")]
+    mono: Option<Arc<mono_core::MonoFrame>>,
     kind: finish::Source,
     guide: Arc<finish::Guide>,
     planes: Option<Arc<crate::detail::DetailPlanes>>,
@@ -68,9 +71,20 @@ impl Shown {
     /// develop: what went up with it, as it went up.
     fn on_screen(st: &State) -> Option<Self> {
         let renderer = st.develop.renderer.as_ref()?;
-        let texture = renderer.developed()?.clone();
+        #[cfg(feature = "mono")]
+        let mono = st.develop.drawn_mono.clone().filter(|_| renderer.is_mono());
+        #[cfg(feature = "mono")]
+        let stock = mono.is_none();
+        #[cfg(not(feature = "mono"))]
+        let stock = true;
+        let texture = renderer.developed().cloned();
+        if stock && texture.is_none() {
+            return None;
+        }
         Some(Self {
-            texture: Some(texture),
+            #[cfg(feature = "mono")]
+            mono,
+            texture,
             texture_size: renderer.developed_size(),
             kind: st.develop.drawn_kind,
             guide: st.develop.drawn_guide.clone(),
@@ -86,6 +100,8 @@ impl Shown {
     fn landed(st: &State, landed: &Landed, turn: u8) -> Self {
         let renderer = st.develop.renderer.as_ref();
         Self {
+            #[cfg(feature = "mono")]
+            mono: st.develop.drawn_mono.clone().filter(|_| renderer.is_some()),
             texture: renderer.and_then(|r| r.developed()).cloned(),
             texture_size: renderer.and_then(|r| r.developed_size()),
             kind: landed.kind,
@@ -100,7 +116,11 @@ impl Shown {
     /// Up again on the next frame, as a develop of `generation`; false
     /// with no texture to put up.
     fn put_up(&self, st: &mut State, generation: u64) -> bool {
-        let Some(texture) = &self.texture else {
+        #[cfg(feature = "mono")]
+        let mono = self.mono.clone().map(Developed::Mono);
+        #[cfg(not(feature = "mono"))]
+        let mono = None;
+        let Some(image) = mono.or_else(|| self.texture.clone().map(Developed::Texture)) else {
             return false;
         };
         st.develop.shown_size = self.size;
@@ -108,7 +128,7 @@ impl Shown {
         st.develop.planes_wants = self.planes.as_ref().map(|p| p.wants).unwrap_or_default();
         st.develop.planes_asked = Default::default();
         st.develop.pending = Some(Landed {
-            image: Developed::Texture(texture.clone()),
+            image,
             kind: self.kind,
             guide: self.guide.clone(),
             planes: self.planes.clone(),
@@ -482,6 +502,68 @@ mod tests {
     fn land(state: &Rc<Shared>, app: &App) {
         let mut st = state.borrow_mut();
         crate::panel::startup::land_pending(&mut st, app);
+    }
+
+    /// A mono frame's picture goes up as its planes, is viewed and binned
+    /// as one, and is put back as the planes it was. Skipped without a
+    /// GPU.
+    #[cfg(feature = "mono")]
+    #[test]
+    fn a_mono_picture_goes_up_and_is_put_back_as_its_planes() {
+        use crate::panel::viewport::{mono_view, picture_up, scope_of};
+        let Some((device, queue)) = greycard_viewport::testing::device("mono_original") else {
+            return;
+        };
+        let (_app, state, _worker, edit) = developed_frame();
+        let mut st = state.borrow_mut();
+        let st = &mut *st;
+        st.develop.renderer = Some(crate::render::Renderer::new(&device, &queue));
+        let frame = Arc::new(mono_core::MonoFrame {
+            base: Arc::new(mono_core::Plane::filled(60, 40, 0.2)),
+            guide: None,
+            detail: None,
+            local: None,
+            clip: None,
+            iso: Some(800.0),
+            white: 1.0,
+            rendered: false,
+        });
+        let landed = |image| Landed {
+            image,
+            kind: finish::Source::SCENE,
+            guide: Arc::new(finish::Guide::NONE),
+            planes: None,
+            white: edits_white(),
+            generation: 7,
+            full: None,
+        };
+        assert_eq!(mono_view(st, &edit), None);
+        picture_up(&mut st.develop, &landed(Developed::Mono(frame.clone())));
+        st.develop.base_white = Some(edits_white());
+        st.develop.shown_turn = Some((0, 0));
+        let mut mono = mono_core::MonoEdit::default();
+        mono.basic.exposure = 0.5;
+        let edit = Edit {
+            mono: Some(Box::new(mono.clone())),
+            ..edit
+        };
+        assert_eq!(mono_view(st, &edit).map(|v| v.edit), Some(mono));
+        st.develop.scope = crate::scope::Scope::Vector;
+        assert_eq!(scope_of(st), crate::scope::Scope::Rgb);
+        st.develop.scope = crate::scope::Scope::Waveform;
+        assert_eq!(scope_of(st), crate::scope::Scope::Waveform);
+        let shown = Shown::on_screen(st).expect("a mono picture is on screen");
+        let stock = Developed::Halves(Arc::new(crate::worker::Halves {
+            width: 2,
+            height: 1,
+            pixels: vec![Default::default(); 8],
+        }));
+        picture_up(&mut st.develop, &landed(stock));
+        assert_eq!(mono_view(st, &edit), None);
+        assert!(shown.put_up(st, 8));
+        let back = st.develop.pending.take().expect("put up again");
+        assert!(matches!(back.image, Developed::Mono(f) if Arc::ptr_eq(&f, &frame)));
+        st.develop.renderer = None;
     }
 
     /// The backslash shows the Original, its own develop asked once and

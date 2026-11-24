@@ -47,11 +47,16 @@ pub enum Section {
     /// The camera profile the develop starts from.
     Camera,
     Adjustments,
+    /// Monocard's own section ([`Edit::mono`]).
+    #[cfg(feature = "mono")]
+    Mono,
 }
 
 impl Section {
     /// In the panel's order.
     pub const ALL: &[Section] = &[
+        #[cfg(feature = "mono")]
+        Section::Mono,
         Section::Look,
         Section::WhiteBalance,
         Section::Light,
@@ -97,6 +102,8 @@ impl Section {
             Section::Demosaic => "demosaic",
             Section::Camera => "camera",
             Section::Adjustments => "adjustments",
+            #[cfg(feature = "mono")]
+            Section::Mono => "mono",
         }
     }
 
@@ -123,6 +130,8 @@ impl Section {
             Section::Demosaic => "Demosaic",
             Section::Camera => "Camera profile",
             Section::Adjustments => "Masks",
+            #[cfg(feature = "mono")]
+            Section::Mono => "Monochrome",
         }
     }
 
@@ -206,6 +215,8 @@ impl Section {
                     })
                     .collect();
             }
+            #[cfg(feature = "mono")]
+            Section::Mono => onto.mono = from.mono.clone(),
         }
     }
 
@@ -245,6 +256,11 @@ impl Section {
             // As `copy` would lay it (`Camera::take`).
             Section::Camera => b.camera.has(&a.camera),
             Section::Adjustments => a.adjustments == b.adjustments,
+            // None is the defaults.
+            #[cfg(feature = "mono")]
+            Section::Mono => {
+                a.mono.clone().unwrap_or_default() == b.mono.clone().unwrap_or_default()
+            }
         }
     }
 }
@@ -315,6 +331,96 @@ pub enum Part {
     GrainAmount,
     GrainSize,
     GrainKind,
+    #[cfg(feature = "mono")]
+    Mono(MonoPart),
+}
+
+/// A part of the mono section: its tools, as the panels have them. The
+/// look's name goes with the whole section alone.
+#[cfg(feature = "mono")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MonoPart {
+    Exposure,
+    /// Contrast, blacks, and midtones, and the display transform.
+    Tone,
+    Zones,
+    Curve,
+    Highlights,
+    /// The contrast equalizer, the local contrast, and the sharpen.
+    Detail,
+    Noise,
+    Grain,
+    Vignette,
+    /// The solarize and the toning.
+    Toning,
+}
+
+#[cfg(feature = "mono")]
+impl MonoPart {
+    fn name(self) -> &'static str {
+        match self {
+            MonoPart::Exposure => "mono.exposure",
+            MonoPart::Tone => "mono.tone",
+            MonoPart::Zones => "mono.zones",
+            MonoPart::Curve => "mono.curve",
+            MonoPart::Highlights => "mono.highlights",
+            MonoPart::Detail => "mono.detail",
+            MonoPart::Noise => "mono.noise",
+            MonoPart::Grain => "mono.grain",
+            MonoPart::Vignette => "mono.vignette",
+            MonoPart::Toning => "mono.toning",
+        }
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            MonoPart::Exposure => "Exposure",
+            MonoPart::Tone => "Tone",
+            MonoPart::Zones => "Zones",
+            MonoPart::Curve => "Curve",
+            MonoPart::Highlights => "Highlights",
+            MonoPart::Detail => "Detail",
+            MonoPart::Noise => "Noise",
+            MonoPart::Grain => "Grain",
+            MonoPart::Vignette => "Vignette",
+            MonoPart::Toning => "Toning",
+        }
+    }
+
+    fn copy(self, from: &Edit, onto: &mut Edit) {
+        let f = from.mono.as_deref().cloned().unwrap_or_default();
+        // A part at rest on a picture without the section leaves it so.
+        let before = onto.mono.as_deref().cloned().unwrap_or_default();
+        let mut o = before.clone();
+        match self {
+            MonoPart::Exposure => o.basic.exposure = f.basic.exposure,
+            MonoPart::Tone => {
+                o.basic = mono_core::edit::Basic {
+                    exposure: o.basic.exposure,
+                    ..f.basic
+                };
+                o.display = f.display;
+            }
+            MonoPart::Zones => o.tone_eq = f.tone_eq,
+            MonoPart::Curve => o.curve = f.curve,
+            MonoPart::Highlights => o.highlights = f.highlights,
+            MonoPart::Detail => {
+                o.contrast_eq = f.contrast_eq;
+                o.local_contrast = f.local_contrast;
+                o.diffuse = f.diffuse;
+            }
+            MonoPart::Noise => o.denoise = f.denoise,
+            MonoPart::Grain => o.grain = f.grain,
+            MonoPart::Vignette => o.vignette = f.vignette,
+            MonoPart::Toning => {
+                o.solarize = f.solarize;
+                o.toning = f.toning;
+            }
+        }
+        if o != before {
+            onto.mono = Some(Box::new(o));
+        }
+    }
 }
 
 /// The mixer's parts, band by band.
@@ -333,6 +439,26 @@ impl Part {
     /// Every part, in the panel's order: by section as
     /// [`Section::ALL`] has them, then down the section.
     pub const ALL: &[Part] = &[
+        #[cfg(feature = "mono")]
+        Part::Mono(MonoPart::Exposure),
+        #[cfg(feature = "mono")]
+        Part::Mono(MonoPart::Tone),
+        #[cfg(feature = "mono")]
+        Part::Mono(MonoPart::Zones),
+        #[cfg(feature = "mono")]
+        Part::Mono(MonoPart::Curve),
+        #[cfg(feature = "mono")]
+        Part::Mono(MonoPart::Highlights),
+        #[cfg(feature = "mono")]
+        Part::Mono(MonoPart::Detail),
+        #[cfg(feature = "mono")]
+        Part::Mono(MonoPart::Noise),
+        #[cfg(feature = "mono")]
+        Part::Mono(MonoPart::Grain),
+        #[cfg(feature = "mono")]
+        Part::Mono(MonoPart::Vignette),
+        #[cfg(feature = "mono")]
+        Part::Mono(MonoPart::Toning),
         Part::LightExposure,
         Part::LightContrast,
         Part::LightHighlights,
@@ -410,6 +536,8 @@ impl Part {
                 Section::Vignette
             }
             GrainAmount | GrainSize | GrainKind => Section::Grain,
+            #[cfg(feature = "mono")]
+            Mono(_) => Section::Mono,
         }
     }
 
@@ -465,6 +593,8 @@ impl Part {
             GrainAmount => "grain.amount",
             GrainSize => "grain.size",
             GrainKind => "grain.kind",
+            #[cfg(feature = "mono")]
+            Mono(p) => p.name(),
         }
     }
 
@@ -520,6 +650,8 @@ impl Part {
             GrainAmount => "Amount",
             GrainSize => "Size",
             GrainKind => "Type",
+            #[cfg(feature = "mono")]
+            Mono(p) => p.title(),
         }
     }
 
@@ -622,6 +754,8 @@ impl Part {
             GrainAmount => o.grain.amount = f.grain.amount,
             GrainSize => o.grain.size = f.grain.size,
             GrainKind => o.grain.kind = f.grain.kind,
+            #[cfg(feature = "mono")]
+            Mono(p) => p.copy(f, o),
             MixerRed | MixerOrange | MixerYellow | MixerGreen | MixerAqua | MixerBlue
             | MixerPurple | MixerMagenta => unreachable!("a band, laid above"),
         }
@@ -1201,7 +1335,9 @@ impl Store {
             .map(PathBuf::from)
             .filter(|p| p.is_absolute())
             .or_else(dirs::config_dir)?;
-        Some(Self::at(base.join("greycard").join("presets")))
+        Some(Self::at(
+            base.join(greycard_core::brand::APP_DIR).join("presets"),
+        ))
     }
 
     pub fn at(dir: PathBuf) -> Self {
@@ -2425,6 +2561,46 @@ mod tests {
         assert!(!whole.is_applied(&moved));
     }
 
+    /// The mono section goes whole or by its tools, and none is its
+    /// defaults.
+    #[cfg(feature = "mono")]
+    #[test]
+    fn the_mono_section_is_carried() {
+        let mut from = Edit::default();
+        let m = from.mono.insert(Default::default());
+        m.basic.exposure = 0.7;
+        m.basic.contrast = 20.0;
+        m.denoise.strength = 80.0;
+        m.look.name = "Street".into();
+        let whole = Preset::from_edit("Street", &from, &[Section::Mono]);
+        let text = serde_json::to_string(&whole).unwrap();
+        let whole: Preset = serde_json::from_str(&text).unwrap();
+        assert_eq!(whole.applied(&Edit::default()).mono, from.mono);
+        let part = Preset::from_choice(
+            "",
+            &from,
+            &Choice {
+                parts: vec![Part::Mono(MonoPart::Noise)],
+                ..Choice::default()
+            },
+        );
+        let out = part.applied(&Edit::default()).mono.unwrap();
+        assert_eq!(out.denoise, from.mono.as_ref().unwrap().denoise);
+        assert_eq!((out.basic.exposure, out.look.name.as_str()), (0.0, ""));
+        let mut none = Edit::default();
+        assert!(Section::Mono.same(&none, &Edit::default()));
+        none.mono = Some(Default::default());
+        assert!(Section::Mono.same(&none, &Edit::default()));
+        assert_eq!(
+            none.develop_key_with(&[], None),
+            Edit::default().develop_key_with(&[], None)
+        );
+        assert_ne!(
+            from.develop_key_with(&[], None),
+            Edit::default().develop_key_with(&[], None)
+        );
+    }
+
     #[test]
     fn every_part_moves_only_itself_and_the_parts_make_the_section() {
         // A default edit against one with every slider moved: each
@@ -2462,6 +2638,20 @@ mod tests {
         from.grain.amount = 0.4;
         from.grain.size = 40.0;
         from.grain.kind = crate::grain::Kind::Tabular;
+        #[cfg(feature = "mono")]
+        {
+            let m = from.mono.insert(Default::default());
+            m.basic.exposure = 0.5;
+            m.basic.contrast = 10.0;
+            m.tone_eq.zones[2] = 0.5;
+            m.curve.in_white = 0.9;
+            m.highlights.inpaint = true;
+            m.contrast_eq.fine = 10.0;
+            m.denoise.strength = 60.0;
+            m.grain.amount = 0.3;
+            m.vignette.amount = -10.0;
+            m.toning.overall.amount = 0.2;
+        }
         let plain = Edit::default();
         for &p in Part::ALL {
             assert!(!p.same(&from, &plain), "{p:?} moves nothing");
@@ -2804,7 +2994,7 @@ mod tests {
             );
         }
         let on: Vec<_> = Section::ALL.iter().filter(|s| s.by_default()).collect();
-        assert_eq!(on.len(), 15);
+        assert_eq!(on.len(), 15 + usize::from(cfg!(feature = "mono")));
         // A film preset is a look and a strength, so the look comes
         // across by default as the rest of the look does.
         assert!(on.contains(&&Section::Look));

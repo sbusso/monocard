@@ -488,6 +488,16 @@ impl Library {
         } else {
             (Vec::new(), false)
         };
+        let files = crate::monochrome::kept_by(files, |p| {
+            // On a share that does not answer, unknown, which is kept.
+            let p = p.to_path_buf();
+            match far {
+                Some(f) => f
+                    .one(move || crate::monochrome::is_monochrome(&p))
+                    .unwrap_or(true),
+                None => crate::monochrome::is_monochrome(&p),
+            }
+        });
         if exists
             && files.is_empty()
             && read_far(far, &dir, is_empty_dir)?
@@ -796,7 +806,10 @@ impl Library {
             existing.insert(path_bytes(&path), row);
         }
         // A hidden file is no row, as its folder's listing has it.
-        let files: Vec<PathBuf> = if path.is_file() && !greycard_core::decode::is_hidden(&path) {
+        let files: Vec<PathBuf> = if path.is_file()
+            && !greycard_core::decode::is_hidden(&path)
+            && crate::monochrome::opens(&path)
+        {
             vec![path]
         } else {
             Vec::new()
@@ -888,11 +901,12 @@ struct SidecarNow {
 /// carried sidecar's. True when a sidecar was carried.
 fn carry_sidecar(old: &Path, new: &Path) -> bool {
     disk_call();
+    let greycards = carry_greycards(old, new);
     let Some(from) = Sidecar::find(old) else {
-        return false;
+        return greycards;
     };
     if Sidecar::find(new).is_some() {
-        return false;
+        return greycards;
     }
     let placement = if from.parent().and_then(Path::file_name)
         == Some(std::ffi::OsStr::new(greycard_edit::SIDECAR_FOLDER))
@@ -926,6 +940,45 @@ fn carry_sidecar(old: &Path, new: &Path) -> bool {
             );
             false
         }
+    }
+}
+
+/// Greycard's own sidecar taken along with a raw Monocard found moved,
+/// as greycard takes it, so neither app's edit is left behind: whole,
+/// in the same placement, and never over one at the new place. Nothing
+/// in greycard itself ([`Sidecar::greycards`]).
+fn carry_greycards(old: &Path, new: &Path) -> bool {
+    let from = Sidecar::greycards(old);
+    if from.is_empty() || !Sidecar::greycards(new).is_empty() {
+        return false;
+    }
+    let mut carried = false;
+    for from in from {
+        let to = sidecar_beside(&from, old, new);
+        let moved = match to.parent().filter(|p| Some(*p) != new.parent()) {
+            Some(folder) => Sidecar::make_hidden(folder),
+            None => Ok(()),
+        }
+        .and_then(|()| move_noreplace(&from, &to));
+        match moved {
+            Ok(()) => carried = true,
+            Err(e) => log::warn!("{}: not carried to {}: {e}", from.display(), to.display()),
+        }
+    }
+    carried
+}
+
+/// Where `from`, a sidecar of `old`, goes for the frame at `new`: the
+/// same hidden folder or none, and the same extension.
+fn sidecar_beside(from: &Path, old: &Path, new: &Path) -> PathBuf {
+    let mut name = new.file_name().unwrap_or_default().to_os_string();
+    name.push(".");
+    name.push(from.extension().unwrap_or_default());
+    match from.parent().filter(|p| Some(*p) != old.parent()) {
+        Some(hidden) => new
+            .with_file_name(hidden.file_name().unwrap_or_default())
+            .join(name),
+        None => new.with_file_name(name),
     }
 }
 
@@ -967,7 +1020,7 @@ const SHARED: &[u8] = b"a culling tool's XMP shared with a JPEG";
 /// seen by the next pass as a save here is.
 fn sidecar_of(raw: &Path, looks: bool) -> Option<SidecarNow> {
     disk_call();
-    let path = Sidecar::find(raw);
+    let path = Sidecar::find_to_read(raw);
     let greycard_edit_io::xmp::Beside { own: xmp, shared } = greycard_edit_io::xmp::beside(raw);
     if path.is_none() && xmp.is_none() && shared.is_none() {
         return None;
@@ -3374,6 +3427,7 @@ pub(crate) mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_folder_is_indexed_and_a_second_pass_reads_nothing() {
         let dir = scratch("index");
         let (r5, r6, _a7) = shoot(&dir);
@@ -7177,6 +7231,7 @@ pub(crate) mod tests {
     /// exported state and past the history's cap, and a sidecar from
     /// before the fact is read from its history.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_row_mirrors_an_export_and_a_reset_is_not_a_develop() {
         use greycard_edit::{Edit, Exported};
         let _held = lens_name_held();
@@ -8409,6 +8464,42 @@ pub(crate) mod tests {
             "{report:?}"
         );
         drop(lib);
+        greycard_core::testing::remove_dir_retry(&dir);
+    }
+}
+
+/// Greycard's `.gcd` beside Monocard's `.mcd` (docs/monocard).
+#[cfg(all(test, feature = "mono"))]
+mod two_apps {
+    use super::*;
+
+    #[test]
+    fn a_moved_raw_takes_both_apps_sidecars_and_writes_over_neither() {
+        let dir = std::env::temp_dir().join(format!("monocard-carry-{}", std::process::id()));
+        greycard_core::testing::remove_dir_retry(&dir);
+        let (here, there) = (dir.join("a"), dir.join("b"));
+        std::fs::create_dir_all(here.join(".greycard")).unwrap();
+        std::fs::create_dir_all(&there).unwrap();
+        let (old, new) = (here.join("x.DNG"), there.join("y.DNG"));
+        std::fs::write(here.join(".greycard/x.DNG.gcd"), b"theirs").unwrap();
+        // The frame's row is read from it while there is no .mcd.
+        let now = sidecar_of(&old, false).expect("read");
+        assert_eq!(now.path, Some(here.join(".greycard/x.DNG.gcd")));
+        std::fs::write(here.join("x.DNG.mcd"), b"ours").unwrap();
+        let now = sidecar_of(&old, false).expect("read");
+        assert_eq!(now.path, Some(here.join("x.DNG.mcd")));
+
+        assert!(carry_sidecar(&old, &new));
+        let read = |p: &str| std::fs::read(there.join(p)).unwrap();
+        assert_eq!(read(".greycard/y.DNG.gcd"), b"theirs");
+        assert_eq!(read("y.DNG.mcd"), b"ours");
+        assert!(!here.join(".greycard/x.DNG.gcd").exists());
+
+        // Another at the new place, under either placement, stays.
+        std::fs::write(here.join("x.DNG.gcd"), b"later").unwrap();
+        assert!(!carry_sidecar(&old, &new));
+        assert_eq!(read(".greycard/y.DNG.gcd"), b"theirs");
+        assert_eq!(std::fs::read(here.join("x.DNG.gcd")).unwrap(), b"later");
         greycard_core::testing::remove_dir_retry(&dir);
     }
 }

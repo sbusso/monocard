@@ -525,6 +525,8 @@ pub(crate) fn frame_marks(st: &State, c: usize) -> (bool, bool) {
     ) {
         (Some(r), _, _) if !r.read => r.marks(version),
         (r, Some(s), Some(f)) => s.line(version).map_or((false, false), |line| {
+            #[cfg(feature = "mono")]
+            let line = &crate::mono::unseeded_line(line);
             greycard_library::line_marks(line, f, r.and_then(|r| r.iso))
         }),
         _ => (false, false),
@@ -3154,6 +3156,8 @@ fn follow_paths(st: &mut State, was: &Path, to: &Path) {
                 drawn_guide: _,
                 drawn_generation: _,
                 drawn_planes: _,
+                #[cfg(feature = "mono")]
+                    drawn_mono: _,
                 picture_asked: _,
                 as_shot_white: _,
                 white_cache: _,

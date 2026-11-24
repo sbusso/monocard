@@ -180,7 +180,7 @@ fn a_set_exported_from_the_command_line_carries_each_frame_s_exif() {
             assert_eq!(tag(&file, key), tag(source, key), "{name}: {key}");
         }
         assert!(
-            tag(&file, "Exif.Image.Software").starts_with("greycard"),
+            tag(&file, "Exif.Image.Software").starts_with(greycard_core::brand::NAME),
             "{name}"
         );
         assert_eq!(tag(&file, "Xmp.greycard.Source"), *name);

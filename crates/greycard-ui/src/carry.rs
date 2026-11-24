@@ -57,6 +57,28 @@ pub(crate) struct Checks {
     masks: Vec<(u64, String)>,
     /// The masks join the frames' rather than replace them.
     pub(crate) join: bool,
+    /// Sections the sheet leaves out and carries nothing of
+    /// ([`left_out`]).
+    hidden: &'static [Section],
+}
+
+/// The sections a monochrome frame has.
+#[cfg(feature = "mono")]
+pub(crate) const MONO: [Section; 3] = [Section::Mono, Section::Lens, Section::Adjustments];
+
+/// The sections the sheets leave out: in the mono build all of the stock
+/// look.
+#[cfg_attr(not(feature = "mono"), allow(unused_variables))]
+pub(crate) fn left_out(st: &crate::State) -> &'static [Section] {
+    #[cfg(feature = "mono")]
+    if crate::mono::only() || crate::panel::color::open_is_monochrome(st) {
+        static STOCK: std::sync::LazyLock<Vec<Section>> = std::sync::LazyLock::new(|| {
+            let all = Section::ALL.iter().copied();
+            all.filter(|s| !MONO.contains(s)).collect()
+        });
+        return &STOCK;
+    }
+    &[]
 }
 
 /// Where Masks sits in `Section::ALL`.
@@ -98,7 +120,13 @@ impl Checks {
             on,
             masks,
             join: false,
+            hidden: &[],
         }
+    }
+
+    /// With `hidden` left out.
+    pub(crate) fn hide(&mut self, hidden: &'static [Section]) {
+        self.hidden = hidden;
     }
 
     /// Each section whole, on or off as `pick` says.
@@ -134,6 +162,7 @@ impl Checks {
             on,
             masks,
             join: self.join,
+            hidden: self.hidden,
         }
     }
 
@@ -194,6 +223,9 @@ impl Checks {
             ..Choice::default()
         };
         for (i, &s) in Section::ALL.iter().enumerate() {
+            if self.hidden.contains(&s) {
+                continue;
+            }
             match self.state(i) {
                 State::Off => {}
                 State::On => choice.sections.push(s),
@@ -224,12 +256,18 @@ impl Checks {
     pub(crate) fn rows(&self) -> (Vec<(Target, CarryRow)>, i32) {
         let heights: Vec<usize> = Section::ALL
             .iter()
-            .map(|&s| block_lines(s, self.masks.len()))
+            .map(|s| match self.hidden.contains(s) {
+                true => 0,
+                false => block_lines(*s, self.masks.len()),
+            })
             .collect();
         let split = split_at(&heights);
         let mut rows = Vec::new();
         let mut line = [0usize; 2];
         for (i, &s) in Section::ALL.iter().enumerate() {
+            if self.hidden.contains(&s) {
+                continue;
+            }
             let col = usize::from(i >= split);
             let state = self.state(i);
             let at = |line: usize, sub: usize, kind: i32| CarryRow {
@@ -470,8 +508,13 @@ mod tests {
     /// The titles marked for the catalog are greycard-edit's own.
     #[test]
     fn the_marked_titles_are_the_sections_and_parts() {
-        assert_eq!(Section::ALL.len(), _MARK_SECTIONS.len());
-        for section in Section::ALL {
+        // The mono section's titles are English only, as its panels' are.
+        #[cfg(feature = "mono")]
+        let mono = [Section::Mono];
+        #[cfg(not(feature = "mono"))]
+        let mono: [Section; 0] = [];
+        assert_eq!(Section::ALL.len(), _MARK_SECTIONS.len() + mono.len());
+        for section in Section::ALL.iter().filter(|s| !mono.contains(s)) {
             assert!(
                 _MARK_SECTIONS.contains(&section.title()),
                 "{}",
@@ -479,7 +522,11 @@ mod tests {
             );
         }
         for part in Part::ALL {
-            assert!(_MARK_PARTS.contains(&part.title()), "{}", part.title());
+            assert!(
+                _MARK_PARTS.contains(&part.title()) || mono.contains(&part.section()),
+                "{}",
+                part.title()
+            );
         }
     }
 

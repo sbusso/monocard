@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Monocard's bundle. scripts/monocard-package.sh fills in @VERSION@.
+     The bundle id is a placeholder until a domain is chosen. No exported
+     type: org.greycard.gcd is Greycard's to declare. The raw types are
+     offered (Viewer, Alternate), not taken. The minimum system is
+     Dawn's, as in packaging/Info.plist. -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Monocard</string>
+	<key>CFBundleDisplayName</key>
+	<string>Monocard</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.monocard.Monocard</string>
+	<key>CFBundleVersion</key>
+	<string>@VERSION@</string>
+	<key>CFBundleShortVersionString</key>
+	<string>@VERSION@</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleExecutable</key>
+	<string>monocard-ui</string>
+	<key>CFBundleIconFile</key>
+	<string>monocard</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.4</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.photography</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>GPL-3.0. Built on Greycard by Jess Olmstead.</string>
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Camera raw image</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.camera-raw-image</string>
+				<string>com.adobe.raw-image</string>
+			</array>
+			<key>CFBundleTypeIconFile</key>
+			<string>monocard</string>
+		</dict>
+	</array>
+</dict>
+</plist>

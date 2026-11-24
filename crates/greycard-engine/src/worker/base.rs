@@ -112,6 +112,24 @@ impl FrameKept {
         }
     }
 
+    /// The picture the learned masks' models see.
+    pub(super) fn models_image(&self) -> Arc<WorkingImage> {
+        #[cfg(feature = "mono")]
+        if let Some(m) = self.kept.plane(Keep::Base) {
+            return Arc::new(crate::mono::seen(&m.plane, &self.edit));
+        }
+        self.image.clone()
+    }
+
+    /// The base's size.
+    pub(super) fn frame_size(&self) -> (usize, usize) {
+        #[cfg(feature = "mono")]
+        if let Some(m) = self.kept.plane(Keep::Base) {
+            return (m.plane.width, m.plane.height);
+        }
+        (self.image.width, self.image.height)
+    }
+
     /// The picture the retouch made, or the base where there is none:
     /// what the Detail section and the sharpen run on.
     pub(super) fn patched_picture(&self) -> Arc<WorkingImage> {
@@ -194,6 +212,22 @@ impl FrameKept {
         {
             total += size(p);
         }
+        #[cfg(feature = "mono")]
+        {
+            // A plane's clip map and, after a denoise, the plane before it
+            // are held with it.
+            let mut seen: Vec<*const mono_core::Plane> = Vec::new();
+            for plane in [Keep::Base, Keep::Patched]
+                .into_iter()
+                .filter_map(|k| self.kept.plane(k))
+                .flat_map(|m| m.planes())
+            {
+                if !seen.contains(&Arc::as_ptr(plane)) {
+                    seen.push(Arc::as_ptr(plane));
+                    total += (plane.data.len() * std::mem::size_of::<f32>()) as u64;
+                }
+            }
+        }
         total
     }
 
@@ -242,7 +276,8 @@ pub(super) fn window_steps(
     let purpose = Purpose::Viewport;
     let mut steps = stages(edit, &purpose, facts, lenses);
     steps.steps.retain(|s| match s {
-        Step::Keep(Keep::Developed) => !lent,
+        // A monochrome raw's is its planes, on a device or not.
+        Step::Keep(Keep::Developed) => !lent || facts.is_mono(),
         Step::Keep(Keep::PreSharpen) => lent,
         _ => true,
     });
@@ -343,6 +378,16 @@ impl WorkerModels<'_> {
     /// ran it said each one as it was asked for.
     pub(super) fn pending_after(&mut self, kept: &crate::walk::Kept) {
         if self.retouched || self.budget.is_none() {
+            return;
+        }
+        #[cfg(feature = "mono")]
+        if let (Some((retouch, unmade)), Some(m)) = (kept.applied(), kept.plane(Keep::Base)) {
+            if !unmade.is_empty() {
+                let mut left = retouch.clone();
+                left.patches.retain(|p| unmade.contains(&p.id));
+                let base = crate::mono::under_fills(&left.patches, &m.plane, 1);
+                self.fills.pending = self.ai.fills_unmade_ids(&left, &base);
+            }
             return;
         }
         let (Some(patched), Some(base)) = (kept.patched(), kept.picture(Keep::Base)) else {
@@ -607,6 +652,40 @@ impl crate::walk::Models for WorkerModels<'_> {
         }
         self.masks = left_out;
         rasters
+    }
+
+    #[cfg(feature = "mono")]
+    fn can_denoise_mono(&mut self, mode: mono_denoise::learned::Mode) -> bool {
+        self.ai.can_denoise_mono(mode)
+    }
+
+    #[cfg(feature = "mono")]
+    fn denoise_mono(
+        &mut self,
+        mode: mono_denoise::learned::Mode,
+        plane: &mono_core::Plane,
+        noise: &mono_denoise::NoiseModel,
+    ) -> Result<(mono_core::Plane, &'static str), String> {
+        self.ai.denoise_mono(mode, plane, noise)
+    }
+
+    /// The masks are made on a grey copy at about the size the models
+    /// read, its rasters the frame's, and let go with it.
+    #[cfg(feature = "mono")]
+    fn rasters_mono(
+        &mut self,
+        how: crate::stages::Masks,
+        plane: &mono_core::Plane,
+        meta: &crate::walk::Meta,
+    ) -> crate::walk::Rasters {
+        if how != crate::stages::Masks::Make {
+            return crate::walk::Rasters::new();
+        }
+        let image = Arc::new(crate::mono::seen(plane, &self.edit));
+        self.ai.stand_for(Some((plane.width, plane.height)));
+        let made = self.rasters(how, &image, None, meta);
+        self.ai.stand_for(None);
+        made
     }
 }
 

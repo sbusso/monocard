@@ -1,0 +1,8 @@
+name = "Selenium"
+description = "A cool tone in the shadows only."
+
+[tools.toning]
+balance = 0
+overall = { amount = 0 }
+highlights = { amount = 0 }
+shadows = { hue = 220, amount = 0.15 }

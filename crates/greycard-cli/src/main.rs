@@ -18,6 +18,10 @@ mod library;
 mod log;
 mod merge;
 mod models;
+#[cfg(feature = "mono")]
+mod modes;
+#[cfg(feature = "mono")]
+mod mono;
 mod presets;
 mod rawtherapee;
 mod register;
@@ -25,9 +29,13 @@ mod stack;
 
 #[derive(Parser)]
 #[command(
-    name = "greycard",
+    name = greycard_core::brand::APP_DIR,
     version = greycard_version::LABEL,
-    about = "RAW pre-processor: decode, white balance and camera color, done right"
+    about = if cfg!(feature = "mono") {
+        "Monochrome RAW developer: develop, export and merge, from a script"
+    } else {
+        "RAW pre-processor: decode, white balance and camera color, done right"
+    }
 )]
 struct Cli {
     /// Say more: once, what greycard's own crates note along the way;
@@ -78,7 +86,14 @@ enum Command {
     /// The library: an index of folders' files, their EXIF and their
     /// sidecars' meta, and a listing of it by filter
     Library {
-        /// A database other than the user's (greycard/library.sqlite
+        #[cfg_attr(
+            not(feature = "mono"),
+            doc = " A database other than the user's (greycard/library.sqlite"
+        )]
+        #[cfg_attr(
+            feature = "mono",
+            doc = " A database other than the user's (monocard/library.sqlite"
+        )]
         /// under the platform's data directory)
         #[arg(long, value_name = "FILE", global = true)]
         db: Option<PathBuf>,
@@ -211,6 +226,30 @@ enum Command {
     /// something the edit names that this machine has not got (a look,
     /// a learned model), each named; 1 when a frame was not written
     Export(export::ExportArgs),
+    /// The camera profiles of monochrome cameras
+    #[cfg(feature = "mono")]
+    Profile {
+        #[command(subcommand)]
+        action: mono::ProfileAction,
+    },
+    /// The looks: list, import, export, rename and delete them
+    #[cfg(feature = "mono")]
+    Looks {
+        #[command(subcommand)]
+        action: mono::LooksAction,
+    },
+    /// Print which develop each file takes: mono or color
+    #[cfg(feature = "mono")]
+    Route {
+        #[arg(required = true)]
+        files: Vec<PathBuf>,
+    },
+    /// Print the picture mode a Ricoh GR recorded in each DNG or JPEG
+    #[cfg(feature = "mono")]
+    Mode {
+        #[arg(required = true, value_name = "FILE")]
+        files: Vec<PathBuf>,
+    },
 }
 
 /// The command, and then the process's end: by `runtime::leave`, so a
@@ -218,6 +257,9 @@ enum Command {
 /// which could crash after the output was written (exit 139 to a
 /// script). An error is said as `main` returning it would say it.
 fn main() -> std::process::ExitCode {
+    // By the program, not the feature: the mono build's tests also run the
+    // one named greycard, on color files.
+    greycard_library::monochrome::only(env!("CARGO_BIN_NAME").starts_with("monocard"));
     let code = match run() {
         Ok(code) => code,
         Err(e) => {
@@ -296,6 +338,14 @@ fn run() -> Result<u8> {
             dir,
         } => presets::presets(&files, &import, replace, apply.as_deref(), dir),
         Command::Develop(args) => develop::run(args),
+        #[cfg(feature = "mono")]
+        Command::Profile { action } => mono::profile(action),
+        #[cfg(feature = "mono")]
+        Command::Looks { action } => mono::looks(action),
+        #[cfg(feature = "mono")]
+        Command::Route { files } => mono::route(&files),
+        #[cfg(feature = "mono")]
+        Command::Mode { files } => mono::mode(&files),
     };
     ran.map(|()| 0)
 }

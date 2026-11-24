@@ -52,7 +52,7 @@ impl Color {
 
     /// The fraction of the encoded range a neutral color stands at;
     /// none for Match, which the picture decides.
-    fn level(self) -> Option<f32> {
+    pub(crate) fn level(self) -> Option<f32> {
         match self {
             Color::White => Some(1.0),
             Color::LightGrey => Some(0.8),

@@ -68,6 +68,9 @@ pub(crate) struct Develop {
     /// The masks' detail planes of the picture on the GPU, set with
     /// it, so the picture can go up again as it was.
     pub(crate) drawn_planes: Option<Arc<crate::detail::DetailPlanes>>,
+    /// The mono frame on the GPU, set with it, for the same.
+    #[cfg(feature = "mono")]
+    pub(crate) drawn_mono: Option<Arc<mono_core::MonoFrame>>,
     /// The develop whose refined masks' picture was asked of the
     /// worker (`Job::MaskPicture`), so it is asked once.
     pub(crate) picture_asked: Option<u64>,

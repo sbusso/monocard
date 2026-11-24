@@ -66,6 +66,11 @@ pub(crate) struct Sheet {
     pub(crate) place: Option<PathBuf>,
     pub(crate) place_read: Option<Held>,
     pub(crate) place_generation: u64,
+    /// The camera on the cable, in Monocard.
+    #[cfg(feature = "mono")]
+    pub(crate) usb: crate::mono::usb::Sheet,
+    #[cfg(feature = "mono")]
+    pub(crate) camera: crate::mono::camera::View,
 }
 
 /// What a folder Add in place would add holds: its frames, those in
@@ -159,12 +164,12 @@ fn named<'a>(st: &'a State, name: &str) -> Option<&'a preset::Entry> {
         .find(|e| preset::shown_name(&e.preset.name) == wanted)
 }
 
-/// The options the sheet makes, when it makes any.
-fn options(st: &State, app: &App) -> Option<Options> {
+/// The options the sheet makes for `source`, when it makes any.
+pub(crate) fn options(st: &State, app: &App, source: PathBuf) -> Option<Options> {
     let preset_name = app.get_import_preset();
     let preset = named(st, &preset_name).map(|e| e.preset.clone());
     Some(Options {
-        source: st.import.source.clone()?,
+        source,
         destination: st.import.destination.clone()?,
         subfolder: app.get_import_subfolder().to_string(),
         name: app.get_import_name().to_string(),
@@ -250,6 +255,8 @@ pub(crate) fn show(st: &State, app: &App) {
         String::new()
     };
     app.set_import_folders_note(note.into());
+    #[cfg(feature = "mono")]
+    crate::mono::camera::options_changed(st, app);
     app.set_import_place(path_text(&st.import.place));
     // Add in place: a folder chosen and read, with frames in it.
     if app.get_import_mode() == ADD_IN_PLACE {
@@ -457,16 +464,9 @@ pub(crate) fn scanned(
     show(st, app);
 }
 
-/// Open the sheet: the remembered choices the first time, a card
-/// looked for when no source is chosen yet, the source read again
-/// when one is (a card taken out and another put in).
-pub(crate) fn ask(st: &mut State, app: &App) {
-    if st.import.job.is_some() {
-        return;
-    }
-    st.import.asked_at = Some(std::time::Instant::now());
-    // Copy is where the sheet opens, whatever it was left on.
-    app.set_import_mode(COPY.into());
+/// Put the remembered choices on the sheet the first time, and the presets
+/// there are.
+pub(crate) fn fill(st: &mut State, app: &App) {
     if !st.import.filled {
         st.import.filled = true;
         // From the file this run writes to, so a snapshot or a test
@@ -517,6 +517,19 @@ pub(crate) fn ask(st: &mut State, app: &App) {
         app.set_import_preset(NONE.into());
     }
     app.set_import_presets(ModelRc::new(VecModel::from(names)));
+}
+
+/// Open the sheet: the remembered choices the first time, a card
+/// looked for when no source is chosen yet, the source read again
+/// when one is (a card taken out and another put in).
+pub(crate) fn ask(st: &mut State, app: &App) {
+    if st.import.job.is_some() {
+        return;
+    }
+    st.import.asked_at = Some(std::time::Instant::now());
+    // Copy is where the sheet opens, whatever it was left on.
+    app.set_import_mode(COPY.into());
+    fill(st, app);
     app.set_import_open(true);
     look_at_folders(st, app);
     match st.import.source.clone() {
@@ -572,9 +585,32 @@ pub(crate) fn found(
 
 /// Start the import the sheet describes, on a thread; the sheet goes.
 pub(crate) fn start(st: &mut State, app: &App) {
-    let (Some(opts), Some(scan)) = (options(st, app), st.import.scan.clone()) else {
+    let source = st.import.source.clone();
+    let (Some(opts), Some(scan)) = (
+        source.and_then(|s| options(st, app, s)),
+        st.import.scan.clone(),
+    ) else {
         return;
     };
+    launch(st, app, opts, scan.items.len(), move |opts, job, says| {
+        let report = import::run(opts, &scan, job, |i, n, name| {
+            says(import::progress_line(i, n, name), name);
+        });
+        import::log_report(opts, &scan, &report);
+        report
+    });
+}
+
+/// Run `work`, an import of `frames` frames with `opts`, on a thread, once
+/// the options check; `work` says the status line's words and the name of
+/// the file in hand.
+pub(crate) fn launch(
+    st: &mut State,
+    app: &App,
+    opts: Options,
+    frames: usize,
+    work: impl FnOnce(&Options, &Job, &mut dyn FnMut(String, &str)) -> Report + Send + 'static,
+) {
     if let Err(e) = import::check(&opts) {
         app.set_import_preview(format!("{e:#}").into());
         app.set_import_ready(false);
@@ -611,13 +647,12 @@ pub(crate) fn start(st: &mut State, app: &App) {
     app.set_import_stopping(false);
     say(
         app,
-        tr!("importing {n} frame..." | "importing {n} frames..." % scan.items.len()),
+        tr!("importing {n} frame..." | "importing {n} frames..." % frames),
     );
     let weak = app.as_weak();
     st.import.thread = Some(std::thread::spawn(move || {
         let progress_weak = weak.clone();
-        let report = import::run(&opts, &scan, &job, |i, n, name| {
-            let line = import::progress_line(i, n, name);
+        let report = work(&opts, &job, &mut |line, name| {
             let name = name.to_string();
             let _ = progress_weak.upgrade_in_event_loop(move |app| {
                 let closing = STATE.with(|s| {
@@ -632,7 +667,6 @@ pub(crate) fn start(st: &mut State, app: &App) {
                 }
             });
         });
-        import::log_report(&opts, &scan, &report);
         let _ = weak.upgrade_in_event_loop(move |app| {
             let Some(state) = STATE.with(|s| s.borrow().clone()) else {
                 return;
@@ -648,6 +682,8 @@ pub(crate) fn finished(state: &Rc<Shared>, app: &App, opts: &Options, report: Re
     let (closing, moved) = {
         let mut st = state.borrow_mut();
         st.import.job = None;
+        #[cfg(feature = "mono")]
+        crate::mono::usb::ended(&mut st, app);
         // Its last act was to post this; it ends on its own.
         st.import.thread = None;
         let moved = browsed_folder(&st) != st.import.folder_at_start;
@@ -709,6 +745,8 @@ pub(crate) fn leave(sheet: &mut Sheet, limit: std::time::Duration) {
         job.cancel();
         tracing::info!("import: the window closed; stopping after the file in hand");
     }
+    #[cfg(feature = "mono")]
+    crate::mono::usb::leave();
     let Some(thread) = sheet.thread.take() else {
         return;
     };
@@ -925,8 +963,10 @@ pub(crate) fn headless(opts: Options, preset: Option<&str>) -> Result<std::proce
             preset::Store::user()
                 .and_then(|s| {
                     // The film presets, as the window's first run
-                    // puts them there.
-                    s.seed();
+                    // puts them there; the mono build has none.
+                    if !cfg!(feature = "mono") {
+                        s.seed();
+                    }
                     s.find(name)
                 })
                 .with_context(|| format!("no preset called {name}"))?

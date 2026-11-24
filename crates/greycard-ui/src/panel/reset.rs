@@ -34,7 +34,11 @@ pub(crate) fn original_of(st: &State, c: usize) -> Option<Edit> {
         .and_then(|f| st.from_row.get(f))
         .and_then(|r| r.iso);
     let first = line.state(0)?;
-    if greycard_library::is_default_edit(first, path, iso) {
+    #[cfg(feature = "mono")]
+    let plain = &crate::mono::unseeded(first);
+    #[cfg(not(feature = "mono"))]
+    let plain = first;
+    if greycard_library::is_default_edit(plain, path, iso) {
         return Some(first.clone());
     }
     if greycard_core::picture::is_picture_path(path) {

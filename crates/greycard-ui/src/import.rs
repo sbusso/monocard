@@ -274,6 +274,19 @@ pub fn scan(source: &Path) -> Result<Scan> {
     for item in &mut items {
         item.companions.sort();
     }
+    // What the editor does not list stays on the card, with its files.
+    let frames = items.iter().map(|i| i.file.clone()).collect();
+    let listed: HashSet<PathBuf> = greycard_library::monochrome::kept(frames)
+        .into_iter()
+        .collect();
+    items.retain_mut(|i| {
+        let stays = !listed.contains(&i.file);
+        if stays {
+            left.push(i.file.clone());
+            left.append(&mut i.companions);
+        }
+        !stays
+    });
     left.sort();
     // Lone pictures joined the list after the raws; the camera's order
     // is the path's.
@@ -464,6 +477,9 @@ pub struct Report {
     /// were not reached, so the import is not whole however the rest
     /// went (`Scan::unreadable`).
     pub unreadable: usize,
+    /// Words on the source beyond the frames, each said after the rest:
+    /// what a camera did not give. A folder's import has none.
+    pub notes: Vec<String>,
 }
 
 impl Report {
@@ -554,6 +570,9 @@ impl Report {
         }
         if let Some((file, why)) = &self.error {
             s.push_str(&format!(": {}: {why}", name_of(file)));
+        }
+        for note in &self.notes {
+            s.push_str(&format!("; {note}"));
         }
         s
     }
@@ -1073,7 +1092,28 @@ pub fn hash_tail(path: &Path) -> std::io::Result<String> {
     file.seek(SeekFrom::Start(size - n))?;
     let mut tail = vec![0u8; n as usize];
     file.read_exact(&mut tail)?;
-    Ok(greycard_library::hash::hash_bytes(&tail, size))
+    Ok(hash_tail_bytes(&tail, size))
+}
+
+/// [`hash_tail`] of a file of `size` bytes whose last 64 KiB (all of it,
+/// when it is shorter) are in hand.
+pub fn hash_tail_bytes(tail: &[u8], size: u64) -> String {
+    greycard_library::hash::hash_bytes(tail, size)
+}
+
+/// The library's files that a frame of `size` bytes with this head hash
+/// could be: there, of that size, and not on a camera card. Which of them
+/// it is, the tail says ([`hash_tail`]).
+pub fn library_copies(
+    library: &greycard_library::Library,
+    head: &str,
+    size: u64,
+) -> impl Iterator<Item = PathBuf> {
+    let rows = library.by_hash(head).unwrap_or_default();
+    rows.into_iter()
+        .filter(move |row| !row.missing && row.size == size && row.path.is_file())
+        .map(|row| resolve(&row.path))
+        .filter(|path| !on_a_card(path))
 }
 
 /// Whether `copy` holds `card`'s bytes, as a frame already there is
@@ -1523,13 +1563,8 @@ impl Run<'_> {
         let Some(lib) = &self.library else {
             return Ok(None);
         };
-        let rows = lib.by_hash(&card.head()?).unwrap_or_default();
-        for row in rows {
-            if row.missing || row.size != card.size || !row.path.is_file() {
-                continue;
-            }
-            let path = resolve(&row.path);
-            if path.starts_with(&self.card) || on_a_card(&path) {
+        for path in library_copies(lib, &card.head()?, card.size) {
+            if path.starts_with(&self.card) {
                 continue;
             }
             if card.rest_matches(&path, self.opts.verify)? {

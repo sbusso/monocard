@@ -191,6 +191,59 @@ root holds it and opens the folder there. Nothing is written beside
 the frames until you edit, rate or label them, as with any folder you
 open.
 
+## From a camera on a USB cable (Monocard)
+
+Monocard on a Mac can import from a Ricoh GR IV Monochrome on a USB
+cable. Other cameras are not offered.
+
+1. Connect the camera to the Mac with a USB cable and turn it on. The
+   camera window opens. It shows the photos on the camera, by day.
+2. Wait for the list. The number of photos can increase for some
+   seconds. If photos are missing, click **Read again**.
+3. Set **To**, **Folders**, **Name**, **Preset**, and **Backup**, as for
+   a card. The line below **Name** shows where the first photo goes.
+4. Select photos and click **Import selected**, or click **Import all**.
+   **Import all** imports the photos that the window shows and that are
+   not marked **Imported**.
+
+The window opens by itself one time for each connection. It does not
+open if a sheet or a report is open, or if an import or an export is
+on. Then the status line says that the camera is connected. To open the
+window, click **Import...** in the library's left pane and choose
+**From the camera...**. To stop the window from opening by itself, turn
+off **Open the camera window when a camera is connected** in
+**Settings > Library**.
+
+| In the window | What it does |
+|---|---|
+| **Show** | All photos, or only those that are not imported |
+| **Sort** | Newest first, oldest first, or by name |
+| **Tile size** | The size of the pictures |
+| Click, Cmd-click, Shift-click, Cmd-A | Select one photo, add or remove one, select a range, select all |
+| Arrow keys, Space | Go to another photo, and select or clear it |
+| Double-click, or Return | Show a larger picture. The arrow keys go to the next photo |
+| Escape | Close the larger picture, then clear the selection, then close the window |
+
+The window keeps the sort order and the tile size.
+
+Only DNG and JPEG files are offered. Other files stay on the camera,
+and the window counts them. A DNG and a JPEG with the same name in the
+same folder are one photo. Photos that your library already holds are
+marked **Imported**. If you select one, the import finds the copy in the
+library and makes no second copy of it. It makes the backup if that is
+missing.
+
+The photos are copied to a temporary folder first, so the disk needs
+room for them twice. The import is checked against that temporary copy
+and not against the camera. Each temporary copy must have the size that
+the camera gives. A photo that does not have it is not imported, and the
+status line names it. The temporary folder is removed at the end. If it
+cannot be removed, the status line says where it is.
+
+**Stop** works at any time. If you stop while photos are copied
+from the camera, or if the camera is disconnected, nothing is imported.
+Nothing on the camera is changed or deleted.
+
 ## From the command line
 
 `--import` runs an import without opening a window, for a script or a

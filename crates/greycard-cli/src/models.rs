@@ -115,7 +115,10 @@ pub(crate) fn models(fetch: Option<&str>) -> Result<()> {
         }
         if greycard_ai::MODELS.iter().any(|m| !store.have(m)) {
             println!();
-            println!("fetch one with `greycard models --fetch <tier|id|all>`; nothing is bundled");
+            println!(
+                "fetch one with `{} models --fetch <tier|id|all>`; nothing is bundled",
+                greycard_core::brand::APP_DIR
+            );
         }
         return Ok(());
     };

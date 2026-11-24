@@ -26,7 +26,7 @@ use greycard_core::{
 };
 use greycard_edit::Edit;
 
-use super::{Files, Progress, Step, hold, name_of};
+use super::{Files, Progress, Step, hold, name_of, software};
 
 /// What goes after the first frame's name.
 pub const SUFFIX: &str = " stack";
@@ -261,7 +261,7 @@ pub fn write_dng<W: std::io::Write + std::io::Seek>(
         },
         metadata: Some(&stacked.metadata),
         preview: Some(&preview),
-        software: Some(concat!("greycard ", env!("CARGO_PKG_VERSION"))),
+        software: Some(&software()),
         headroom: None,
     };
     write_linear_dng(
@@ -412,7 +412,7 @@ mod tests {
                 compression: Compression::Lossless,
                 metadata: Some(metadata),
                 preview: Some(&preview),
-                software: Some(concat!("greycard ", env!("CARGO_PKG_VERSION"))),
+                software: Some(&software()),
                 headroom: None,
             },
         )

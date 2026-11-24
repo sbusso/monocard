@@ -474,6 +474,19 @@ pub(crate) const TABLE: &[Group] = &[
             ),
         ],
     },
+    // Monocard's, taken ahead of the chords by `Mono.key`: no chord is
+    // bound here, so the handler compares none.
+    #[cfg(feature = "mono")]
+    Group {
+        title: "On a monochrome frame, in Develop",
+        lines: &[
+            shown(&[], "A", "Before"),
+            shown(&[], "B", "After"),
+            shown(&[], "S", "Before and after, split"),
+            shown(&[], "Z", "Zone view"),
+            shown(&[], "C", "Clip map"),
+        ],
+    },
 ];
 
 /// The chords bound on one platform only: the Mac's delete key is
@@ -492,6 +505,15 @@ fn here(chord: &str, mac: bool) -> bool {
     } else {
         !MAC_ONLY.contains(&chord)
     }
+}
+
+/// Whether this build offers an action: the mono build has no color tools.
+#[cfg_attr(not(feature = "mono"), allow(unused_variables))]
+fn offered(action: Option<&str>) -> bool {
+    #[cfg(feature = "mono")]
+    return crate::mono::key_shown(action);
+    #[cfg(not(feature = "mono"))]
+    true
 }
 
 /// Whether a line is on this platform's sheet: a line of keys bound
@@ -1142,7 +1164,7 @@ fn rows_in(map: &Keymap, query: &str, mac: bool) -> Vec<KeyRow> {
         let lines: Vec<KeyRow> = g
             .lines
             .iter()
-            .filter(|b| shown_here(b, mac))
+            .filter(|b| shown_here(b, mac) && offered(b.action))
             .map(|b| (keys_of(b, map, mac), platform(&text(b.does), mac)))
             .chain(pointer.iter().map(|b| {
                 (
@@ -1188,7 +1210,7 @@ pub(crate) fn binding_rows(map: &Keymap, mac: bool) -> Vec<BindRow> {
     for (group, g) in TABLE.iter().enumerate() {
         let mut mine = actions()
             .iter()
-            .filter(|a| a.group == group && !a.paired)
+            .filter(|a| a.group == group && !a.paired && offered(Some(a.id)))
             .peekable();
         if mine.peek().is_none() {
             continue;
@@ -1399,6 +1421,12 @@ pub(crate) fn install(app: &App) {
             let Some(app) = app_weak.upgrade() else {
                 return;
             };
+            // Monocard has no guide of its own online yet.
+            if greycard_core::brand::REPOSITORY.is_none() {
+                let name = greycard_core::brand::NAME;
+                app.set_status(format!("{name} has no guide online yet").into());
+                return;
+            }
             let url = guide_url();
             tracing::info!("help: opening {url}");
             app.set_status(tr!("the guide is open in the browser").into());
@@ -3461,6 +3489,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "greycard's own guide")]
     fn the_guide_is_this_releases() {
         let url = guide_url();
         assert!(

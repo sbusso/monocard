@@ -4,6 +4,7 @@
 import { ComboBox, LineEdit } from "std-widgets.slint";
 import { Theme, LabelColumn } from "../theme.slint";
 import { Section, EditSlider, Steps, Toggle, PanelButton, Typing } from "../controls.slint";
+import { Mono } from "../../../mono-ui/ui/state.slint";
 
 export component LensSection inherits Section {
     in-out property <bool> lens-enabled;
@@ -124,7 +125,7 @@ export component LensSection inherits Section {
         checked <=> root.lens-distortion;
         toggled => { root.develop-changed(); }
     }
-    Toggle {
+    if !Mono.only: Toggle {
         label: @tr("Chromatic aberration");
         enabled: root.lens-available && root.lens-profile-on && !root.lens-ca-measured;
         checked <=> root.lens-ca;
@@ -152,7 +153,7 @@ export component LensSection inherits Section {
     // The aberration by hand: each channel's
     // radius scaled beyond the green's, in
     // tenths of a percent.
-    EditSlider {
+    if !Mono.only: EditSlider {
         // Lens section: the chromatic aberration slider set by hand
         label: @tr("Red / cyan");
         minimum: -0.01;
@@ -165,7 +166,7 @@ export component LensSection inherits Section {
         text: (root.lens-ca-red >= 0 ? "+" : "") + round(root.lens-ca-red * 10000) / 10 + "\u{2030}";
         changed(v) => { root.develop-changed(); }
     }
-    EditSlider {
+    if !Mono.only: EditSlider {
         // Lens section: the chromatic aberration slider set by hand
         label: @tr("Blue / yellow");
         minimum: -0.01;
@@ -199,12 +200,12 @@ export component LensSection inherits Section {
     // Axial aberration and purple fringing: a
     // different fault from the lateral one the
     // profile and the two sliders above correct.
-    Toggle {
+    if !Mono.only: Toggle {
         label: @tr("Defringe");
         checked <=> root.lens-defringe;
         toggled => { root.develop-changed(); }
     }
-    EditSlider {
+    if !Mono.only: EditSlider {
         label: @tr("Radius");
         enabled: root.lens-defringe;
         minimum: 0.5;
@@ -216,7 +217,7 @@ export component LensSection inherits Section {
         text: round(root.lens-defringe-radius * 10) / 10 + " px";
         changed(v) => { root.develop-changed(); }
     }
-    EditSlider {
+    if !Mono.only: EditSlider {
         label: @tr("Threshold");
         enabled: root.lens-defringe;
         minimum: 0;
@@ -228,7 +229,7 @@ export component LensSection inherits Section {
         text: round(root.lens-defringe-threshold);
         changed(v) => { root.develop-changed(); }
     }
-    Rectangle { height: Theme.space-1; }
+    if !Mono.only: Rectangle { height: Theme.space-1; }
     // Which hues count as a fringe. The two
     // windows are the two sides of an axial
     // aberration; a chroma that departs from
@@ -237,7 +238,7 @@ export component LensSection inherits Section {
     // left alone. The dropper reads a click's
     // deviation hue and moves the nearer
     // window's center to it.
-    Text {
+    if !Mono.only: Text {
         text: @tr("Purple");
         color: root.lens-defringe ? Theme.text-secondary : Theme.text-muted;
         font-size: Theme.font-xs;
@@ -245,8 +246,8 @@ export component LensSection inherits Section {
         vertical-alignment: center;
         horizontal-alignment: left;
     }
-    Rectangle { height: Theme.space-1; }
-    EditSlider {
+    if !Mono.only: Rectangle { height: Theme.space-1; }
+    if !Mono.only: EditSlider {
         // Defringe: the slider for the hue it centers on
         label: @tr("Center");
         enabled: root.lens-defringe;
@@ -261,7 +262,7 @@ export component LensSection inherits Section {
         text: round(root.lens-defringe-purple-center) + "\u{00b0}";
         changed(v) => { root.develop-changed(); }
     }
-    EditSlider {
+    if !Mono.only: EditSlider {
         label: @tr("Width");
         enabled: root.lens-defringe;
         minimum: 10;
@@ -273,7 +274,7 @@ export component LensSection inherits Section {
         text: round(root.lens-defringe-purple-width) + "\u{00b0}";
         changed(v) => { root.develop-changed(); }
     }
-    EditSlider {
+    if !Mono.only: EditSlider {
         label: @tr("Amount");
         enabled: root.lens-defringe;
         minimum: 0;
@@ -286,8 +287,8 @@ export component LensSection inherits Section {
         text: round(root.lens-defringe-purple-amount * 100) + "%";
         changed(v) => { root.develop-changed(); }
     }
-    Rectangle { height: Theme.space-1; }
-    Text {
+    if !Mono.only: Rectangle { height: Theme.space-1; }
+    if !Mono.only: Text {
         text: @tr("Green");
         color: root.lens-defringe ? Theme.text-secondary : Theme.text-muted;
         font-size: Theme.font-xs;
@@ -295,8 +296,8 @@ export component LensSection inherits Section {
         vertical-alignment: center;
         horizontal-alignment: left;
     }
-    Rectangle { height: Theme.space-1; }
-    EditSlider {
+    if !Mono.only: Rectangle { height: Theme.space-1; }
+    if !Mono.only: EditSlider {
         label: @tr("Center");
         enabled: root.lens-defringe;
         tinted: true;
@@ -310,7 +311,7 @@ export component LensSection inherits Section {
         text: round(root.lens-defringe-green-center) + "\u{00b0}";
         changed(v) => { root.develop-changed(); }
     }
-    EditSlider {
+    if !Mono.only: EditSlider {
         label: @tr("Width");
         enabled: root.lens-defringe;
         minimum: 10;
@@ -322,7 +323,7 @@ export component LensSection inherits Section {
         text: round(root.lens-defringe-green-width) + "\u{00b0}";
         changed(v) => { root.develop-changed(); }
     }
-    EditSlider {
+    if !Mono.only: EditSlider {
         label: @tr("Amount");
         enabled: root.lens-defringe;
         minimum: 0;
@@ -335,7 +336,7 @@ export component LensSection inherits Section {
         text: round(root.lens-defringe-green-amount * 100) + "%";
         changed(v) => { root.develop-changed(); }
     }
-    HorizontalLayout {
+    if !Mono.only: HorizontalLayout {
         spacing: Theme.space-2;
         padding-top: Theme.space-1;
         alignment: end;

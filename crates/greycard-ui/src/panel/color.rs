@@ -933,6 +933,8 @@ pub(crate) fn learn_monochrome(st: &mut State, app: &App) {
         }
     }
     app.set_monochrome_open(monochrome);
+    #[cfg(feature = "mono")]
+    crate::mono::opened(st, app, monochrome);
 }
 
 /// Whether a change to the white is refused: on a monochrome frame no
@@ -2481,6 +2483,7 @@ mod tests {
     /// named by the section's title,
     /// on or off as it shows. Each says whether it takes a hand.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "a monochrome frame has the mono panels")]
     fn a_screen_reader_hears_the_white_balance() {
         use i_slint_backend_testing::AccessibleRole::{Button, Switch, Text};
         let m = mono("mono-heard", true);
@@ -2829,6 +2832,7 @@ mod tests {
     /// opened after it is live again, and the monochrome one chosen
     /// again rests before its decode lands.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "a monochrome frame has the mono panels")]
     fn a_monochrome_frames_white_balance_rests() {
         let m = mono("mono-white", false);
         let app = &m.app;
@@ -2944,6 +2948,7 @@ mod tests {
     /// neither the mask's white it arrived with nor the picture; on a
     /// color frame they are live.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "a monochrome frame has the mono panels")]
     fn a_monochrome_frames_mask_white_balance_rests() {
         let m = mono("mono-mask-white", true);
         let app = &m.app;

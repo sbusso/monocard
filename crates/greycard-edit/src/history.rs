@@ -211,11 +211,40 @@ fn changes(b: &Edit, a: &Edit) -> Vec<String> {
             }
         });
     }
+    #[cfg(feature = "mono")]
+    out.extend(mono(b, a));
     out.extend(adjustments(b, a));
     if b.retouch != a.retouch {
         out.push(retouch(b, a));
     }
     out
+}
+
+/// What moved in the mono section: the look put on, or each part.
+#[cfg(feature = "mono")]
+fn mono(b: &Edit, a: &Edit) -> Vec<String> {
+    use crate::preset::Section;
+    let look = |e: &Edit| {
+        e.mono
+            .as_deref()
+            .map(|m| (m.look.name.clone(), m.look.strength))
+            .unwrap_or_else(|| (String::new(), 1.0))
+    };
+    let ((x, xs), (y, ys)) = (look(b), look(a));
+    if x != y {
+        return vec![match y.is_empty() {
+            true => "Look none".to_string(),
+            false => format!("Look {y}"),
+        }];
+    }
+    if xs != ys {
+        return vec![format!("Look strength {:.0}%", ys * 100.0)];
+    }
+    Section::Mono
+        .parts()
+        .filter(|p| !p.same(a, b))
+        .map(|p| p.title().to_string())
+        .collect()
 }
 
 fn switched(name: &str, on: bool) -> String {
@@ -788,6 +817,20 @@ mod tests {
     use crate::WhiteBalance;
     use crate::mask::Shape;
     use crate::retouch::{Method, Patch};
+
+    #[cfg(feature = "mono")]
+    #[test]
+    fn the_mono_tools_are_named_by_their_panels() {
+        let a = Edit::default();
+        let mut b = a.clone();
+        let m = b.mono.insert(Default::default());
+        m.basic.exposure = 1.0;
+        m.grain.amount = 0.4;
+        assert_eq!(describe(&a, &b, &[]), "Exposure, Grain");
+        let mut c = b.clone();
+        c.mono.as_mut().unwrap().look.name = "Street".into();
+        assert_eq!(describe(&b, &c, &[]), "Look Street");
+    }
 
     fn snap(name: &str, edit: &Edit) -> Snapshot {
         Snapshot {

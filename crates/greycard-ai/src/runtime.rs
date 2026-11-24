@@ -245,7 +245,7 @@ pub fn coreml(cache: Option<&Path>, profile: bool) -> ort::ep::ExecutionProvider
 fn coreml_cache(path: &Path, fixed: &[(&str, i64)]) -> Option<std::path::PathBuf> {
     let key = coreml_cache_key(path, fixed);
     let dir = crate::store::cache_home()?
-        .join("greycard")
+        .join(greycard_core::brand::APP_DIR)
         .join("coreml")
         .join(key);
     match std::fs::create_dir_all(&dir) {

@@ -45,12 +45,12 @@ pub fn socket_path(
     uid: u32,
     key: &str,
 ) -> Option<PathBuf> {
-    let name = format!("greycard-{uid}-{key}.sock");
+    let name = format!("{}-{uid}-{key}.sock", greycard_core::brand::APP_DIR);
     match runtime.filter(|r| r.is_absolute() && private_to(r, uid)) {
         Some(runtime) => Some(runtime.join(name)),
         None => cache
             .filter(|c| c.is_absolute())
-            .map(|c| c.join("greycard").join(name)),
+            .map(|c| c.join(greycard_core::brand::APP_DIR).join(name)),
     }
 }
 

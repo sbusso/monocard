@@ -13,12 +13,15 @@ use crate::raw::{Orientation, RawFrame};
 
 mod focus;
 pub mod rawler_backend;
+pub mod ricoh;
+mod sensor;
 mod sparse;
 pub mod style;
 
 pub use rawler_backend::{
     CameraWhite, IndexRead, MosaicRead, Probe, RawMetadata, RawlerDecoder, inside_decoder,
 };
+pub use sensor::dng_monochrome;
 pub use style::{Adaptive, AdaptiveKind, CameraStyle, Maker};
 
 pub trait Decoder {

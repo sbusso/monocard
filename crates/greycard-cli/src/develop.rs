@@ -234,6 +234,12 @@ pub(crate) struct DevelopArgs {
     /// other color
     #[arg(long)]
     defringe_all_hues: bool,
+    /// A monochrome raw's look in --preview, by name (`monocard looks
+    /// list`). Of the other flags, a monochrome raw takes --exposure,
+    /// --denoise and the lens's
+    #[cfg(feature = "mono")]
+    #[arg(long, value_name = "NAME")]
+    look: Option<String>,
 }
 
 /// The `develop` subcommand: its flags made into the engine's
@@ -290,6 +296,8 @@ pub(crate) fn run(args: DevelopArgs) -> Result<()> {
         defringe_radius,
         defringe_threshold,
         defringe_all_hues,
+        #[cfg(feature = "mono")]
+        look,
     } = args;
     if dng.is_none() && output.is_none() && preview.is_none() {
         anyhow::bail!("nothing to write: pass --dng, --output and/or --preview");
@@ -315,6 +323,8 @@ pub(crate) fn run(args: DevelopArgs) -> Result<()> {
         preview: preview.as_deref(),
         dehaze_map: dehaze_map.as_deref(),
         on_exists,
+        #[cfg(feature = "mono")]
+        look: look.as_deref().map(crate::mono::look).transpose()?,
     };
     // The Detail section through the edit crate's own type,
     // so a flag past the end is held to it the way the
@@ -468,9 +478,10 @@ fn greycard_edit_lens(
 fn missing_tier_complaint(store: &greycard_ai::Store, name: &str) -> String {
     let model = greycard_ai::denoiser(name).expect("a tier");
     format!(
-        "{} is not in {}; run `greycard models --fetch {name}` to get it ({} MB, {})",
+        "{} is not in {}; run `{} models --fetch {name}` to get it ({} MB, {})",
         model.name,
         store.root().display(),
+        greycard_core::brand::APP_DIR,
         megabytes(model.bytes()),
         model.license.name
     )
@@ -655,8 +666,9 @@ fn lens_database(lens: &greycard_edit::Lens) -> Result<Option<greycard_lens::Dat
     let store = greycard_lens::Store::user().context("finding the lens database")?;
     let (db, from) = store.load().with_context(|| {
         format!(
-            "no lens database in {} or lensfun's own places; run `greycard lenses --fetch` to get it",
-            store.dir().display()
+            "no lens database in {} or lensfun's own places; run `{} lenses --fetch` to get it",
+            store.dir().display(),
+            greycard_core::brand::APP_DIR
         )
     })?;
     tracing::info!(
@@ -943,6 +955,8 @@ struct Outputs<'a> {
     /// The dehaze's transmission map, a grey PNG.
     dehaze_map: Option<&'a std::path::Path>,
     on_exists: OnExists,
+    #[cfg(feature = "mono")]
+    look: Option<mono_look::Look>,
 }
 
 impl Outputs<'_> {
@@ -1046,7 +1060,15 @@ fn run_develop(
     lens: &greycard_edit::Lens,
     detail: Option<LocalContrastOptions>,
 ) -> Result<()> {
-    if greycard_core::picture::is_picture_path(file) {
+    let picture = greycard_core::picture::is_picture_path(file);
+    #[cfg(feature = "mono")]
+    let grey = match picture {
+        true => greycard_engine::mono::picture(file)?,
+        false => None,
+    };
+    #[cfg(not(feature = "mono"))]
+    let grey = None;
+    if picture && grey.is_none() {
         if ai_denoise.is_some() {
             tracing::warn!(
                 "--ai-denoise needs a Bayer mosaic; {} is a picture already rendered, so it is ignored",
@@ -1070,9 +1092,54 @@ fn run_develop(
         return Ok(());
     }
     let db = lens_database(lens)?;
-    let (frame, metadata) = RawlerDecoder
-        .decode_path_with_metadata(file)
-        .with_context(|| format!("decoding {}", file.display()))?;
+    let (frame, metadata) = match grey {
+        Some(read) => read,
+        None => RawlerDecoder
+            .decode_path_with_metadata(file)
+            .with_context(|| format!("decoding {}", file.display()))?,
+    };
+    #[cfg(feature = "mono")]
+    if crate::mono::is_mono(&frame) {
+        anyhow::ensure!(
+            outputs.dng.is_none() || frame.dng.rendered.is_none(),
+            "a linear DNG wants a raw; {} is a picture already rendered",
+            file.display()
+        );
+        if ai_denoise.is_some()
+            || detail.is_some()
+            || after.dehaze.is_some()
+            || after.sharpen.is_some()
+        {
+            tracing::warn!(
+                "{} is monochrome: --ai-denoise, --sharpen, --dehaze and the local \
+                 contrasts do not apply",
+                file.display()
+            );
+        }
+        let edit = crate::mono::edit(
+            file,
+            &frame,
+            outputs.look.as_ref(),
+            exposure as f32,
+            settings,
+            lens,
+        );
+        return run_mono(
+            file,
+            outputs,
+            &targets,
+            frame,
+            &metadata,
+            &edit,
+            db.as_ref(),
+        );
+    }
+    #[cfg(feature = "mono")]
+    anyhow::ensure!(
+        outputs.look.is_none(),
+        "--look wants a monochrome raw; {} is in color",
+        file.display()
+    );
     let settings = &DevelopSettings {
         demosaic: demosaic_for(&frame.layout, demosaic_asked)?,
         // A DCP's look table is read where the editor's default
@@ -1290,6 +1357,90 @@ fn run_develop(
             path,
             &provenance(preview.width(), preview.height(), true),
         )?;
+        eprintln!("wrote {}", path.display());
+    }
+    Ok(())
+}
+
+/// A monochrome raw on Monocard's own develop: the DNG is one channel of
+/// the sensor's light, the TIFF one channel of the developed light, linear
+/// and as shot, and the preview the finished picture.
+#[cfg(feature = "mono")]
+fn run_mono(
+    file: &std::path::Path,
+    outputs: &Outputs<'_>,
+    targets: &Targets,
+    frame: RawFrame,
+    metadata: &greycard_core::decode::RawMetadata,
+    edit: &greycard_edit::Edit,
+    lenses: Option<&greycard_lens::Database>,
+) -> Result<()> {
+    use greycard_engine::{finish, mono};
+    let frame = std::sync::Arc::new(frame);
+    let made = mono::develop(frame.clone(), edit, lenses)
+        .with_context(|| format!("developing {}", file.display()))?;
+    let empty = WorkingImage::new(0, 0);
+    let finished = |long_edge| {
+        let settings = mono::preview_settings(long_edge);
+        mono::preview(finish::render(&empty, edit, &made, &settings))
+    };
+    let source_name = file.file_name().map(|n| n.to_string_lossy().into_owned());
+    let software = format!(
+        "{} {}",
+        greycard_core::brand::NAME,
+        env!("CARGO_PKG_VERSION")
+    );
+    let provenance = |width: u32, height: u32, srgb: bool| greycard_core::exif::Provenance {
+        metadata,
+        software: &software,
+        width,
+        height,
+        srgb,
+        written: Some(std::time::SystemTime::now()),
+        source_name: source_name.as_deref(),
+        output: None,
+        edit: None,
+        rights: &greycard_core::exif::NO_RIGHTS,
+    };
+    let create = |path: &std::path::Path| {
+        std::fs::File::create(path)
+            .map(std::io::BufWriter::new)
+            .with_context(|| format!("creating {}", path.display()))
+    };
+    if let Some(path) = &targets.dng {
+        let preview = unorient(finished(Some(1024))?, frame.orientation);
+        let options = LinearDngOptions {
+            compression: outputs.compression,
+            metadata: Some(metadata),
+            preview: Some(&preview),
+            software: Some(&software),
+            headroom: None,
+        };
+        let mut out = create(path)?;
+        mono::write_dng(&mut out, &frame, &options)
+            .with_context(|| format!("writing {}", path.display()))?;
+        std::io::Write::flush(&mut out)?;
+        eprintln!("wrote {}", path.display());
+    }
+    if let (Some(path), Some(m)) = (&targets.tiff, &made.mono) {
+        let data: Vec<u16> = m
+            .base
+            .data
+            .iter()
+            .map(|v| (v.clamp(0.0, 1.0) * 65535.0).round() as u16)
+            .collect();
+        let (w, h) = (m.base.width as u32, m.base.height as u32);
+        let mut out = create(path)?;
+        let tags = greycard_core::exif::Tags::Provenance(&provenance(w, h, false));
+        greycard_core::exif::write_grey16_tiff_tagged(&mut out, w, h, &data, None, tags)
+            .with_context(|| format!("writing {}", path.display()))?;
+        std::io::Write::flush(&mut out)?;
+        eprintln!("wrote {}", path.display());
+    }
+    if let Some(path) = &targets.preview {
+        let preview = finished(None)?;
+        let (w, h) = preview.dimensions();
+        save_preview(&preview, path, &provenance(w, h, true))?;
         eprintln!("wrote {}", path.display());
     }
     Ok(())
@@ -1930,6 +2081,8 @@ mod tests {
             preview: None,
             dehaze_map: None,
             on_exists: OnExists::Overwrite,
+            #[cfg(feature = "mono")]
+            look: None,
         };
         run_develop_picture(&input, &outputs, &lens, None, None, Some(options), 0.0)
             .expect("develop the picture");
@@ -1978,6 +2131,8 @@ mod tests {
             preview: None,
             dehaze_map: None,
             on_exists: OnExists::Overwrite,
+            #[cfg(feature = "mono")]
+            look: None,
         };
         run_develop_picture(&input, &outputs, &lens, None, None, None, 0.0)
             .expect("develop the picture");
@@ -2013,7 +2168,10 @@ mod tests {
         let store = greycard_ai::Store::at(std::env::temp_dir().join("greycard-no-models"));
         let missing = missing_tier_complaint(&store, "fast");
         assert!(
-            missing.contains("greycard models --fetch fast"),
+            missing.contains(&format!(
+                "{} models --fetch fast",
+                greycard_core::brand::APP_DIR
+            )),
             "{missing}"
         );
         assert!(!missing.contains("panel"), "{missing}");

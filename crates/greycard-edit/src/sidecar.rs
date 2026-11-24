@@ -309,7 +309,7 @@ fn saved_count(path: &Path) -> u64 {
 }
 
 /// The hidden folder's name under a shoot's folder.
-pub const SIDECAR_FOLDER: &str = ".greycard";
+pub const SIDECAR_FOLDER: &str = greycard_core::brand::SIDECAR_DIR;
 
 impl Sidecar {
     /// The sidecar's path for a RAW: the file's name with `.gcd` on the end,
@@ -327,7 +327,8 @@ impl Sidecar {
             .file_name()
             .map(|n| n.to_os_string())
             .unwrap_or_default();
-        name.push(".gcd");
+        name.push(".");
+        name.push(greycard_core::brand::SIDECAR_EXT);
         match placement {
             Placement::Beside => raw.with_file_name(name),
             Placement::Folder => raw.with_file_name(SIDECAR_FOLDER).join(name),
@@ -351,11 +352,15 @@ impl Sidecar {
     /// file, so the common one-copy case costs nothing beyond the
     /// metadata call it already made.
     pub fn find(raw: &Path) -> Option<PathBuf> {
-        let modified = |p: &Path| p.metadata().and_then(|m| m.modified()).ok();
-        let (beside, under) = (
+        Self::newer_of(
             Self::path_in(raw, Placement::Beside),
             Self::path_in(raw, Placement::Folder),
-        );
+        )
+    }
+
+    /// [`Self::find`]'s choice between a frame's two places.
+    fn newer_of(beside: PathBuf, under: PathBuf) -> Option<PathBuf> {
+        let modified = |p: &Path| p.metadata().and_then(|m| m.modified()).ok();
         match (modified(&beside), modified(&under)) {
             (None, None) => None,
             (Some(_), None) => Some(beside),
@@ -371,6 +376,39 @@ impl Sidecar {
                 }
             }
         }
+    }
+
+    /// The sidecar `raw`'s edit is read from: its own ([`Self::find`]),
+    /// else, in Monocard, the one greycard keeps, as the edit to start
+    /// from. The next save goes to Monocard's own place.
+    pub fn find_to_read(raw: &Path) -> Option<PathBuf> {
+        Self::find(raw).or_else(|| {
+            let [beside, under] = Self::greycard_places(raw)?;
+            Self::newer_of(beside, under)
+        })
+    }
+
+    /// Greycard's own sidecars of `raw` that are there, in a build that
+    /// keeps its own under another name: read, never written or removed,
+    /// and taken along when the raw moves. None in greycard itself.
+    pub fn greycards(raw: &Path) -> Vec<PathBuf> {
+        Self::greycard_places(raw)
+            .into_iter()
+            .flatten()
+            .filter(|p| std::fs::symlink_metadata(p).is_ok())
+            .collect()
+    }
+
+    /// Beside `raw` and under the hidden folder, as greycard names them.
+    fn greycard_places(raw: &Path) -> Option<[PathBuf; 2]> {
+        cfg!(feature = "mono").then(|| {
+            let mut name = raw.file_name().unwrap_or_default().to_os_string();
+            name.push(".gcd");
+            [
+                raw.with_file_name(&name),
+                raw.with_file_name(".greycard").join(&name),
+            ]
+        })
     }
 
     /// Which of two copies of one frame's sidecar was saved later, by
@@ -389,9 +427,10 @@ impl Sidecar {
         modified(a).cmp(&modified(b))
     }
 
-    /// The sidecar `raw` has, if there is one, wherever it is.
+    /// The sidecar `raw` has, if there is one, wherever it is
+    /// ([`Self::find_to_read`]).
     pub fn load(raw: &Path) -> Result<Option<Self>> {
-        match Self::find(raw) {
+        match Self::find_to_read(raw) {
             Some(path) => Self::read(&path).map(Some),
             None => Ok(None),
         }
@@ -622,11 +661,17 @@ impl Sidecar {
     /// to hide is said and not returned.
     pub fn folder_under(shoot: &Path) -> std::io::Result<PathBuf> {
         let folder = shoot.join(SIDECAR_FOLDER);
-        std::fs::create_dir_all(&folder)?;
-        if let Err(e) = hide_folder(&folder) {
+        Self::make_hidden(&folder)?;
+        Ok(folder)
+    }
+
+    /// `folder` made and hidden, as [`Self::folder_under`] has it.
+    pub fn make_hidden(folder: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(folder)?;
+        if let Err(e) = hide_folder(folder) {
             log::warn!("{}: not hidden: {e}", folder.display());
         }
-        Ok(folder)
+        Ok(())
     }
 
     /// Write the sidecar beside `raw`, whole, through a temporary file.
@@ -1036,6 +1081,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn the_sidecar_has_one_name_in_two_places() {
         let raw = Path::new("/shoot/IMG_0001.CR3");
         assert_eq!(
@@ -1260,6 +1306,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_sidecar_under_the_folder_loads_and_saves() {
         let dir = scratch("folder");
         let raw = dir.join("IMG_0001.CR3");
@@ -1383,6 +1430,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn the_sidecar_keeps_history_and_survives_a_round_trip() {
         let dir = std::env::temp_dir().join(format!("greycard-edit-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();

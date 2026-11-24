@@ -1955,3 +1955,32 @@ fn capture_the_section_headers() {
         }
     }
 }
+
+/// A build without the mono feature has no mono panel, state, or theme.
+#[cfg(not(feature = "mono"))]
+#[test]
+fn a_stock_build_shows_nothing_of_the_mono_one() {
+    let app = crate::testing::window(2);
+    app.window()
+        // Tall, so every section is in view.
+        .set_size(slint::LogicalSize::new(1500.0, 6000.0));
+    let (state, _worker) = crate::testing::state_for(&app, crate::testing::folder(2));
+    let path = state.borrow().path_of(0).clone();
+    state.borrow_mut().develop.monochromes.insert(path);
+    app.invoke_select(0);
+    let mono = app.global::<crate::Mono>();
+    assert!(app.get_monochrome_open());
+    assert!(!mono.get_on() && !mono.get_frame() && !mono.get_welcome());
+    assert_eq!(mono.get_panels().row_count(), 0);
+    assert!(crate::testing::count_labeled(&app, "Saturation") > 0);
+    assert_eq!(app.get_canvas_colors().row_count(), 5);
+    let accent = app.global::<crate::Theme>().get_accent();
+    assert_eq!(
+        [accent.red(), accent.green(), accent.blue()],
+        [0x6e, 0xa8, 0xff]
+    );
+    let fill = app.global::<crate::Theme>().get_fill();
+    assert_eq!(fill, accent);
+    crate::testing::press(&app, "z");
+    assert!(!mono.get_zone_view());
+}

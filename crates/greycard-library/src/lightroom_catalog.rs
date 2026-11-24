@@ -59,7 +59,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use greycard_edit::meta::{Flag, Label, Meta, STARS};
-use greycard_edit::{Edit, Placement, Sidecar};
+use greycard_edit::{Edit, Placement, SIDECAR_FOLDER, Sidecar};
 use greycard_edit_io::lightroom::{self, PROCESS_2012, Value};
 use greycard_edit_io::on_disk::starting_of;
 use rusqlite::{Connection, OpenFlags, OptionalExtension};
@@ -3532,10 +3532,12 @@ impl Report {
         }
         out.line(
             "sidecars",
-            if self.sidecars_in_folder {
-                "a new one under its folder's .greycard/, as the editor's setting says"
+            &if self.sidecars_in_folder {
+                format!("a new one under its folder's {SIDECAR_FOLDER}/, as the editor's setting says")
             } else {
-                "a new one beside its file, or under the folder's .greycard/ where it has one"
+                format!(
+                    "a new one beside its file, or under the folder's {SIDECAR_FOLDER}/ where it has one"
+                )
             },
         );
         if self.already > 0 {
@@ -3565,7 +3567,7 @@ impl Report {
                 out.line(
                     "written",
                     &format!(
-                        "{} sidecars ({} under .greycard/), {} left alone",
+                        "{} sidecars ({} under {SIDECAR_FOLDER}/), {} left alone",
                         w.sidecars, w.in_folder, w.left_alone
                     ),
                 );

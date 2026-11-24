@@ -131,7 +131,7 @@ fn an_export_runs_with_no_display_and_its_exit_code_says_how_it_went() {
         let uid = unsafe { libc::getuid() };
         // Where the editor run below, its settings in the test's own
         // folder, would look for one.
-        let config = home.0.join("config").join("greycard");
+        let config = home.0.join("config").join(greycard_core::brand::APP_DIR);
         let key = greycard_ui::instance::config_key(Some(&config));
         let socket =
             greycard_ui::instance::socket_path(Some(runtime.0.clone()), None, uid, &key).unwrap();
@@ -345,7 +345,7 @@ fn an_export_preset_with_a_border_writes_a_file_larger_by_the_band() {
             .join(format!("greycard-headless-border-{}", std::process::id())),
     );
     greycard_render::testing::remove_dir_retry(&home.0);
-    std::fs::create_dir_all(home.0.join("config").join("greycard")).unwrap();
+    std::fs::create_dir_all(home.0.join("config").join(greycard_core::brand::APP_DIR)).unwrap();
     let source = home.0.join("frame.dng");
     dng(&source, 240, 160);
     // A preset at 120 px on the long edge with a black border a tenth
@@ -363,7 +363,10 @@ fn an_export_preset_with_a_border_writes_a_file_larger_by_the_band() {
         }]
     }"#;
     std::fs::write(
-        home.0.join("config").join("greycard").join("settings.json"),
+        home.0
+            .join("config")
+            .join(greycard_core::brand::APP_DIR)
+            .join("settings.json"),
         settings,
     )
     .unwrap();

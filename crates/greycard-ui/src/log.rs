@@ -24,7 +24,11 @@ use tracing_subscriber::{EnvFilter, Layer};
 /// The log's name; the runs before are kept beside it ([`kept`]),
 /// because a tester whose editor vanished opens it again before
 /// thinking of the log.
-pub const FILE: &str = "greycard-ui.log";
+pub const FILE: &str = if cfg!(feature = "mono") {
+    "monocard-ui.log"
+} else {
+    "greycard-ui.log"
+};
 
 /// How many runs before this one are kept: three, so the run that
 /// went wrong survives a relaunch to try again and another to report
@@ -70,19 +74,23 @@ pub fn dir() -> Option<PathBuf> {
         .map(PathBuf::from)
         .filter(|p| p.is_absolute())
     {
-        return Some(p.join("greycard"));
+        return Some(p.join(greycard_core::brand::APP_DIR));
     }
     if cfg!(target_os = "macos") {
         Some(
             dirs::home_dir()?
                 .join("Library")
                 .join("Logs")
-                .join("greycard"),
+                .join(greycard_core::brand::APP_DIR),
         )
     } else if cfg!(windows) {
-        Some(dirs::data_local_dir()?.join("greycard").join("logs"))
+        Some(
+            dirs::data_local_dir()?
+                .join(greycard_core::brand::APP_DIR)
+                .join("logs"),
+        )
     } else {
-        Some(dirs::state_dir()?.join("greycard"))
+        Some(dirs::state_dir()?.join(greycard_core::brand::APP_DIR))
     }
 }
 
@@ -115,7 +123,8 @@ fn open(dir: PathBuf, version: &str) -> Option<(PathBuf, File)> {
     let mut file = File::create(&path).ok()?;
     writeln!(
         file,
-        "greycard-ui {version} on {} {}",
+        "{}-ui {version} on {} {}",
+        greycard_core::brand::APP_DIR,
         std::env::consts::OS,
         std::env::consts::ARCH
     )
@@ -322,11 +331,12 @@ mod tests {
         // SAFETY: the variable is read only by this module's `dir`,
         // and no other test in this binary sets it.
         unsafe { std::env::set_var("XDG_STATE_HOME", &dir) };
-        assert_eq!(super::dir(), Some(dir.join("greycard")));
+        assert_eq!(super::dir(), Some(dir.join(greycard_core::brand::APP_DIR)));
         unsafe { std::env::set_var("XDG_STATE_HOME", "relative/no") };
         let platform = super::dir().expect("a state directory in the test environment");
         assert!(platform.is_absolute());
-        assert!(platform.ends_with("greycard") || platform.ends_with("greycard/logs"));
+        let app = greycard_core::brand::APP_DIR;
+        assert!(platform.ends_with(app) || platform.ends_with(Path::new(app).join("logs")));
         unsafe { std::env::remove_var("XDG_STATE_HOME") };
         assert_eq!(super::dir(), Some(platform));
     }
@@ -339,7 +349,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("greycard-log-rotate-{}", std::process::id()));
         greycard_render::testing::remove_dir_retry(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(kept(1), "greycard-ui-1.log");
+        assert_eq!(kept(1), FILE.replace(".log", "-1.log"));
         std::fs::write(dir.join(FILE), "run a").unwrap();
         std::fs::write(dir.join(format!("{FILE}.1")), "run before a").unwrap();
         for run in ["b", "c", "d"] {
@@ -419,7 +429,10 @@ mod tests {
 
         let now = std::fs::read_to_string(&path).unwrap();
         let before = std::fs::read_to_string(dir.join(kept(1))).unwrap();
-        assert!(now.starts_with("greycard-ui "), "{now:?}");
+        assert!(
+            now.starts_with(&format!("{}-ui ", greycard_core::brand::APP_DIR)),
+            "{now:?}"
+        );
         assert!(now.contains("an info line"), "{now:?}");
         assert!(!now.contains("a debug line"), "{now:?}");
         assert!(now.contains("a library's warning"), "{now:?}");

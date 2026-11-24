@@ -11,6 +11,8 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use super::{Found, Report, RootReport, Voice, Wal};
+use greycard_edit::SIDECAR_FOLDER;
+
 use crate::grouped;
 
 /// What the sheet shows of a report.
@@ -188,7 +190,7 @@ impl Report {
                 out.line(
                     "wrote",
                     format!(
-                        "{} under their folder's .greycard/",
+                        "{} under their folder's {SIDECAR_FOLDER}/",
                         count(w.in_folder, "sidecar", "sidecars")
                     ),
                 );
@@ -549,9 +551,9 @@ impl Report {
         out.line(
             "sidecars",
             if self.sidecars_in_folder {
-                "new ones under their folder's .greycard/"
+                format!("new ones under their folder's {SIDECAR_FOLDER}/")
             } else {
-                "new ones beside their file, or under the folder's .greycard/ where it has one"
+                format!("new ones beside their file, or under the folder's {SIDECAR_FOLDER}/ where it has one")
             },
         );
         out.0

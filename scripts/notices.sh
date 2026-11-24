@@ -66,7 +66,7 @@ out=${1:-target/THIRD-PARTY-NOTICES}
 # word "copyright", and a project missing from `known` credited beside
 # one in it. Add a project to `known` as it is ported. Before
 # cargo-about, so it runs without it.
-known="RawTherapee darktable RCD Exiv2 ExifTool Pillow OpenColorIO dcraw LibRaw Blender G'MIC"
+known="RawTherapee darktable RCD Exiv2 ExifTool Pillow OpenColorIO dcraw LibRaw Blender G'MIC RAWmakase"
 unlisted=$(git ls-files 'crates/*.rs' 'crates/*.wgsl' | while read -r f; do
     header=$(awk '/^[[:space:]]*(\/\/|$)/ {
         sub(/^[[:space:]]*\/\/[!\/]?[[:space:]]*/, ""); printf "%s ", $0; next
@@ -126,6 +126,7 @@ esc=$(printf '\033')
 about() {
     if ! cargo about --color never generate --locked --offline --fail \
         -m crates/greycard-ui/Cargo.toml -c about.toml \
+        ${NOTICES_FEATURES:+--features "$NOTICES_FEATURES"} \
         -o "$2" "$1" 2>"$log"; then
         sed "s/$esc\[[0-9;]*m//g" "$log" >&2
         fail "notices.sh: cargo-about failed; see above"

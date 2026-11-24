@@ -1,0 +1,18 @@
+[package]
+name = "mono-decode"
+version.workspace = true
+description = "Monocard: a monochrome raw frame made into one linear plane, its clip map, and the HDR bracket merge"
+license = "GPL-3.0-or-later"
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+mono-core = { path = "../mono-core" }
+greycard-core = { path = "../greycard-core", features = ["mono"] }
+rayon.workspace = true
+log.workspace = true

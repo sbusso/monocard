@@ -153,6 +153,25 @@ pub struct Settings {
     /// asked once: from then on the Settings sheet's Models category
     /// is the way to them.
     pub models_asked: bool,
+    /// Whether the mono build's welcome was shown, on the first file of
+    /// the camera it is for. Written as it shows.
+    #[cfg(feature = "mono")]
+    pub mono_welcomed: bool,
+    /// The folds open inside the mono panels. Written as one changes.
+    #[cfg(feature = "mono")]
+    pub mono_open: Vec<String>,
+    /// Whether the camera window opens as a camera is connected; its tiles'
+    /// size, none the default; and its order ("newest", "oldest", "name",
+    /// empty the default). Each written as it changes.
+    #[cfg(feature = "mono")]
+    #[serde(default = "on", deserialize_with = "bool_on_leniently")]
+    pub mono_camera_popup: bool,
+    #[cfg(feature = "mono")]
+    #[serde(deserialize_with = "size_leniently")]
+    pub mono_camera_tile: Option<f32>,
+    #[cfg(feature = "mono")]
+    #[serde(deserialize_with = "string_leniently")]
+    pub mono_camera_sort: String,
     /// The folders whose RawTherapee profiles were offered as they
     /// opened and answered, by Not now, or by a write that brought a
     /// frame in, each by its canonical path: never offered again. Kept
@@ -314,7 +333,18 @@ pub struct Settings {
 
 /// The Settings sheet's categories, top to bottom, by the names the
 /// sheet shows.
+#[cfg(not(feature = "mono"))]
 pub const CATEGORIES: [&str; 6] = ["Interface", "Library", "Editing", "Models", "Keys", "About"];
+#[cfg(feature = "mono")]
+pub const CATEGORIES: [&str; 7] = [
+    "Interface",
+    "Library",
+    "Editing",
+    "Camera profiles",
+    "Models",
+    "Keys",
+    "About",
+];
 
 /// The category `name` names, or the first for a name that is none.
 pub fn category_named(name: &str) -> &'static str {
@@ -772,7 +802,13 @@ impl Default for ImportChoices {
 impl Default for Settings {
     fn default() -> Self {
         Self {
+            #[cfg(not(feature = "mono"))]
             shared: Shared::default(),
+            #[cfg(feature = "mono")]
+            shared: Shared {
+                export_presets: crate::mono::export_presets(),
+                ..Shared::default()
+            },
             export_last_folder: String::new(),
             exported: false,
             edit_in: Vec::new(),
@@ -786,7 +822,7 @@ impl Default for Settings {
             gamut_warning: false,
             display_profile: "System".into(),
             display_monitor: String::new(),
-            canvas_color: crate::render::CANVAS_NAMES[0].into(),
+            canvas_color: crate::render::CANVAS_NAMES[crate::render::CANVAS_DEFAULT].into(),
             mat: false,
             collapsed: Vec::new(),
             section_orders: Default::default(),
@@ -807,6 +843,16 @@ impl Default for Settings {
             cull_developed: false,
             lenses_declined: false,
             models_asked: false,
+            #[cfg(feature = "mono")]
+            mono_welcomed: false,
+            #[cfg(feature = "mono")]
+            mono_open: mono_ui::panel::OPEN.map(String::from).to_vec(),
+            #[cfg(feature = "mono")]
+            mono_camera_popup: true,
+            #[cfg(feature = "mono")]
+            mono_camera_tile: None,
+            #[cfg(feature = "mono")]
+            mono_camera_sort: String::new(),
             rawtherapee_answered: Vec::new(),
             preset_favorites: Vec::new(),
             preset_folds: Vec::new(),
@@ -1198,6 +1244,10 @@ mod tests {
                 sidecars_in_folder: true,
                 jpegs_apart: true,
                 lens_on_new: false,
+                #[cfg(feature = "mono")]
+                mono_start_mode: true,
+                #[cfg(feature = "mono")]
+                mono_fit_folders: vec!["/home/x/chart".into()],
                 last_file: "/home/x/Pictures/IMG_0001.CR3".into(),
                 author: "Zoë Ångström".into(),
                 copyright: "© 2026 Zoë Ångström".into(),
@@ -1233,6 +1283,16 @@ mod tests {
             cull_developed: true,
             lenses_declined: true,
             models_asked: true,
+            #[cfg(feature = "mono")]
+            mono_welcomed: true,
+            #[cfg(feature = "mono")]
+            mono_open: vec!["toning".into()],
+            #[cfg(feature = "mono")]
+            mono_camera_popup: false,
+            #[cfg(feature = "mono")]
+            mono_camera_tile: Some(200.0),
+            #[cfg(feature = "mono")]
+            mono_camera_sort: "name".into(),
             rawtherapee_answered: vec!["/home/x/Pictures/rt".into()],
             preset_favorites: vec!["warm.gcp".into(), "Film/portra.gcp".into()],
             preset_folds: vec!["group:Film".into()],
@@ -1617,6 +1677,28 @@ mod tests {
         assert_eq!(read.strip_photo, None);
         let read: Settings = serde_json::from_str(r#"{"left_width": null}"#).unwrap();
         assert_eq!(read.left_width, None);
+    }
+
+    #[cfg(feature = "mono")]
+    #[test]
+    fn the_camera_window_s_settings_are_read_leniently() {
+        let read: Settings = serde_json::from_str("{}").unwrap();
+        assert!(read.mono_camera_popup && Settings::default().mono_camera_popup);
+        let read: Settings = serde_json::from_str(
+            r#"{"ui_scale": 150, "mono_camera_popup": "no", "mono_camera_tile": -1, "mono_camera_sort": 3}"#,
+        )
+        .unwrap();
+        assert_eq!(read.ui_scale, 150);
+        assert!(read.mono_camera_popup);
+        assert_eq!(read.mono_camera_tile, None);
+        let kept = Settings {
+            mono_camera_popup: false,
+            mono_camera_tile: Some(200.0),
+            mono_camera_sort: "name".into(),
+            ..Settings::default()
+        };
+        let text = serde_json::to_string(&kept).unwrap();
+        assert_eq!(serde_json::from_str::<Settings>(&text).unwrap(), kept);
     }
 
     /// A hand-edited weight that is no number reads as one, and a

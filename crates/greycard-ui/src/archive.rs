@@ -311,7 +311,7 @@ pub fn walk(
         }
     }
     frames.sort();
-    (frames, left)
+    (greycard_library::monochrome::kept(frames), left)
 }
 
 /// The frames an ask is over: those chosen, or the folder's walk.
@@ -328,6 +328,9 @@ pub fn frames_of(ask: &Ask, beat: &dyn Fn()) -> (Vec<PathBuf>, usize) {
 pub fn travelling(frame: &Path) -> Vec<PathBuf> {
     Sidecar::find(frame)
         .into_iter()
+        // Greycard's, in Monocard: copied where the frame is new and not
+        // compared again, which is greycard's own backup's to do.
+        .chain(Sidecar::greycards(frame))
         .chain(greycard_edit_io::xmp::paths_of(frame))
         .collect()
 }
@@ -361,12 +364,11 @@ pub fn sidecar_at(sidecar: &Path, frame: &Path, to: &Path) -> PathBuf {
         name
     };
     let folder = to.parent().unwrap_or(Path::new("."));
-    let under =
-        sidecar.parent().and_then(Path::file_name) == Some(std::ffi::OsStr::new(SIDECAR_FOLDER));
-    if under {
-        folder.join(SIDECAR_FOLDER).join(renamed)
-    } else {
-        folder.join(renamed)
+    match sidecar.parent().filter(|p| Some(*p) != frame.parent()) {
+        Some(hidden) => folder
+            .join(hidden.file_name().unwrap_or_default())
+            .join(renamed),
+        None => folder.join(renamed),
     }
 }
 
@@ -464,7 +466,7 @@ pub fn compare_sidecars(
 
 /// Whether a sidecar path is a frame's `.gcd` (and not an XMP).
 fn is_gcd(path: &Path) -> bool {
-    path.extension() == Some(std::ffi::OsStr::new("gcd"))
+    path.extension() == Some(std::ffi::OsStr::new(greycard_core::brand::SIDECAR_EXT))
 }
 
 /// Join the two `.gcd`s of one frame and write the join to both
@@ -695,6 +697,7 @@ pub fn sidecar_there(to: &Path) -> Option<PathBuf> {
     ]
     .into_iter()
     .find(|p| std::fs::symlink_metadata(p).is_ok())
+    .or_else(|| Sidecar::greycards(to).into_iter().next())
     .or_else(|| greycard_edit_io::xmp::paths_of(to).into_iter().next())
 }
 
@@ -1450,6 +1453,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_folder_is_backed_up_whole_with_its_sidecars_in_place_and_the_rejects_left() {
         let dir = scratch("backup");
         let (local, nas) = (dir.join("local"), dir.join("nas"));
@@ -2253,6 +2257,7 @@ mod tests {
     /// its counter goes across, while the archive's XMP, edited later on
     /// another machine, stays as it is and names the frame.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_newer_xmp_over_there_is_kept_while_the_newer_gcd_goes() {
         let dir = scratch("per-file");
         let (local, nas) = (dir.join("local"), dir.join("nas"));
@@ -2455,6 +2460,7 @@ mod tests {
     /// left at its destination name, of either placement or an XMP, and
     /// with sidecars off too.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn a_frame_with_no_sidecar_is_kept_out_by_one_left_at_the_destination() {
         let dir = scratch("stray");
         let (local, nas) = (dir.join("local"), dir.join("nas"));

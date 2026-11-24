@@ -204,6 +204,10 @@ pub(crate) fn panel_curves(app: &App) -> Curves {
 /// that has the CURVES section (Develop, or Masks with a mask
 /// chosen), and the section open. Its histogram is taken only then.
 pub(crate) fn curves_shown(app: &App) -> bool {
+    #[cfg(feature = "mono")]
+    if crate::mono::on(app) {
+        return crate::mono::curve_shown_on(app);
+    }
     let tab_has_it = match app.get_shown_tab().as_str() {
         "Develop" => true,
         "Masks" => app.get_target() > 0,
@@ -217,7 +221,12 @@ pub(crate) fn curves_shown(app: &App) -> bool {
 /// and the global look's; a mask's point curves' before every curve;
 /// the global look's past the masks' own.
 pub(crate) fn histogram_tap(app: &App, target: Option<usize>) -> Tap {
-    if shown_curve(app).is_some_and(|c| c.is_color()) {
+    // A mono frame has no color curve, whatever the stock editor shows.
+    #[cfg(feature = "mono")]
+    let colored = !crate::mono::on(app);
+    #[cfg(not(feature = "mono"))]
+    let colored = true;
+    if colored && shown_curve(app).is_some_and(|c| c.is_color()) {
         Tap::AfterCurves
     } else if target.is_some() {
         Tap::BeforeCurves
@@ -368,6 +377,10 @@ pub(crate) fn curve_raster(app: &App) -> (usize, f32) {
 /// over what it takes in ([`histogram_taken_in`]).
 pub(crate) fn draw_curve(app: &App, bins: Option<&[u32]>) -> slint::Image {
     let (n, u) = curve_raster(app);
+    #[cfg(feature = "mono")]
+    if crate::mono::on(app) {
+        return crate::mono::picture::behind_curve(n, u, bins);
+    }
     let parametric = parametric_mode(app).then(|| panel_parametric(app));
     let channel = if parametric.is_some() {
         Channel::Rgb
@@ -1278,6 +1291,8 @@ mod tests {
                 },
                 look: Default::default(),
                 opacity: 1.0,
+                #[cfg(feature = "mono")]
+                mono: None,
             });
             st.develop.bins = Some((Tap::BeforeCurves, bins.to_vec()));
         }

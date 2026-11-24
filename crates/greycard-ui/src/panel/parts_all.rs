@@ -648,6 +648,8 @@ mod tests {
                 mask,
                 look: Default::default(),
                 opacity: 1.0,
+                #[cfg(feature = "mono")]
+                mono: None,
             });
             st.sidecars[0].record(edit);
         }

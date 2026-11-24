@@ -814,7 +814,12 @@ pub(crate) fn look_edited(st: &mut State, app: &App) {
 /// slider dragged on while that develop runs asks for no second one;
 /// the asking is recorded here.
 pub(crate) fn detail_asks(st: &mut State, app: &App) -> bool {
-    let wants = read_edit(app, &st.develop.edit, st.develop.target).detail_wants();
+    let edit = read_edit(app, &st.develop.edit, st.develop.target);
+    #[cfg(feature = "mono")]
+    if crate::mono::plane_asked(st, &edit) {
+        return true;
+    }
+    let wants = edit.detail_wants();
     let (has, asked) = (st.develop.planes_wants, st.develop.planes_asked);
     let coming = greycard_edit::DetailWants {
         texture: has.texture || asked.texture,
@@ -1021,6 +1026,8 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, worker: &Rc<Worker>) {
                 },
                 look: Look::default(),
                 opacity: 1.0,
+                #[cfg(feature = "mono")]
+                mono: None,
             });
             st.develop.target = Some(st.develop.edit.adjustments.len() - 1);
             st.develop.fresh_mask = Some(id);
@@ -2408,6 +2415,8 @@ mod tests {
             },
             look: Default::default(),
             opacity: 1.0,
+            #[cfg(feature = "mono")]
+            mono: None,
         });
         st.develop.edit = edit.clone();
         let held = |st: &mut State| {

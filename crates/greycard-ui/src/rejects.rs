@@ -203,10 +203,10 @@ fn stem_owner(xmp: &Path, dir: &Path, arrived: &[PathBuf], raw: &Path) -> Option
         if owns && greycard_core::decode::is_raw_path(path) {
             return None;
         }
-        let ours = path
-            .extension()
-            .and_then(|x| x.to_str())
-            .is_some_and(|x| matches!(x.to_ascii_lowercase().as_str(), "xmp" | "gcd" | "tmp"));
+        let ours = path.extension().and_then(|x| x.to_str()).is_some_and(|x| {
+            ["xmp", "gcd", "tmp", greycard_core::brand::SIDECAR_EXT]
+                .contains(&x.to_ascii_lowercase().as_str())
+        });
         let same = path
             .file_stem()
             .is_some_and(|s| s.to_string_lossy().to_lowercase() == stem);
@@ -278,17 +278,23 @@ fn move_into(
                     .flatten(),
             )
             .collect();
+        // Greycard's own sidecars of the frames moved, in Monocard: taken
+        // along and never written over.
+        let greycards: Vec<PathBuf> = std::iter::once(raw)
+            .chain(&companions)
+            .flat_map(|f| greycard_edit::Sidecar::greycards(f))
+            .collect();
         let beside: Vec<(PathBuf, PathBuf)> = sidecar
             .iter()
             .cloned()
+            .chain(greycards.iter().cloned())
             .chain(greycard_edit_io::xmp::paths_of(raw))
             .chain(theirs)
             .filter_map(|from| {
                 let file = from.file_name()?;
-                let to = if from.parent().and_then(Path::file_name) == Some(hidden) {
-                    dir.join(hidden).join(file)
-                } else {
-                    dir.join(file)
+                let to = match from.parent().filter(|p| Some(*p) != raw.parent()) {
+                    Some(hidden) => dir.join(hidden.file_name()?).join(file),
+                    None => dir.join(file),
                 };
                 Some((from, to))
             })
@@ -357,7 +363,7 @@ fn move_into(
                                 )
                             });
                         }
-                        (keep && to.exists()).then(|| there(to))
+                        ((keep || greycards.contains(from)) && to.exists()).then(|| there(to))
                     })
                 })
         };
@@ -409,8 +415,8 @@ fn move_into(
             }
         }
         for (from, to) in &beside {
-            if to.parent().is_some_and(|p| !p.exists())
-                && let Err(e) = greycard_edit::Sidecar::folder_under(dir)
+            if let Some(p) = to.parent().filter(|p| !p.exists())
+                && let Err(e) = greycard_edit::Sidecar::make_hidden(p)
             {
                 tracing::warn!("{}: not moved: {e}", from.display());
                 continue;
@@ -424,5 +430,55 @@ fn move_into(
                 Err(e) => tracing::warn!("{}: not moved: {e}", from.display()),
             }
         }
+    }
+}
+
+/// Greycard's `.gcd` through Monocard's own moves and deletes
+/// (docs/monocard).
+#[cfg(all(test, feature = "mono"))]
+mod two_apps {
+    use super::*;
+
+    #[test]
+    fn a_gcd_goes_with_its_raw_is_never_written_over_and_outlives_a_delete() {
+        let dir = std::env::temp_dir().join(format!("monocard-two-apps-{}", std::process::id()));
+        let raw = dir.join("a.DNG");
+        let rejects = rejects_dir(&dir);
+        let (here, there) = (dir.join(".greycard"), rejects.join(".greycard"));
+        let reset = || {
+            greycard_core::testing::remove_dir_retry(&dir);
+            std::fs::create_dir_all(&here).unwrap();
+            std::fs::write(&raw, b"raw").unwrap();
+            std::fs::write(here.join("a.DNG.gcd"), b"theirs").unwrap();
+            std::fs::write(dir.join("a.DNG.mcd"), b"ours").unwrap();
+        };
+        let reject =
+            |orphans| move_rejects_as(std::slice::from_ref(&raw), &[0], orphans, true).unwrap();
+
+        reset();
+        assert_eq!(reject(Orphans::WriteOver).files, [0]);
+        assert_eq!(std::fs::read(there.join("a.DNG.gcd")).unwrap(), b"theirs");
+        assert_eq!(std::fs::read(rejects.join("a.DNG.mcd")).unwrap(), b"ours");
+        assert!(!here.join("a.DNG.gcd").exists());
+
+        // Another's there: the frame stays whole, and so do both.
+        reset();
+        std::fs::create_dir_all(&there).unwrap();
+        std::fs::write(there.join("a.DNG.gcd"), b"older").unwrap();
+        assert_eq!(reject(Orphans::WriteOver).skipped.len(), 1);
+        assert_eq!(std::fs::read(there.join("a.DNG.gcd")).unwrap(), b"older");
+        assert_eq!(std::fs::read(here.join("a.DNG.gcd")).unwrap(), b"theirs");
+        assert!(raw.exists() && dir.join("a.DNG.mcd").exists());
+
+        // A delete takes the raw and Monocard's sidecar alone.
+        reset();
+        let allowed = delete::allowed(std::slice::from_ref(&dir));
+        let plan = delete::plan(std::slice::from_ref(&raw), &[], &allowed, true);
+        delete::delete(&plan, delete::How::Permanent, &allowed, |_| {
+            panic!("the trash")
+        });
+        assert!(!raw.exists() && !dir.join("a.DNG.mcd").exists());
+        assert_eq!(std::fs::read(here.join("a.DNG.gcd")).unwrap(), b"theirs");
+        greycard_core::testing::remove_dir_retry(&dir);
     }
 }

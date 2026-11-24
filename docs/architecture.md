@@ -45,6 +45,25 @@ as its `Cargo.toml` has them; test-only dependencies are left out.
 | `ort-dylib` | A build tool: makes the ONNX Runtime shared library `scripts/ort-dylib.sh` installs | none |
 | `greycard-fuzz` | The fuzz targets over every reader of outside text, a workspace of its own (`fuzz/`) | core, edit, edit-io, library |
 
+Monocard's crates (`docs/monocard/CONTRACT.md`), in the build under the
+`mono` feature only:
+
+| Crate | Owns | Depends on |
+|---|---|---|
+| `mono-core` | The single-channel picture, the mono edit, the routing rule | none |
+| `mono-tone` | Tone equalizer, local contrast tools, curves, display transform, CPU and WGSL | mono-core |
+| `mono-look` | Grain, solarize, toning, vignette, looks, Lightroom preset import | mono-core, mono-tone |
+| `mono-decode` | A monochrome frame made into one plane, its geometry, the HDR merge | mono-core, core |
+| `mono-denoise` | Profiled, raw wavelet, and learned denoise on one plane | mono-core, core, ai |
+| `mono-profile` | Camera noise profiles and their fit | mono-core, mono-decode, core |
+| `mono-ui` | The mono panel set, without a window | mono-core, mono-look, mono-tone |
+
+With the feature, `greycard-edit` reads mono-core; `greycard-render` and
+`greycard-viewport` read mono-core, mono-tone, and mono-look;
+`greycard-engine` reads every one but mono-ui; `greycard-ui` reads
+mono-core, mono-look, mono-tone, mono-profile, and mono-ui; and
+`greycard-cli` reads mono-core, mono-profile, and mono-look.
+
 The layers, each crate naming only crates on rows below its own:
 
 ```

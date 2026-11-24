@@ -53,7 +53,9 @@ impl Store {
             .filter(|p| p.is_absolute())
             .or_else(dirs::cache_dir)
             .ok_or(Error::NoCacheDir)?;
-        Ok(Self::at(base.join("greycard").join("lensfun")))
+        Ok(Self::at(
+            base.join(greycard_core::brand::APP_DIR).join("lensfun"),
+        ))
     }
 
     pub fn at(root: impl Into<PathBuf>) -> Self {
@@ -74,6 +76,11 @@ impl Store {
     /// that has it.
     pub fn candidates(&self) -> Vec<PathBuf> {
         let mut out = vec![self.dir()];
+        // Greycard's copy, beside Monocard's in the cache: read, never written.
+        #[cfg(feature = "mono")]
+        if let Some(cache) = self.root.ancestors().nth(2) {
+            out.push(cache.join(format!("greycard/lensfun/version_{VERSION}")));
+        }
         for sys in [
             "/var/lib/lensfun-updates",
             "/usr/share/lensfun",
@@ -220,9 +227,15 @@ mod tests {
     #[test]
     fn the_store_is_under_the_cache_and_a_tarball_unpacks() {
         let s = Store::user().expect("a cache directory in the test environment");
-        assert!(s.root().ends_with("greycard/lensfun"));
+        assert!(
+            s.root()
+                .ends_with(Path::new(greycard_core::brand::APP_DIR).join("lensfun"))
+        );
         assert!(s.dir().ends_with("version_2"));
-        assert_eq!(s.candidates().len(), 4);
+        assert_eq!(
+            s.candidates().len(),
+            4 + usize::from(cfg!(feature = "mono"))
+        );
         // A tarball made here: one XML file, one other, unpacked into
         // the versioned directory with its notes.
         let dir = std::env::temp_dir().join(format!("greycard-lens-{}", std::process::id()));
