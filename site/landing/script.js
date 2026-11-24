@@ -10,10 +10,33 @@
     document.querySelectorAll('[data-repo]').forEach(function (a) { a.href = repo.href; });
   }
 
-  // The download address is written once, on #download.
-  var download = document.getElementById('download');
-  if (download) {
-    document.querySelectorAll('[data-download]').forEach(function (a) { a.href = download.href; });
+  // The download buttons are for the Mac as they are written. On another
+  // system they take its row of the download list: name, logo, address, note.
+  function system() {
+    var data = navigator.userAgentData;
+    var p = (data && data.platform) || navigator.platform || '';
+    // An iPad says it is a Mac, with a touch screen.
+    if ((data && data.mobile) || /Android|iPhone|iPad|iPod|CrOS/.test(navigator.userAgent) ||
+        (/^Mac/i.test(p) && navigator.maxTouchPoints > 1)) { return 'other'; }
+    return /^Win/i.test(p) ? 'windows' : /^Mac/i.test(p) ? 'mac' : /^Linux/i.test(p) ? 'linux' : 'other';
+  }
+  var os = system();
+  var row = document.querySelector('[data-os="' + os + '"]');
+  if (os !== 'mac') {
+    document.querySelectorAll('[data-download]').forEach(function (a) {
+      a.href = row ? row.querySelector('a').href : '#downloads';
+      a.querySelector('span').textContent = row ? 'Download for ' + row.dataset.name : 'See the downloads';
+      var logo = a.querySelector('svg');
+      if (row) { logo.firstElementChild.setAttribute('href', '#os-' + os); } else { logo.remove(); }
+    });
+    document.querySelectorAll('[data-note]').forEach(function (n) {
+      n.textContent = row ? row.querySelector('dd span').textContent + ' New and little tested.'
+        : 'For a computer with macOS, Linux or Windows.';
+    });
+    document.querySelectorAll('[data-others]').forEach(function (a) {
+      if (!row) { a.parentNode.remove(); return; }
+      a.textContent = os === 'linux' ? 'macOS and Windows' : 'macOS and Linux';
+    });
   }
 
   // The split. The range input is the control: the keyboard moves it, and the
