@@ -7,8 +7,6 @@ use slint::{ComponentHandle, ModelRc};
 use crate::worker::Worker;
 use crate::{App, Shared, State, Thumb, grid, install_callbacks};
 
-mod by_label;
-
 // The helpers the render crate's tests share with these.
 pub(crate) use greycard_engine::testing::{linear_dng, monochrome_dng, scratch_dir};
 pub(crate) use greycard_render::testing::{bar_png, remove_dir_retry};

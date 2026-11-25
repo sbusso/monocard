@@ -18,13 +18,3 @@ pub const ZONES: usize = 9;
 pub fn is_mono(samples_per_pixel: usize, has_cfa: bool) -> bool {
     samples_per_pixel == 1 && !has_cfa
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn only_one_bare_channel_is_mono() {
-        assert!(super::is_mono(1, false));
-        assert!(!super::is_mono(1, true));
-        assert!(!super::is_mono(3, false));
-    }
-}

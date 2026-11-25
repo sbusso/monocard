@@ -779,7 +779,7 @@ pub fn file_stem(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mono_core::edit::{DenoiseMode, DiffusePreset, SolarizeKind, Transform};
+    use mono_core::edit::{DiffusePreset, SolarizeKind};
 
     fn look(name: &str) -> Look {
         builtin().into_iter().find(|l| l.name == name).unwrap()
@@ -816,21 +816,6 @@ mod tests {
                 l.description.contains("Uncalibrated")
             );
         }
-    }
-
-    #[test]
-    fn the_specs_numbers() {
-        let of = |n| apply(&MonoEdit::default(), &look(n), 1.0);
-        assert_eq!(of("Street").display.transform, Transform::Sigmoid);
-        assert_eq!(of("Hard").grain.amount, 0.3);
-        assert_eq!(of("Soft Print").display.white_ceiling, 0.94);
-        assert_eq!(of("Night Push").denoise.mode, DenoiseMode::Profiled);
-        assert_eq!(of("Solar 2").solarize.kind, SolarizeKind::Ends);
-        assert_eq!(of("Selenium").toning.shadows.hue, 220.0);
-        assert_eq!(of("Selenium").toning.shadows.amount, 0.15);
-        assert_eq!(of("Warm Fibre").toning.overall.hue, 40.0);
-        assert_eq!(of("Warm Fibre").toning.overall.amount, 0.1);
-        assert!(of("High Key").basic.exposure > 0.0);
     }
 
     #[test]

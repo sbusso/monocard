@@ -14,13 +14,11 @@
 # is not promised.
 name: Monocard package
 
+# On request: `gh workflow run monocard-package.yml --ref BRANCH`. A
+# release is made of this run's artifacts, and its own checks are the
+# tests that a release needs.
 on:
   workflow_dispatch:
-  push:
-    branches: [monocard, packages]
-    tags: ['monocard-v*']
-    # Not read for a tag.
-    paths-ignore: ['docs/**', 'site/**', '.github/README.md']
 
 permissions:
   contents: read

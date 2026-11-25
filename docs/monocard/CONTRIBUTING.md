@@ -49,3 +49,37 @@ cargo clippy -p greycard-ui --all-targets --features mono-usb   # on a Mac
 cargo test -p <crate>
 scripts/monocard-licenses.sh
 ```
+
+## What runs on GitHub
+
+| What | When | Time |
+| --- | --- | --- |
+| `monocard.yml`: lint, Monocard's crates, the mono pipeline, licenses | a push to `monocard` that changes the app, and a pull request | about 10 minutes |
+| `monocard.yml`, with the slow tests and the stock build | on request, after a merge of Greycard | about 20 minutes |
+| `monocard-package.yml`: the Linux and Windows packages, and their checks | on request, for a release | about 30 minutes |
+| `ci.yml`: Greycard's whole suite on three systems | on request | 1 to 2 hours |
+| `fuzz.yml`: the fuzz targets | on request | 15 minutes or more |
+
+To ask for one:
+
+```sh
+gh workflow run monocard-package.yml --ref monocard
+```
+
+## Release
+
+A release needs `monocard-package.yml` green on its commit, and no other test.
+The Mac's disk image is made on a Mac, from the same commit:
+
+```sh
+scripts/monocard-package.sh --dmg
+```
+
+## Website
+
+The website and the user guide are on the branch `gh-pages`. They need no test and no
+release. To publish them:
+
+```sh
+scripts/monocard-site.sh
+```

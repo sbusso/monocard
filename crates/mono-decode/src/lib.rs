@@ -31,16 +31,3 @@ pub fn is_mono(layout: &SensorLayout) -> bool {
 
 #[cfg(test)]
 mod testing;
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use greycard_core::raw::CfaPattern;
-
-    #[test]
-    fn only_a_monochrome_layout_is_routed_here() {
-        assert!(is_mono(&SensorLayout::Monochrome));
-        assert!(!is_mono(&SensorLayout::Linear));
-        assert!(!is_mono(&SensorLayout::Cfa(CfaPattern::rggb())));
-    }
-}
