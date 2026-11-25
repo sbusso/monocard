@@ -102,7 +102,8 @@ if [ -z "$crate" ]; then
     exit 1
 fi
 version=${1:-$crate}
-if [ "$version" != "$crate" ]; then
+# Monocard has a version of its own (APPIMAGE_APP).
+if [ "$app" = greycard ] && [ "$version" != "$crate" ]; then
     echo "appimage.sh: asked for $version, but the workspace is at $crate." >&2
     exit 1
 fi
