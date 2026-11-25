@@ -24,7 +24,7 @@
 use std::rc::Rc;
 
 use greycard_edit::Edit;
-use greycard_edit::preset::{Choice, Masks, Section};
+use greycard_edit::preset::{Choice, Masks, Part, Section};
 use slint::{Model, VecModel};
 
 use crate::i18n::text;
@@ -79,6 +79,22 @@ pub(crate) fn left_out(st: &crate::State) -> &'static [Section] {
         return &STOCK;
     }
     &[]
+}
+
+/// The parts of `s` the sheets list: not the lens's color ones in Monocard,
+/// which go along with a whole Lens and do nothing to a monochrome frame.
+fn parts(s: Section) -> impl Iterator<Item = Part> {
+    use Part::{LensChromaticAberration, LensDefringe, LensManualChromaticAberration};
+    #[cfg(feature = "mono")]
+    let all = !crate::mono::only();
+    #[cfg(not(feature = "mono"))]
+    let all = true;
+    s.parts().filter(move |p| {
+        all || !matches!(
+            p,
+            LensChromaticAberration | LensManualChromaticAberration | LensDefringe
+        )
+    })
 }
 
 /// Where Masks sits in `Section::ALL`.
@@ -241,7 +257,7 @@ impl Checks {
                     );
                 }
                 State::Partly => choice.parts.extend(
-                    s.parts()
+                    parts(s)
                         .zip(&self.on[i])
                         .filter(|(_, on)| **on)
                         .map(|(p, _)| p),
@@ -294,7 +310,7 @@ impl Checks {
                     .map(|(id, n)| (format!("mask.{id}"), n.clone()))
                     .collect()
             } else {
-                s.parts()
+                parts(s)
                     .map(|p| (p.name().to_string(), text(p.title())))
                     .collect()
             };
@@ -401,7 +417,7 @@ fn slots(s: Section, masks: usize) -> usize {
     if s == Section::Adjustments {
         masks.max(1)
     } else {
-        s.parts().count().max(1)
+        parts(s).count().max(1)
     }
 }
 
@@ -411,7 +427,7 @@ fn block_lines(s: Section, masks: usize) -> usize {
     let parts = if s == Section::Adjustments {
         masks
     } else {
-        s.parts().count()
+        parts(s).count()
     };
     1 + parts.div_ceil(2) + usize::from(s == Section::Adjustments)
 }
@@ -516,6 +532,23 @@ mod tests {
     use super::*;
     use greycard_edit::preset::Part;
 
+    /// Monocard's sheets list no color correction of the lens.
+    #[test]
+    #[cfg(feature = "mono")]
+    fn the_lens_lists_no_color_part_in_monocard() {
+        let app = crate::testing::window(0);
+        crate::mono::stock_panels(&app, false);
+        let listed: Vec<Part> = parts(Section::Lens).collect();
+        assert!(listed.contains(&Part::LensProfile));
+        for p in &listed {
+            let title = p.title();
+            assert!(
+                !title.contains("aberration") && title != "Defringe",
+                "{title}"
+            );
+        }
+    }
+
     /// The titles marked for the catalog are greycard-edit's own.
     #[test]
     fn the_marked_titles_are_the_sections_and_parts() {
@@ -543,7 +576,7 @@ mod tests {
 
     /// The part a row's place under section `i` is.
     fn part_at(i: usize, j: usize) -> Option<Part> {
-        Section::ALL[i].parts().nth(j)
+        parts(Section::ALL[i]).nth(j)
     }
 
     fn at(s: Section) -> usize {
