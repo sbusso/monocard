@@ -31,7 +31,6 @@ fn header_reset(app: &App, title: &str) -> (slint::LogicalPosition, slint::Logic
 }
 
 /// A click at the middle of the switch of the `Toggle` labeled `label`.
-#[cfg(mono_usb)]
 fn click_switch(app: &App, label: &str) {
     labeled(app, label);
     let root = i_slint_backend_testing::ElementHandle::find_by_accessible_label(app, label)

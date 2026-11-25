@@ -721,6 +721,7 @@ mod tests {
     /// the trash with it; names of the shape that are another frame's,
     /// or none of ours, stay.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
     fn what_saves_put_aside_goes_to_the_trash_with_the_frame() {
         let dir = scratch("asides");
         let bin = dir.join("bin");

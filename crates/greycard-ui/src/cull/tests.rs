@@ -735,6 +735,7 @@ fn move_back_keeps_a_sidecar_under_the_hidden_folder() {
 /// kept, a file that would not parse) moves with it, both ways, and
 /// nothing of it is left for a later frame of the name to take up.
 #[test]
+#[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
 fn what_saves_put_aside_moves_with_the_frame() {
     let (dir, rejects) = shoot_with_rejects("asides");
     let a = dir.join("A.CR3");
@@ -912,6 +913,7 @@ const STALE: &[u8] = br#"{"saved": 1}"#;
 /// orphan is written over, the frame waits, both files as they were;
 /// one that will not parse is set aside as `.bad` (§724).
 #[test]
+#[cfg_attr(feature = "mono", ignore = "names greycard's own sidecar")]
 fn a_newer_build_s_orphan_is_neither_written_over_nor_taken_away() {
     let (dir, rejects) = shoot_with_rejects("newer-orphan");
     let hidden = greycard_edit::SIDECAR_FOLDER;
