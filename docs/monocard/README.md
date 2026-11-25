@@ -82,7 +82,8 @@ the cache folder.
 ## Version
 
 `VERSION` in `crates/greycard-core/src/brand.rs` is Monocard's version. Move it
-at a release, with the two in `site/landing/index.html`. `GREYCARD` beside it is the Greycard that the branch is merged with.
+at a release, with the ones in `site/landing/index.html`, and add its notes to
+`site/landing/changelog.html`. `GREYCARD` beside it is the Greycard that the branch is merged with.
 Move it at a merge, to Greycard's version, the commits since its tag, and its
 commit. The app says both: "0.1.2 (the commit), Greycard 0.12.0+191 (0cf4e83)".
 

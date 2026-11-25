@@ -110,6 +110,7 @@ kbd {
   font-weight: 500; text-decoration: none; letter-spacing: -0.005em;
 }
 .brand img { width: 1.75rem; height: 1.75rem; }
+.top-links { display: flex; gap: 1.25rem; }
 .top-link { font-size: 0.875rem; line-height: 1.25rem; color: var(--secondary); }
 
 /* The step wedge ------------------------------------------------------- */
@@ -160,7 +161,7 @@ kbd {
 
 /* Sections ------------------------------------------------------------- */
 
-.zone, .off {
+.zone, .off, .get {
   background: var(--g, var(--canvas));
   padding-block: clamp(3.5rem, 7vw, 6rem);
 }
@@ -258,6 +259,15 @@ figcaption, .cap {
 
 /* Hero ----------------------------------------------------------------- */
 
+.new { margin-bottom: clamp(1.5rem, 3vw, 2.5rem); }
+.new a {
+  display: inline-flex; align-items: center; gap: 0.75rem;
+  padding: 0.3125rem 0.875rem 0.3125rem 0.3125rem;
+  border: 1px solid var(--border-strong);
+  color: var(--secondary); font-size: 0.875rem; line-height: 1.25rem; text-decoration: none;
+}
+.new a:hover { border-color: var(--accent); color: var(--text); }
+.new-v { padding: 0.125rem 0.5rem; background: var(--raised); color: var(--text); font: 0.8125rem/1.25rem var(--mono); }
 .hero-head { display: grid; gap: 1.75rem var(--gap); }
 .hero-side p { max-width: 30rem; }
 .hero-act { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; margin-top: 1.5rem; }
@@ -448,6 +458,37 @@ html:not(.js) .js-only { display: none; }
 .prints figure { flex: var(--ar) 1 0; min-width: 0; }
 .prints .frame { aspect-ratio: var(--ar); }
 
+/* Download ------------------------------------------------------------- */
+
+.get { border-top: 1px solid var(--border); }
+.get-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.5rem 1.5rem; margin-bottom: 2rem; }
+.get-cards { display: grid; gap: var(--gap); }
+.get-card { display: grid; gap: 1.25rem; align-content: start; padding: 1.5rem; background: var(--base); border: 1px solid var(--border); }
+.get-card header { display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 0.875rem; }
+.get-card .os { grid-row: 1 / span 2; width: 2rem; height: 2rem; margin: 0; fill: var(--secondary); }
+.get-card h3 { margin: 0; font-size: 1.3125rem; line-height: 1.625rem; font-weight: 500; letter-spacing: -0.01em; }
+.get-card .btn { padding-block: 0.75rem 0.8125rem; text-align: center; }
+.get-file { font: 0.8125rem/1.25rem var(--mono); }
+.get-card .get-file ~ .note { margin-top: 0.75rem; }
+.get-foot { margin-top: 1.5rem; }
+@media (min-width: 56rem) {
+  .get-cards { grid-template-columns: repeat(3, 1fr); }
+}
+
+/* The changelog page --------------------------------------------------- */
+
+.page { --rail: 0rem; }
+.rels { padding-block: clamp(2rem, 5vw, 4rem) clamp(3.5rem, 7vw, 6rem); }
+.rels h1 { font-size: clamp(2.25rem, 1.3rem + 3vw, 3.5rem); margin-bottom: 2.5rem; }
+.rel { display: grid; gap: 1rem var(--gap); padding-block: 2.25rem; border-top: 1px solid var(--border); }
+.rel > div > :not(:first-child) { margin-top: 1.25rem; }
+.rel .plain li, .rel p { max-width: 42rem; }
+.rel p { color: var(--secondary); }
+.rel b { color: var(--text); font-weight: 500; }
+@media (min-width: 56rem) {
+  .rel { grid-template-columns: 12rem 1fr; }
+}
+
 /* Off the scale -------------------------------------------------------- */
 
 .off { --line: var(--border); border-top: 1px solid var(--border); }
@@ -458,9 +499,6 @@ html:not(.js) .js-only { display: none; }
 .plain li:last-child { border-bottom: 1px solid var(--line); }
 .off-build p { max-width: 30rem; color: var(--secondary); }
 .off-build p:last-child { margin-top: 1.5rem; }
-.off-build .off-act { margin: 0 0 1.75rem; max-width: none; }
-.off-others { max-width: 36rem; }
-.off-others + .off-new { margin: 1rem 0 3rem; }
 @media (min-width: 56rem) {
   .off-grid { grid-template-columns: repeat(12, 1fr); }
   .off-limits { grid-column: 1 / span 5; }

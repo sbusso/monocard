@@ -10,8 +10,8 @@
     document.querySelectorAll('[data-repo]').forEach(function (a) { a.href = repo.href; });
   }
 
-  // The download buttons are for the Mac as they are written. On another
-  // system they take its row of the download list: name, logo, address, note.
+  // The download button is for the Mac as it is written. On another
+  // system it takes the card in Download: name, logo, address, note.
   function system() {
     var data = navigator.userAgentData;
     var p = (data && data.platform) || navigator.platform || '';
@@ -30,12 +30,15 @@
       if (row) { logo.firstElementChild.setAttribute('href', '#os-' + os); } else { logo.remove(); }
     });
     document.querySelectorAll('[data-note]').forEach(function (n) {
-      n.textContent = row ? row.querySelector('dd span').textContent + ' New and little tested.'
+      n.textContent = row ? row.querySelector('header p').textContent + '. ' + row.querySelector('[data-needs]').textContent + ' New and little tested.'
         : 'For a computer with macOS, Linux or Windows.';
     });
     document.querySelectorAll('[data-others]').forEach(function (a) {
       if (!row) { a.parentNode.remove(); return; }
       a.textContent = os === 'linux' ? 'macOS and Windows' : 'macOS and Linux';
+    });
+    document.querySelectorAll('.get-card').forEach(function (c) {
+      c.querySelector('.btn').classList.toggle('btn-main', c === row);
     });
   }
 

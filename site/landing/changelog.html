@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="What changed in each release of Monocard, the raw editor for monochrome sensors.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/changelog.html">
+<title>Monocard: changelog</title>
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="./">
+      <img src="assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Pages"><a class="top-link" href="./#downloads">Download</a><a class="top-link" href="https://github.com/sbusso/monocard">Source on GitHub</a></nav>
+  </div>
+</header>
+
+<main id="main" class="wrap rels">
+  <h1>Changelog</h1>
+  <article class="rel" id="v0.1.2">
+    <header><h2>0.1.2</h2><p class="note"><time datetime="2026-11-25">25 November 2026</time></p></header>
+    <div>
+      <ul class="plain">
+        <li>The app says when a new version of Monocard is out. It asks GitHub once a day and sends only the version number. The switch is in Settings, About. It does not install the update.</li>
+        <li>The app and the command line show Monocard’s version and the version of Greycard that it is built on.</li>
+        <li>Report a problem opens Monocard’s own form.</li>
+        <li>Crop guides: golden ratio, golden spiral, diagonals and triangles. O steps through them.</li>
+        <li>Past 100%, each picture pixel is drawn as a block.</li>
+        <li>Panels scroll more smoothly, and a screen reader hears more of the window.</li>
+        <li>Built on Greycard 0.12.0 and the 191 changes after it. <a href="https://github.com/jessolmstead/greycard/blob/0cf4e83e278627c0145779f3fff14c1edfd3f145/docs/changelog.md">Greycard’s changelog</a> has the list. Its color tools are not in Monocard.</li>
+      </ul>
+      <p><b>Edits are saved in a new format.</b> 0.1.2 reads the edits of 0.1.0 and 0.1.1. They cannot read an edit that 0.1.2 saved. To be able to go back, keep a copy of your <code>.mcd</code> files.</p>
+      <p class="note"><a href="https://github.com/sbusso/monocard/releases/tag/monocard-v0.1.2">Release 0.1.2 on GitHub</a>, with the checksums.</p>
+    </div>
+  </article>
+  <article class="rel" id="v0.1.1">
+    <header><h2>0.1.1</h2><p class="note"><time datetime="2026-11-24">24 November 2026</time></p></header>
+    <div>
+      <ul class="plain">
+        <li>The line over the histogram shows the grey value alone.</li>
+        <li>A damaged DNG that claims an impossible size is refused. On Linux it ended the program.</li>
+        <li>Measuring the sensor is in Settings, Camera profiles.</li>
+        <li>The log has Monocard’s own lines, and messages say Monocard.</li>
+        <li>The <code>url</code> library is updated (RUSTSEC-2026-0592).</li>
+      </ul>
+      <p class="note"><a href="https://github.com/sbusso/monocard/releases/tag/monocard-v0.1.1">Release 0.1.1 on GitHub</a>, with the checksums.</p>
+    </div>
+  </article>
+  <article class="rel" id="v0.1.0">
+    <header><h2>0.1.0</h2><p class="note"><time datetime="2026-11-24">24 November 2026</time></p></header>
+    <div>
+      <ul class="plain">
+        <li>The first release. For Apple silicon Macs, signed and notarized.</li>
+        <li>Linux and Windows, for 64-bit Intel and AMD.</li>
+        <li>Import from the camera by USB, on the Mac.</li>
+      </ul>
+      <p class="note"><a href="https://github.com/sbusso/monocard/releases/tag/monocard-v0.1.0">Release 0.1.0 on GitHub</a>, with the checksums.</p>
+    </div>
+  </article>
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Built on <a href="https://github.com/jessolmstead/greycard">Greycard</a> by Jess Olmstead, GPL-3.0. Monocard is a separate project under the same license.</p>
+  </div>
+</footer>
+</body>
+</html>
