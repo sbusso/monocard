@@ -233,3 +233,14 @@ fn a_made_up_size_is_an_error() {
     let e = decode(&bytes).unwrap_err().to_string();
     assert!(e.contains("2130706480x40"), "{e}");
 }
+
+/// The same for a tag that counts more values than the file has bytes.
+#[test]
+fn a_made_up_count_is_an_error() {
+    let mut bytes = dng(34892);
+    let entry = [&[0, 1, 4, 0, 1, 0, 0, 0][..], &(W as u32).to_le_bytes()].concat();
+    let at = bytes.windows(12).position(|e| e == entry).unwrap();
+    bytes[at + 7] = 0xff;
+    let e = decode(&bytes).unwrap_err().to_string();
+    assert!(e.contains("4278190081 values"), "{e}");
+}

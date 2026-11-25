@@ -359,7 +359,7 @@ struct RafShape {
 
 /// A RAF's [`RafShape`] from the dummy read, which reads no sample.
 fn raf_shape(source: &RawSource) -> Option<RafShape> {
-    let image = ::rawler::get_decoder(source)
+    let image = decoder_for(source)
         .ok()?
         .raw_image(source, &RawDecodeParams::default(), true)
         .ok()?;
@@ -591,7 +591,7 @@ fn preview_counted(path: &Path, want: PreviewSize) -> Result<(Preview, u64)> {
 /// The preview from one source: the camera's preview `want` picks,
 /// else, when `thumbnail` says, the thumbnail.
 fn preview_source(source: &RawSource, thumbnail: bool, want: PreviewSize) -> Result<Preview> {
-    let decoder = ::rawler::get_decoder(source).map_err(decoder_error)?;
+    let decoder = decoder_for(source)?;
     let params = RawDecodeParams::default();
     let thumb = || {
         decoder
@@ -1020,6 +1020,89 @@ fn raf_jpeg_end(
     Ok(Some(end).filter(|&end| end >= head && end <= len))
 }
 
+/// rawler's decoder for a source.
+fn decoder_for(source: &RawSource) -> Result<Box<dyn ::rawler::decoders::Decoder>> {
+    #[cfg(feature = "mono")]
+    refuse_a_made_up_count(source.buf())?;
+    ::rawler::get_decoder(source).map_err(decoder_error)
+}
+
+/// A DNG's tag whose count asks for a gigabyte the file does not have, in
+/// any directory rawler reads: it sets that memory aside too. Other raws
+/// hold such tags and rawler reads past them.
+#[cfg(feature = "mono")]
+fn refuse_a_made_up_count(buf: &[u8]) -> Result<()> {
+    let le = match buf.get(..2) {
+        Some(b"II") => true,
+        Some(b"MM") => false,
+        _ => return Ok(()),
+    };
+    let short = |at: usize| {
+        let b: [u8; 2] = buf.get(at..at.checked_add(2)?)?.try_into().ok()?;
+        Some(if le {
+            u16::from_le_bytes(b)
+        } else {
+            u16::from_be_bytes(b)
+        })
+    };
+    let long = |at: usize| {
+        let b: [u8; 4] = buf.get(at..at.checked_add(4)?)?.try_into().ok()?;
+        Some(if le {
+            u32::from_le_bytes(b)
+        } else {
+            u32::from_be_bytes(b)
+        })
+    };
+    // A directory's place, and whether it is of the file's own chain.
+    let mut next: Vec<(u32, bool)> = long(4).map(|at| (at, true)).into_iter().collect();
+    let mut seen = std::collections::HashSet::new();
+    let (mut is_dng, mut made_up) = (false, None);
+    while let Some((at, chain)) = next.pop() {
+        if at == 0 || seen.len() >= 256 || !seen.insert(at) {
+            continue;
+        }
+        let entries = at as usize + 2;
+        let Some(n) = short(at as usize).map(usize::from) else {
+            continue;
+        };
+        for e in (0..n).map(|i| entries + 12 * i) {
+            let (Some(tag), Some(typ), Some(count), Some(value)) =
+                (short(e), short(e + 2), long(e + 4), long(e + 8))
+            else {
+                break;
+            };
+            let size = u64::from(count)
+                * match typ {
+                    3 | 8 => 2,
+                    4 | 9 | 11 => 4,
+                    5 | 10 | 12 => 8,
+                    _ => 1,
+                };
+            if size > buf.len() as u64 && size > 1 << 30 {
+                made_up = Some((tag, count));
+            }
+            is_dng |= tag == 0xc612;
+            // SubIFDs, Exif and GPS.
+            if matches!(tag, 330 | 0x8769 | 0x8825) && typ == 4 {
+                match count {
+                    1 => next.push((value, false)),
+                    _ => next.extend(
+                        (0..count.min(64) as usize)
+                            .filter_map(|i| Some((long(value as usize + 4 * i)?, false))),
+                    ),
+                }
+            }
+        }
+        if chain {
+            next.extend(long(entries + 12 * n).map(|at| (at, true)));
+        }
+    }
+    match made_up.filter(|_| is_dng) {
+        Some((tag, count)) => Err(Error::Decode(format!("tag {tag:#x} of {count} values"))),
+        None => Ok(()),
+    }
+}
+
 /// A DNG whose tags claim more samples than any sensor has: rawler sets
 /// the memory aside before it reads one, and where there is not that much
 /// the program ends. Stock builds read it as they did.
@@ -1027,6 +1110,7 @@ fn raf_jpeg_end(
 // stitched DNG above it is refused; the fix in rawler would lift that.
 #[cfg(feature = "mono")]
 fn refuse_a_made_up_size(source: &RawSource) -> Result<()> {
+    refuse_a_made_up_count(source.buf())?;
     use ::rawler::formats::tiff::reader::{GenericTiffReader, TiffReader};
     use ::rawler::tags::{DngTag, TiffCommonTag};
     let Ok(tiff) = GenericTiffReader::new(&mut source.reader(), 0, 0, None, &[]) else {
@@ -1064,7 +1148,7 @@ fn decode_source(source: &RawSource) -> Result<(RawFrame, RawMetadata)> {
     let up_front = refuse_a_half_copy(source.buf(), || raf_shape(source))?;
     #[cfg(feature = "mono")]
     refuse_a_made_up_size(source)?;
-    let decoder = ::rawler::get_decoder(source).map_err(decoder_error)?;
+    let decoder = decoder_for(source)?;
     let params = RawDecodeParams::default();
     let image = decoder
         .raw_image(source, &params, false)
@@ -4891,7 +4975,7 @@ pub fn stance_path(path: &Path) -> Result<RawStance> {
 
 fn stance_unguarded(path: &Path) -> Result<RawStance> {
     let source = mapped(path)?;
-    let decoder = ::rawler::get_decoder(&source).map_err(decoder_error)?;
+    let decoder = decoder_for(&source)?;
     let params = RawDecodeParams::default();
     let metadata = decoder
         .raw_metadata(&source, &params)
@@ -4942,7 +5026,7 @@ pub fn white_path(path: &Path) -> Result<CameraWhite> {
 
 fn white_unguarded(path: &Path) -> Result<CameraWhite> {
     let source = mapped(path)?;
-    let decoder = ::rawler::get_decoder(&source).map_err(decoder_error)?;
+    let decoder = decoder_for(&source)?;
     let image = decoder
         .raw_image(&source, &RawDecodeParams::default(), true)
         .map_err(decoder_error)?;
@@ -5159,7 +5243,7 @@ fn probe_and_mosaic_source(
     source: &RawSource,
     path: &Path,
 ) -> Result<(Probe, std::result::Result<MosaicRead, String>)> {
-    let decoder = ::rawler::get_decoder(source).map_err(decoder_error)?;
+    let decoder = decoder_for(source)?;
     let params = RawDecodeParams::default();
     let metadata = metadata_of(decoder.as_ref(), source, &params).map_err(decoder_error)?;
     let probe = Probe::from_metadata(&metadata);
@@ -5341,7 +5425,7 @@ fn mosaic_source(source: &RawSource, path: &Path) -> Result<Option<Mosaic>> {
     if is_dng(path) {
         return dng_mosaic(source);
     }
-    let decoder = ::rawler::get_decoder(source).map_err(decoder_error)?;
+    let decoder = decoder_for(source)?;
     let image = decoder
         .raw_image(source, &RawDecodeParams::default(), true)
         .map_err(decoder_error)?;
@@ -5410,7 +5494,7 @@ fn probe_unguarded(path: &Path) -> Result<Probe> {
 }
 
 fn probe_source(source: &RawSource) -> Result<Probe> {
-    let decoder = ::rawler::get_decoder(source).map_err(decoder_error)?;
+    let decoder = decoder_for(source)?;
     let metadata = metadata_of(decoder.as_ref(), source, &RawDecodeParams::default())
         .map_err(decoder_error)?;
     Ok(Probe::from_metadata(&metadata))
@@ -5588,7 +5672,7 @@ fn cr3_ends(
 /// read, then the image's description without a sample. A description
 /// that fails or panics costs the stance's size and mosaic alone.
 fn probe_and_stance_source(source: &RawSource, path: &Path) -> Result<(Probe, RawStance)> {
-    let decoder = ::rawler::get_decoder(source).map_err(decoder_error)?;
+    let decoder = decoder_for(source)?;
     let params = RawDecodeParams::default();
     let metadata = metadata_of(decoder.as_ref(), source, &params).map_err(decoder_error)?;
     let probe = Probe::from_metadata(&metadata);
