@@ -152,8 +152,13 @@ mod tests {
     #[test]
     fn the_label_is_the_version_and_the_commit() {
         let since = env!("GREYCARD_SINCE").parse().unwrap();
-        assert_eq!(LABEL, label(VERSION, since, COMMIT));
         assert_eq!(KEY, label(VERSION, 0, COMMIT));
+        if cfg!(feature = "mono") {
+            // Monocard names the Greycard it is built on.
+            assert!(LABEL.contains(&format!(", Greycard {VERSION}")));
+            return;
+        }
+        assert_eq!(LABEL, label(VERSION, since, COMMIT));
         assert!(LABEL.starts_with(VERSION));
     }
 }

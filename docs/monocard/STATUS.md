@@ -1,6 +1,6 @@
 # Monocard: status against SPEC.md
 
-State of the `monocard` branch, on Greycard v0.12.0, on 2026-11-24. Every
+State of the `monocard` branch, on Greycard 0.12.0+191 (0cf4e83), on 2026-11-24. Every
 picture in the tests is synthetic. JPEGs of a Ricoh GR IV Monochrome (firmware 1.11) were
 opened and developed by hand, and one DNG from it.
 

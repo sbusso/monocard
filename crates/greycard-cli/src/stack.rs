@@ -248,7 +248,7 @@ fn write_tiff(
     let (w, h) = (working.width as u32, working.height as u32);
     let provenance = greycard_core::exif::Provenance {
         metadata: &metadata,
-        software: SOFTWARE,
+        software: &SOFTWARE,
         width: w,
         height: h,
         srgb: false,

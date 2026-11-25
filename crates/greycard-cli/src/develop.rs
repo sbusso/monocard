@@ -1396,7 +1396,7 @@ fn run_develop(
     let source_name = file.file_name().map(|n| n.to_string_lossy().into_owned());
     let provenance = |width: u32, height: u32, srgb: bool| greycard_core::exif::Provenance {
         metadata: &metadata,
-        software: SOFTWARE,
+        software: &SOFTWARE,
         width,
         height,
         srgb,
@@ -1446,14 +1446,9 @@ fn run_mono(
         mono::preview(finish::render(&empty, edit, &made, &settings)?)
     };
     let source_name = file.file_name().map(|n| n.to_string_lossy().into_owned());
-    let software = format!(
-        "{} {}",
-        greycard_core::brand::NAME,
-        env!("CARGO_PKG_VERSION")
-    );
     let provenance = |width: u32, height: u32, srgb: bool| greycard_core::exif::Provenance {
         metadata,
-        software: &software,
+        software: &SOFTWARE,
         width,
         height,
         srgb,
@@ -1474,7 +1469,7 @@ fn run_mono(
             compression: outputs.compression,
             metadata: Some(metadata),
             preview: Some(&preview),
-            software: Some(&software),
+            software: Some(&SOFTWARE),
             headroom: None,
         };
         let mut out = create(path)?;
@@ -1581,7 +1576,7 @@ fn run_develop_picture(
     let source_name = file.file_name().map(|n| n.to_string_lossy().into_owned());
     let provenance = |width: u32, height: u32, srgb: bool| greycard_core::exif::Provenance {
         metadata: &p.metadata,
-        software: SOFTWARE,
+        software: &SOFTWARE,
         width,
         height,
         srgb,

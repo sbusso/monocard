@@ -74,10 +74,17 @@ the cache folder.
 - The profile for the Ricoh GR IV Monochrome holds no measurements yet.
 - The learned monochrome denoiser is not trained.
 - The Solar looks are not matched against the camera's files.
-- There is no update check and no issue tracker. The update check and
-  Report a problem stay off until `brand.rs` names addresses for them.
+- There is no update check: it stays off until `brand.rs` names an address
+  for it. Report a problem opens Monocard's own form.
 - The bundle id `app.monocard.Monocard` is a placeholder.
 - The text that Monocard adds is in English only.
+
+## Version
+
+`VERSION` in `crates/greycard-core/src/brand.rs` is Monocard's version. Move it
+at a release. `GREYCARD` beside it is the Greycard that the branch is merged with.
+Move it at a merge, to Greycard's version, the commits since its tag, and its
+commit. The app says both: "0.1.2 (the commit), Greycard 0.12.0+191 (0cf4e83)".
 
 ## Rebase
 

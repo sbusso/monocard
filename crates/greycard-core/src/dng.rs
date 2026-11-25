@@ -441,11 +441,10 @@ fn write_container<W: Write + Seek>(
     }
     let root = dng.root_ifd_mut();
     root.add_tag(ExifTag::Orientation, orientation_code(frame.orientation));
+    let software = format!("{} {}", crate::brand::NAME, crate::brand::VERSION);
     root.add_tag(
         TiffCommonTag::Software,
-        options
-            .software
-            .unwrap_or(concat!("greycard ", env!("CARGO_PKG_VERSION"))),
+        options.software.unwrap_or(&software),
     );
     if !mono {
         root.add_tag(DngTag::AsShotNeutral, neutral(gains).as_slice());

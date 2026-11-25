@@ -58,7 +58,7 @@ greycard-ai = { path = "../greycard-ai", features = ["testing"] }
 
 [features]
 # Monocard, the monochrome build (docs/monocard).
-mono = ["dep:mono-core", "dep:mono-profile", "dep:mono-look", "greycard-engine/mono"]
+mono = ["dep:mono-core", "dep:mono-profile", "dep:mono-look", "greycard-engine/mono", "greycard-version/mono"]
 # Nikon High Efficiency raws; off by default, see greycard-core.
 nikon-he = ["greycard-core/nikon-he"]
 

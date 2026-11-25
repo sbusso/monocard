@@ -34,10 +34,7 @@ pub const LATEST: &str = match greycard_core::brand::RELEASES {
 };
 
 /// The repository a release's page is under.
-const REPOSITORY: &str = match greycard_core::brand::REPOSITORY {
-    Some(url) => url,
-    None => env!("CARGO_PKG_REPOSITORY"),
-};
+const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 
 /// How long a check's answer stands before the launch asks again.
 pub const DAY: u64 = 24 * 60 * 60;

@@ -8,6 +8,16 @@ pub const NAME: &str = if cfg!(feature = "mono") {
 } else {
     "greycard"
 };
+/// This app's version, as its files say it: Greycard's own, or Monocard's,
+/// moved by hand at a Monocard release.
+pub const VERSION: &str = if cfg!(feature = "mono") {
+    "0.1.2"
+} else {
+    env!("CARGO_PKG_VERSION")
+};
+/// The Greycard that Monocard is merged with, said beside its own version;
+/// moved by hand at a merge.
+pub const GREYCARD: &str = "0.12.0+191 (0cf4e83)";
 /// The folder under the configuration, data, and cache directories.
 pub const APP_DIR: &str = if cfg!(feature = "mono") {
     "monocard"
@@ -21,15 +31,15 @@ pub const SIDECAR_DIR: &str = if cfg!(feature = "mono") {
 } else {
     ".greycard"
 };
-/// Where this build's issues go; none for Monocard until it has a
-/// repository of its own, so its problems are not sent to greycard's author.
-pub const REPOSITORY: Option<&str> = if cfg!(feature = "mono") {
-    None
+/// Where this build's issues go: Monocard's are not sent to greycard's
+/// author.
+pub const REPOSITORY: &str = if cfg!(feature = "mono") {
+    "https://github.com/sbusso/monocard"
 } else {
-    Some(env!("CARGO_PKG_REPOSITORY"))
+    env!("CARGO_PKG_REPOSITORY")
 };
 /// The address the update check asks; none for Monocard, which must never
-/// offer greycard's releases. Set it, and [`REPOSITORY`], to turn it on.
+/// offer greycard's releases, and whose tags the check does not read.
 pub const RELEASES: Option<&str> = if cfg!(feature = "mono") {
     None
 } else {
@@ -48,8 +58,11 @@ mod tests {
         assert_eq!(APP_DIR != "greycard", mono);
         assert_eq!(SIDECAR_EXT != "gcd", mono);
         assert_eq!(SIDECAR_DIR != ".greycard", mono);
-        for url in [REPOSITORY, RELEASES].into_iter().flatten() {
+        for url in [Some(REPOSITORY), RELEASES].into_iter().flatten() {
             assert_eq!(!url.contains("jessolmstead"), mono, "{url}");
         }
+        assert_eq!(VERSION != env!("CARGO_PKG_VERSION"), mono);
+        // A merge of a new release moves it.
+        assert!(GREYCARD.starts_with(env!("CARGO_PKG_VERSION")));
     }
 }

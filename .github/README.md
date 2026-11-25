@@ -62,7 +62,6 @@ Windows versions are for 64-bit Intel and AMD. They are new and have had little 
 
 - I use it on an Apple silicon Mac. The Linux and Windows versions are built and checked by a
   workflow, and no one has used them yet. The Windows programs are not signed.
-- The app shows the version of the Greycard that it is built on, not its own.
 - Import from the camera by USB is new and has had little testing.
 - It is made for the Ricoh GR IV Monochrome. Other cameras' monochrome DNGs open, and they
   have had less testing.

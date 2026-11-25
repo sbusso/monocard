@@ -361,24 +361,14 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>) {
                 .map(|p| log_note(&path_shown(p)))
                 .unwrap_or_default(),
         };
-        // Monocard has no issue tracker yet, and its problems are not
-        // greycard's: the log's folder alone.
-        let Some(repository) = greycard_core::brand::REPOSITORY else {
-            app.set_status(
-                format!(
-                    "{} has no issue tracker yet; its log's folder is open",
-                    greycard_core::brand::NAME
-                )
-                .into(),
-            );
-            if let Some(log) = log.filter(|_| !cfg!(test)) {
-                std::thread::spawn(move || reveal(&log));
-            }
-            return;
-        };
-        let url = issue_url(repository, &report);
+        let url = issue_url(greycard_core::brand::REPOSITORY, &report);
         tracing::info!("report: opening {url}");
         app.set_status(match log {
+            Some(_) if cfg!(feature = "mono") => format!(
+                "the form is open in the browser, and the log's folder: drag {} into the form",
+                log::FILE
+            )
+            .into(),
             Some(_) => tr!("the form is open in the browser, and the log's folder: \
                  drag greycard-ui.log into the form")
             .into(),
@@ -399,7 +389,7 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>) {
                     app.set_status(
                         tr!(
                             "no browser would open: the form is at {}/issues/new",
-                            env!("CARGO_PKG_REPOSITORY")
+                            greycard_core::brand::REPOSITORY
                         )
                         .into(),
                     );

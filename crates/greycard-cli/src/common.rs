@@ -33,7 +33,10 @@ pub(crate) fn megabytes(bytes: u64) -> u64 {
 }
 
 /// The `Software` tag on what the CLI writes.
-pub(crate) const SOFTWARE: &str = concat!("greycard ", env!("CARGO_PKG_VERSION"));
+pub(crate) static SOFTWARE: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    use greycard_core::brand::{NAME, VERSION};
+    format!("{NAME} {VERSION}")
+});
 
 pub(crate) fn write_linear_tiff(
     image: &WorkingImage,

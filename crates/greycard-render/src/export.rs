@@ -1265,11 +1265,8 @@ pub const WEBP_MAX_SIDE: u32 = 16383;
 
 /// The `Software` tag on what the editor writes.
 fn software() -> String {
-    format!(
-        "{} {}",
-        greycard_core::brand::NAME,
-        env!("CARGO_PKG_VERSION")
-    )
+    use greycard_core::brand::{NAME, VERSION};
+    format!("{NAME} {VERSION}")
 }
 
 #[cfg(test)]

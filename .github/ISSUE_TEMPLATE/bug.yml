@@ -3,7 +3,7 @@
 # (crates/greycard-ui/src/report.rs). Renaming one of those ids breaks
 # that; change both together.
 name: Bug report
-description: Something in greycard is wrong or crashes.
+description: Something in Monocard is wrong or crashes.
 title: "[bug] "
 labels: ["bug"]
 body:
@@ -65,9 +65,9 @@ body:
   - type: input
     id: version
     attributes:
-      label: greycard version
+      label: Monocard version
       description: >
-        The output of `greycard --version` or `greycard-ui --version`;
+        The output of `monocard --version` or `monocard-ui --version`;
         the log's first line says it too.
     validations:
       required: true
@@ -76,11 +76,11 @@ body:
     attributes:
       label: The log
       description: >
-        The editor keeps `greycard-ui.log`: in `~/Library/Logs/greycard`
-        on a Mac, `~/.local/state/greycard` on Linux,
-        `%LOCALAPPDATA%\greycard\logs` on Windows. Drag it in here.
-        `greycard-ui-1.log` beside it is the run before, the one to send
-        if greycard closed on its own. For the command line, paste what
+        The editor keeps `monocard-ui.log`: in `~/Library/Logs/monocard`
+        on a Mac, `~/.local/state/monocard` on Linux,
+        `%LOCALAPPDATA%\monocard\logs` on Windows. Drag it in here.
+        `monocard-ui-1.log` beside it is the run before, the one to send
+        if Monocard closed on its own. For the command line, paste what
         it printed.
     validations:
       required: false

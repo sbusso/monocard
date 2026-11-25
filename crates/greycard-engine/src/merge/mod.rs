@@ -287,11 +287,8 @@ pub struct Head {
 /// The `Software` tag of a merge, which says it is ours
 /// (`greycard_core::raw::is_ours`).
 fn software() -> String {
-    format!(
-        "{} {}",
-        greycard_core::brand::NAME,
-        env!("CARGO_PKG_VERSION")
-    )
+    use greycard_core::brand::{NAME, VERSION};
+    format!("{NAME} {VERSION}")
 }
 
 /// The frames of a merge: files on disk, or made up for a measurement.

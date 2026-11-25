@@ -1,5 +1,5 @@
 name: Feature request
-description: Something greycard should do, or do differently.
+description: Something Monocard should do, or do differently.
 title: "[feature] "
 labels: ["enhancement"]
 body:
@@ -20,7 +20,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: greycard version
-      placeholder: "e.g. 0.8.1"
+      label: Monocard version
+      placeholder: "e.g. 0.1.2"
     validations:
       required: false

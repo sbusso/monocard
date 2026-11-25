@@ -9,5 +9,9 @@ authors.workspace = true
 repository.workspace = true
 publish = false
 
+[features]
+# Monocard, the monochrome build (docs/monocard).
+mono = []
+
 [lints]
 workspace = true

@@ -9,12 +9,16 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[allow(dead_code)]
+#[path = "../greycard-core/src/brand.rs"]
+mod brand;
+#[allow(dead_code)]
 #[path = "src/stamp.rs"]
 mod stamp;
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/stamp.rs");
+    println!("cargo:rerun-if-changed=../greycard-core/src/brand.rs");
     println!("cargo:rerun-if-env-changed=GREYCARD_COMMIT");
     println!("cargo:rerun-if-env-changed=GREYCARD_RELEASE");
     let version = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
@@ -25,10 +29,14 @@ fn main() {
         "cargo:rustc-env=GREYCARD_KEY={}",
         stamp::label(&version, 0, &commit)
     );
-    println!(
-        "cargo:rustc-env=GREYCARD_LABEL={}",
+    // Monocard says its own version, and the Greycard it is built on.
+    let label = if cfg!(feature = "mono") {
+        let own = stamp::label(brand::VERSION, 0, &commit);
+        format!("{own}, Greycard {}", brand::GREYCARD)
+    } else {
         stamp::label(&version, since, &commit)
-    );
+    };
+    println!("cargo:rustc-env=GREYCARD_LABEL={label}");
 }
 
 /// The commit part of the label and the commits since the release's

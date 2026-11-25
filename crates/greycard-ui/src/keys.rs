@@ -1436,7 +1436,7 @@ pub(crate) fn install(app: &App) {
                 return;
             };
             // Monocard has no guide of its own online yet.
-            if greycard_core::brand::REPOSITORY.is_none() {
+            if cfg!(feature = "mono") {
                 let name = greycard_core::brand::NAME;
                 app.set_status(format!("{name} has no guide online yet").into());
                 return;
