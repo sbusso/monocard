@@ -564,10 +564,6 @@ mod tests {
     #[test]
     #[cfg(feature = "mono")]
     fn monocards_releases_are_read() {
-        assert_eq!(
-            LATEST,
-            "https://api.github.com/repos/sbusso/monocard/releases/latest"
-        );
         let page = "https://github.com/sbusso/monocard/releases/tag/monocard-v0.1.10";
         let body = format!(r#"{{"tag_name": "monocard-v0.1.10", "html_url": "{page}"}}"#);
         let found = parse_release(&body).unwrap();

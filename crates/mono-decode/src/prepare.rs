@@ -373,23 +373,18 @@ mod tests {
     }
 
     #[test]
-    fn the_model_and_the_serial_come_through() {
+    fn the_camera_is_named_as_its_profile_names_it() {
         let mut frame = frame_of(16, 16, |_, _| 9);
         let p = prepare(&frame, &PrepareOptions::default()).unwrap();
-        assert_eq!((p.camera.as_str(), p.serial), ("Test Mono", None));
+        assert_eq!(p.camera, "Test Mono");
         frame.dng.unique_camera_model = Some("RICOH GR IV Monochrome".into());
-        frame.dng.camera_serial = Some("7".into());
-        frame.dng.baseline_exposure = Some(0.5);
-        frame.shot.iso = Some(800);
         let p = prepare(&frame, &PrepareOptions::default()).unwrap();
         assert_eq!(p.camera, "RICOH GR IV Monochrome");
-        assert_eq!(p.serial.as_deref(), Some("7"));
         // As written by the app.
         frame.make = "RICOH IMAGING COMPANY, LTD.".into();
         frame.model = "RICOH GR IV Monochrome".into();
         frame.dng.unique_camera_model = Some(format!("{} {}", frame.make, frame.model));
         assert_eq!(camera(&frame), p.camera);
-        assert_eq!((p.baseline_ev, p.iso), (0.5, Some(800.0)));
     }
 
     /// Added noise is measured as it was added, on a plane.

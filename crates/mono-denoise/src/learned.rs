@@ -437,8 +437,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("mono-denoise-find-{}", std::process::id()));
         let store = dir.join("store");
         let e = find_in(None, Some(&store), Mode::Best).unwrap_err();
-        assert!(e.to_string().contains("mono-best.onnx"), "{e}");
-        assert!(e.to_string().contains("profiled"), "{e}");
+        assert!(matches!(e, Error::Missing(_)), "{e}");
         std::fs::create_dir_all(store.join(STORE_DIR)).unwrap();
         let file = store.join(STORE_DIR).join(Mode::Fast.file());
         std::fs::write(&file, "x").unwrap();

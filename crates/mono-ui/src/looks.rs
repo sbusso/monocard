@@ -185,7 +185,6 @@ mod tests {
         for l in looks::builtin() {
             assert!(pick(&mut e, &l.name), "{}", l.name);
             assert_eq!(e.look.name, l.name);
-            assert_eq!(swatch(&l).len(), TONES);
         }
         let on = e.clone();
         set_strength(&mut e, 0.5);

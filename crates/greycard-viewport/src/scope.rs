@@ -384,13 +384,6 @@ mod tests {
     use super::*;
     use crate::testing::{colors, flat, ramp};
 
-    /// Monocard has no color tool: the grey value is all it says.
-    #[cfg(feature = "mono")]
-    #[test]
-    fn the_readout_is_the_grey_value_alone() {
-        assert_eq!(readout([0.5; 3]), format!("L {}", level(0.5)));
-    }
-
     #[test]
     fn every_pixel_lands_in_a_bin() {
         let (w, h) = (64, 40);

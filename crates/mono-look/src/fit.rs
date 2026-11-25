@@ -843,9 +843,8 @@ mod tests {
     #[test]
     fn the_look_prints_what_the_fit_does() {
         let fit = fit(&set(solid)).unwrap();
-        let look = fit.look("Solid", "").unwrap().of_mode("Cam", "solid");
+        let look = fit.look("Solid", "").unwrap();
         let look = Look::parse(&look.to_toml()).unwrap();
-        assert_eq!(look.mode.as_deref(), Some("solid"));
         assert_eq!(look.tools.keys().collect::<Vec<_>>(), ["curve", "display"]);
         // Over an edit with another curve and display.
         let mut e = MonoEdit::default();

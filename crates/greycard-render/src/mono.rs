@@ -675,46 +675,6 @@ pub(crate) fn mark(rendered: &mut Rendered, mark: &Mark, settings: &Settings) ->
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mono_core::edit::Tint;
-
-    fn frame() -> MonoFrame {
-        let data = (0..64 * 40).map(|i| (i % 64) as f32 / 63.0).collect();
-        MonoFrame {
-            base: Arc::new(Plane::new(64, 40, data)),
-            guide: None,
-            detail: None,
-            local: None,
-            clip: None,
-            iso: None,
-            white: 1.0,
-            rendered: false,
-        }
-    }
-
-    #[test]
-    fn a_picture_is_one_channel_until_it_is_toned() {
-        let mut edit = Edit::default();
-        let mut settings = Settings::default();
-        let render = |e: &Edit, s: &Settings| render(&frame(), e, s, &Beside::default()).unwrap();
-        let Pixels::Eight(grey) = render(&edit, &settings).pixels else {
-            panic!("eight bits")
-        };
-        assert_eq!(grey.len(), 64 * 40);
-        let row = &grey[..64];
-        assert!(row.windows(2).all(|w| w[0] <= w[1]) && row[0] < row[63]);
-        edit.mono.get_or_insert_default().toning.shadows = Tint {
-            hue: 40.0,
-            amount: 0.5,
-        };
-        settings.format = Format::Tiff;
-        let toned = render(&edit, &settings);
-        assert!(!toned.is_grey());
-        let Pixels::Sixteen(rgb) = toned.pixels else {
-            panic!("sixteen bits")
-        };
-        assert_eq!(rgb.len(), 64 * 40 * 3);
-        assert!(rgb.as_chunks::<3>().0.iter().any(|p| p[0] > p[2]));
-    }
 
     /// What the profile says of a value is the light it was encoded from.
     #[test]

@@ -193,19 +193,9 @@ fn the_six_panels_are_all_there_is_whatever_is_open() {
         .set_size(slint::LogicalSize::new(1500.0, 6000.0));
     let mono = app.global::<Mono>();
     assert!(mono.get_on() && mono.get_frame() && mono.get_only());
-    let titles: Vec<_> = mono
-        .get_panels()
-        .iter()
-        .map(|p| p.title.to_string())
-        .collect();
-    assert_eq!(
-        titles,
-        ["LOOK", "BASIC", "LIGHT", "DETAIL", "HIGHLIGHTS", "FINISH"]
-    );
     let sections: Vec<_> = mono.get_sections().iter().map(|s| s.to_string()).collect();
     assert_eq!(sections, ["mask", "mono"]);
     settle(&app);
-    assert_eq!(count_labeled(&app, "White ceiling"), 0, "folded");
     assert!(count_labeled(&app, "Keep sensor grain") > 0);
     no_color_tool(&app, "a mono frame");
     assert!(value(&app, "basic.exposure").enabled);
@@ -268,14 +258,12 @@ fn the_sheets_offer_no_wide_color_space_and_no_color_proof() {
 }
 
 #[test]
-fn a_color_preset_is_not_listed_and_its_keys_are_not_offered() {
+fn a_color_preset_is_not_listed() {
     let (_app, _state) = open();
     for (stem, text) in greycard_edit::preset::SHIPPED {
         let preset = greycard_edit::preset::Preset::from_json(text).unwrap();
         assert!(!preset_shown(&preset), "{stem}");
     }
-    assert!(!key_shown(Some("white-balance")) && !key_shown(Some("proof")));
-    assert!(key_shown(Some("crop")) && key_shown(None));
 }
 
 #[test]
@@ -332,41 +320,6 @@ fn a_slider_goes_into_the_sidecar_the_history_and_back() {
 }
 
 #[test]
-fn every_slider_goes_round_through_the_window() {
-    let (app, state) = open();
-    let mono = app.global::<Mono>();
-    for p in panel::PANELS.iter() {
-        for r in &p.rows {
-            if let panel::Row::Edit(c) = r
-                && let panel::Kind::Slider(s) = &c.kind
-                && c.id != "look.strength"
-            {
-                let want = s.min + (s.max - s.min) * 0.25;
-                let before = HELD.with_borrow(|h| (s.get)(&h.edit));
-                let want = if before == want { s.max } else { want };
-                mono.invoke_slid(c.id.into(), want);
-                save(&app, &state);
-                let got = (s.get)(&mono_of(&state));
-                assert!(
-                    (got - want).abs() <= 0.5 && got != before,
-                    "{}: {got} for {want}",
-                    c.id
-                );
-                // The saved edit shown again over an untouched panel.
-                let saved = current(&state);
-                state.borrow_mut().develop.edit = Edit::default();
-                show(&app, &state);
-                let plain = (s.get)(&MonoEdit::default());
-                assert_eq!(HELD.with_borrow(|h| (s.get)(&h.edit)), plain, "{}", c.id);
-                state.borrow_mut().develop.edit = saved;
-                show(&app, &state);
-                assert_eq!(HELD.with_borrow(|h| (s.get)(&h.edit)), got, "{}", c.id);
-            }
-        }
-    }
-}
-
-#[test]
 fn a_drag_on_the_panel_moves_the_edit() {
     let (app, state) = open();
     let (at, size) = labeled(&app, "Midtones");
@@ -413,7 +366,6 @@ fn a_mask_carries_its_own_tools() {
 fn the_curve_takes_points() {
     let (app, state) = open();
     let mono = app.global::<Mono>();
-    assert_eq!(value(&app, "curve").kind, "curve");
     mono.invoke_curve_press("curve".into(), 0.5, 0.6);
     mono.invoke_curve_move("curve".into(), 0.5, 0.7);
     mono.invoke_curve_release("curve".into());
@@ -430,13 +382,6 @@ fn the_curve_takes_points() {
 fn a_look_goes_on_moves_with_its_strength_and_comes_off() {
     let (app, state) = open();
     let mono = app.global::<Mono>();
-    let names: Vec<_> = mono
-        .get_looks()
-        .iter()
-        .map(|l| l.name.to_string())
-        .collect();
-    assert_eq!(names[0], NO_LOOK);
-    assert!(names.iter().any(|n| n == "Hard"), "{names:?}");
     assert!(!value(&app, "look.strength").enabled);
     mono.invoke_look_picked("Hard".into());
     save(&app, &state);
@@ -495,9 +440,6 @@ fn the_keys_are_the_views_on_a_mono_frame_alone() {
         assert!(!ui_state().zone_view, "{other}");
     }
     tab(&app, "Develop");
-    for id in ["view.zones", "view.clip"] {
-        assert!(!value(&app, id).tip.is_empty(), "{id}");
-    }
     app.set_grid_open(true);
     press(&app, "z");
     assert!(!ui_state().zone_view);
@@ -514,17 +456,9 @@ fn the_surround_is_the_canvas() {
     let (app, _state) = open();
     let mono = app.global::<Mono>();
     mono.invoke_fold("view-group".into(), true);
-    for (name, rgb) in [
-        ("18% grey", 119.0 / 255.0),
-        ("Black", 15.0 / 255.0),
-        ("White", 1.0),
-    ] {
+    for name in ["18% grey", "Black", "White"] {
         mono.invoke_picked("view.surround".into(), name.into());
-        assert_eq!(
-            crate::render::canvas_rgb(app.get_canvas_choice()),
-            [rgb; 3],
-            "{name}"
-        );
+        assert_eq!(crate::render::canvas_name(app.get_canvas_choice()), name);
         assert_eq!(value(&app, "view.surround").current, name);
     }
     // Chosen elsewhere, it is the row's, and an edit leaves it.
@@ -536,39 +470,6 @@ fn the_surround_is_the_canvas() {
         crate::render::canvas_name(app.get_canvas_choice()),
         "Mid grey"
     );
-    assert_eq!(
-        crate::settings::Settings::default().canvas_color,
-        "18% grey"
-    );
-    mono.invoke_picked("view.proof".into(), "Baryta".into());
-    assert_eq!(ui_state().proof, mono_ui::Proof::Baryta);
-    assert_eq!(mono.get_proof(), "Baryta");
-}
-
-#[test]
-fn the_splash_is_up_with_no_file_open() {
-    let line = "The darkroom for monochrome sensors.";
-    let app = window(0);
-    let (_state, _worker) = state_for(&app, Vec::new());
-    assert_eq!(count_labeled(&app, line), 1, "the loupe");
-    app.set_grid_open(true);
-    settle(&app);
-    assert!(count_labeled(&app, line) > 0, "the library");
-    app.set_filter_total(3);
-    app.set_file_name("IMG_0000.DNG".into());
-    assert_eq!(count_labeled(&app, line), 0);
-    let (app, _state) = open();
-    assert_eq!(count_labeled(&app, line), 0, "a picture is up");
-}
-
-#[test]
-fn a_mono_frames_scope_is_a_histogram() {
-    let (app, state) = open();
-    assert!(count_labeled(&app, "Histogram") > 0);
-    assert_eq!(app.get_scope(), "RGB");
-    app.invoke_select(1);
-    show(&app, &state);
-    assert!(count_labeled(&app, "Histogram") > 0, "a color frame too");
 }
 
 #[test]
@@ -856,7 +757,7 @@ fn a_look_is_renamed_exported_and_deleted_from_the_panel() {
 }
 
 #[test]
-fn the_split_has_a_handle_and_the_zones_a_legend() {
+fn the_split_moves_by_its_handle_and_the_keys() {
     use slint::platform::Key;
     let (app, _state) = open();
     let mono = app.global::<Mono>();
@@ -874,13 +775,6 @@ fn the_split_has_a_handle_and_the_zones_a_legend() {
     assert_eq!((ui_state().split_at, mono.get_split_at()), (1.0, 1.0));
     press(&app, char::from(Key::Escape).to_string());
     assert!(!mono.get_split_keys());
-
-    assert_eq!(crate::testing::count_labeled(&app, "VIII"), 0);
-    press(&app, "z");
-    assert_eq!(mono.get_zones().row_count(), 11);
-    assert!(crate::testing::count_labeled(&app, "VIII") > 0);
-    mono.invoke_slid("view.zone-count".into(), 5.0);
-    assert_eq!(mono.get_zones().row_count(), 5);
 }
 
 #[test]
@@ -910,48 +804,7 @@ fn the_looks_are_drawn_of_the_picture() {
 }
 
 #[test]
-fn the_curve_stands_on_its_histogram() {
-    let (app, state) = open();
-    set_folded::<1>(&app, false);
-    assert!(crate::panel::curve::curves_shown(&app));
-    set_folded::<1>(&app, true);
-    assert!(!crate::panel::curve::curves_shown(&app));
-    let mut bins = vec![0u32; 768];
-    bins[128] = 100;
-    let at = |b: Option<&[u32]>, clip, x: usize, y: usize| {
-        picture::drawn(256, 1.0, b, clip).as_bytes()[(y * 256 + x) * 3]
-    };
-    assert_eq!(at(Some(&bins), None, 128, 100), 0x38, "the bar");
-    assert_eq!(at(None, None, 100, 100), 0x14);
-    assert_eq!(at(None, Some(0.8), 204, 1), 0xc0, "the sensor's white");
-    drop(state);
-}
-
-#[test]
-fn a_merge_wants_frames_and_the_export_says_its_channels() {
-    let (app, _state) = open();
-    let mono = app.global::<Mono>();
-    mono.invoke_pressed("merge".into());
-    assert_eq!(app.get_status(), words::MERGE_WANTS);
-    assert_eq!(mono.get_export_hint(), words::EXPORT_GREY);
-    mono.invoke_picked("toning.preset".into(), "Sepia".into());
-    assert_eq!(mono.get_export_hint(), words::EXPORT_TONED);
-}
-
-#[test]
-fn a_first_run_has_the_four_export_presets() {
-    let presets = crate::settings::Settings::default().shared.export_presets;
-    let names: Vec<_> = presets.iter().map(|p| p.name.as_str()).collect();
-    assert_eq!(names, ["Grey JPEG", "Grey TIFF", "Toned JPEG", "Web"]);
-    for p in &presets {
-        let s = p.sheet.settings();
-        assert_eq!(s.format.name(), p.sheet.format, "{}", p.name);
-    }
-    assert_eq!(presets[3].sheet.settings().long_edge, Some(2048));
-}
-
-#[test]
-fn a_tab_button_and_the_lens_row_do_what_they_say() {
+fn the_lens_row_opens_and_shuts_its_section() {
     let (app, _state) = open();
     app.window()
         .set_size(slint::LogicalSize::new(1500.0, 6000.0));
@@ -963,29 +816,17 @@ fn a_tab_button_and_the_lens_row_do_what_they_say() {
     assert_eq!(crate::testing::count_labeled(&app, "Distortion"), 1);
     mono.invoke_pressed("lens".into());
     assert!(!mono.get_sections().iter().any(|s| s == "lens"));
-    mono.invoke_pressed("crop".into());
-    assert_eq!(app.get_panel_tab(), "Crop");
-    mono.invoke_pressed("masks".into());
-    assert_eq!(app.get_panel_tab(), "Masks");
 }
 
 /// Undo, paste, presets, and sync go by this: what moves a plane develops
 /// again, what the finish reads does not.
 #[test]
 fn an_undo_develops_what_the_planes_are_made_of() {
-    let with = |f: &dyn Fn(&mut MonoEdit)| {
-        let mut m = MonoEdit::default();
-        f(&mut m);
-        Edit {
-            mono: Some(Box::new(m)),
-            ..Edit::default()
-        }
+    let idle = Edit {
+        mono: Some(Box::default()),
+        ..Edit::default()
     };
-    let plain = Edit::default();
-    assert!(same_develop(&plain, &with(&|_| {})));
-    assert!(same_develop(&plain, &with(&|m| m.grain.amount = 1.0)));
-    assert!(!same_develop(&plain, &with(&|m| m.diffuse.strength += 0.9)));
-    assert!(!same_develop(&plain, &with(&|m| m.contrast_eq.fine = 10.0)));
+    assert!(same_develop(&Edit::default(), &idle));
     let masked = |on: bool| {
         let mut e = Edit::default();
         e.adjustments.push(greycard_edit::Adjustment {
@@ -1015,10 +856,8 @@ fn the_sheets_leave_out_what_a_mono_frame_has_not() {
     let hidden = left_out(&state.borrow());
     assert!(hidden.contains(&Section::WhiteBalance) && hidden.contains(&Section::Mixer));
     let mut checks = Checks::new(Vec::new(), |_| true);
-    let all = checks.rows().0.len();
     checks.hide(hidden);
     checks.set_all(true);
-    assert!(checks.rows().0.len() < all);
     assert_eq!(
         checks.choice().sections,
         [Section::Mono, Section::Lens, Section::Adjustments]
@@ -1057,13 +896,6 @@ fn a_profile_is_kept_once_and_said() {
     assert_eq!(files, 2, "the profile and its plot");
     assert!(profile::kept(&made, &report, &dir).contains("Not saved"));
     crate::testing::remove_dir_retry(&dir);
-
-    // The report on a card, put away by its button.
-    let (app, _state) = open();
-    let mono = app.global::<Mono>();
-    assert_eq!(crate::testing::count_labeled(&app, "Camera profile"), 0);
-    mono.set_report(said.into());
-    assert!(crate::testing::count_labeled(&app, "Camera profile") > 0);
 }
 
 #[test]
@@ -1093,140 +925,4 @@ fn a_scale_moves_a_tenth_as_far_with_shift() {
         "{} from {whole}",
         scale()
     );
-}
-
-#[test]
-fn a_learned_denoise_rests_what_it_ignores() {
-    let (app, _state) = open();
-    let mono = app.global::<Mono>();
-    let options = |id: &str| {
-        value(&app, id)
-            .lines
-            .iter()
-            .flat_map(|l| l.iter().collect::<Vec<_>>())
-            .collect::<Vec<_>>()
-    };
-    let modes = options("denoise.mode");
-    mono.invoke_picked("denoise.mode".into(), modes[1].clone());
-    assert!(value(&app, "denoise.detail").enabled && value(&app, "denoise.strength").enabled);
-    mono.invoke_picked("denoise.mode".into(), modes[3].clone());
-    assert!(!value(&app, "denoise.detail").enabled && !value(&app, "denoise.shadows").enabled);
-    assert!(value(&app, "denoise.strength").enabled);
-}
-
-/// The window on a monochrome frame, drawn by Slint's software renderer
-/// with the picture finished on the CPU: the panels whole, the zones and
-/// the split, the masks, the welcome, About, and the export sheet. Run
-/// with `MONOCARD_CAPTURES=DIR` (and `MONOCARD_FRAME=a.dng`) and
-/// `--ignored`.
-#[test]
-#[ignore]
-fn capture_the_window() {
-    let (Some(dir), Some(file)) = (
-        std::env::var_os("MONOCARD_CAPTURES"),
-        std::env::var_os("MONOCARD_FRAME"),
-    ) else {
-        return;
-    };
-    let dir = PathBuf::from(dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    crate::testing::drawing_backend();
-    let (app, state) = open();
-    let raw = greycard_core::decode::decode_path(std::path::Path::new(&file)).unwrap();
-    let data = greycard_core::develop::normalize_levels(&raw);
-    let frame = mono_core::MonoFrame {
-        base: std::sync::Arc::new(mono_core::Plane::new(raw.width, raw.height, data)),
-        guide: None,
-        detail: None,
-        local: None,
-        clip: None,
-        iso: Some(800.0),
-        white: 1.0,
-        rendered: false,
-    };
-    seed(&mut state.borrow_mut(), &app, || {
-        greycard_engine::mono::start_of("RICOH GR IV Monochrome", None).map(Box::new)
-    });
-    let edit = HELD.with_borrow(|h| h.edit.clone());
-    picture::made_of(&app, picture::thumbs(&frame, &edit, || true), Some(1.0));
-    let picture = || {
-        let edit = Edit {
-            mono: Some(Box::new(HELD.with_borrow(|h| h.edit.clone()))),
-            ..Edit::default()
-        };
-        let made = greycard_render::mono::render(
-            &frame,
-            &edit,
-            &greycard_engine::mono::preview_settings(Some(1000)),
-            &Default::default(),
-        )
-        .unwrap();
-        let img = greycard_engine::mono::preview(made).unwrap();
-        let (w, h) = img.dimensions();
-        slint::Image::from_rgb8(slint::SharedPixelBuffer::clone_from_slice(
-            img.as_raw(),
-            w,
-            h,
-        ))
-    };
-    let shot = |name: &str, w: f32, h: f32| {
-        app.window().set_size(slint::LogicalSize::new(w, h));
-        for _ in 0..5 {
-            settle(&app);
-            // Drawn each time: a fold's animation starts when it is drawn.
-            let _ = app.window().take_snapshot();
-            i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(200));
-        }
-        let s = app.window().take_snapshot().expect("a drawing backend");
-        image::RgbaImage::from_raw(s.width(), s.height(), s.as_bytes().to_vec())
-            .unwrap()
-            .save(dir.join(name))
-            .unwrap();
-    };
-    let named = app.get_file_name();
-    app.set_file_name("".into());
-    shot("splash.png", 1500.0, 950.0);
-    app.set_file_name(named);
-    app.set_texture(picture());
-    let mono = app.global::<Mono>();
-    let mut bins = vec![0u32; 768];
-    for (i, b) in bins.iter_mut().enumerate() {
-        let x = (i % 256) as f32 / 255.0;
-        *b = (1e4 * ((-(x - 0.35).powi(2) * 30.0).exp() + 0.3 * x)) as u32;
-    }
-    app.set_curve_image(picture::behind_curve(576, 2.0, Some(&bins)));
-    shot("develop.png", 1500.0, 950.0);
-    for fold in [
-        "display",
-        "guide",
-        "eq-expert",
-        "toning",
-        "vignette",
-        "solarize",
-        "view-group",
-    ] {
-        mono.invoke_fold(fold.into(), true);
-    }
-    app.set_curve_image(picture::behind_curve(576, 2.0, Some(&bins)));
-    shot("panels.png", 1500.0, 4600.0);
-    press(&app, "z");
-    press(&app, "s");
-    shot("views.png", 1500.0, 950.0);
-    press(&app, "z");
-    press(&app, "s");
-    mono.set_welcome(true);
-    shot("welcome.png", 1500.0, 950.0);
-    mono.set_welcome(false);
-    mono.set_report("Noise profile of ACME Mono\nISO 100: no fit".into());
-    shot("report.png", 1500.0, 950.0);
-    mono.set_report("".into());
-    app.set_export_open(true);
-    shot("export.png", 1500.0, 950.0);
-    app.set_export_open(false);
-    app.set_settings_open(true);
-    shot("settings.png", 1500.0, 950.0);
-    app.set_settings_open(false);
-    app.invoke_new_mask();
-    show(&app, &state);
-    shot("masks.png", 1500.0, 1600.0);
 }

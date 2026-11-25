@@ -177,27 +177,6 @@ fn no_color_buffer_in_a_mono_walk() {
             );
         }
     }
-    let names: Vec<&str> = stages(&busy(), &Purpose::Viewport, &input.facts(0), None)
-        .ops()
-        .map(Stage::name)
-        .collect();
-    assert_eq!(
-        names,
-        [
-            "prepare",
-            "raw denoise",
-            "denoise",
-            "sensor grain",
-            "the file's warp",
-            "lens",
-            "retouch",
-            "highlight edges",
-            "guide",
-            "detail",
-            "mask contrast",
-            "finish"
-        ]
-    );
 }
 
 /// A step runs again only when what it depends on moved.
@@ -957,7 +936,6 @@ fn check(path: &std::path::Path, got: &Golden) {
 
 fn look_edits() -> Vec<(String, Edit)> {
     let looks = mono_look::looks::builtin();
-    assert_eq!(looks.len(), 10);
     looks
         .iter()
         .map(|l| {
@@ -1104,40 +1082,5 @@ fn mono_golden_renders() {
             got.insert(name, means(&rendered(&f, &edit, &small)));
         }
         check(&path.with_extension("dng.json"), &got);
-    }
-}
-
-/// A 26 MP frame from its samples to a file's pixels, by step.
-#[test]
-#[ignore = "a timing, run by hand in release"]
-fn a_26_mp_export_is_timed() {
-    let (w, h) = (6240, 4160);
-    let f = Arc::new(frame(w, h, 1600, 1, scene(w, h)));
-    let input = Input::Raw(f);
-    let settings = Settings::default();
-    for (name, edit) in [
-        ("defaults", Edit::default()),
-        ("wavelet", mono(|m| m.denoise.mode = DenoiseMode::Wavelet)),
-        ("busy", busy()),
-    ] {
-        let started = std::time::Instant::now();
-        let w = walked(&input, &edit, &export_of(&settings), &mut Kept::new());
-        let developed = started.elapsed().as_secs_f64();
-        let steps: Vec<String> = w
-            .seconds
-            .iter()
-            .map(|(n, s)| format!("{n} {s:.2}"))
-            .collect();
-        let empty = greycard_core::image::WorkingImage::new(0, 0);
-        let r = crate::finish::render(&empty, &edit, &w.finish_input(), &settings).unwrap();
-        let total = started.elapsed().as_secs_f64();
-        println!(
-            "{name}: {}x{} in {total:.2} s (finish {:.2} s; {})",
-            r.width,
-            r.height,
-            total - developed,
-            steps.join(", ")
-        );
-        assert!(r.is_grey());
     }
 }

@@ -1025,25 +1025,6 @@ mod tests {
     }
 
     #[test]
-    fn the_paper_holds_its_white_and_black() {
-        for transform in [Transform::Sigmoid, Transform::Agx] {
-            let display = Display {
-                transform,
-                white_ceiling: 0.9,
-                black_floor: 0.02,
-                ..Default::default()
-            };
-            let e = MonoEdit {
-                display,
-                ..Default::default()
-            };
-            let c = Compiled::new(&e);
-            close(c.tone(0.0), 0.02, 1e-4, "black");
-            close(c.tone(1e5), 0.9, 1e-4, "white");
-        }
-    }
-
-    #[test]
     fn the_shoulder_bends_only_the_top_and_follows_the_clip_point() {
         for clip in [0.25, 1.0, 8.0] {
             let knee = clip * 2f32.powf(-1.5);

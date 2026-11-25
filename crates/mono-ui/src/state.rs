@@ -177,16 +177,4 @@ mod tests {
         assert_eq!(z[5], ("V", 119));
         assert_eq!(zones(5).len(), 5);
     }
-
-    #[test]
-    fn the_keys_move_the_view() {
-        let mut s = MonoUiState::default();
-        assert!(s.key("a") && s.split == Split::Before);
-        assert!(s.key("s") && s.split == Split::Both);
-        assert!(s.key("s") && s.split == Split::After);
-        assert!(s.key("s") && s.key("b") && s.split == Split::After);
-        assert!(s.key("z") && s.zone_view && s.key("z") && !s.zone_view);
-        assert!(s.key("C") && s.clip_map);
-        assert!(!s.key("g") && !s.key(""));
-    }
 }

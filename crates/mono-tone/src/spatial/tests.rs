@@ -372,57 +372,6 @@ fn nonsense_parameters_are_finite() {
     }
 }
 
-/// `CARGO_PROFILE_TEST_OPT_LEVEL=3 cargo test -p mono-tone --target-dir
-/// target-tone -- --ignored --nocapture`, then remove target-tone.
-#[test]
-#[ignore]
-fn timing_at_26_megapixels() {
-    let (w, h) = (6192, 4128);
-    let p = scene(w, h);
-    let time = |name: &str, f: &dyn Fn()| {
-        let mut t: Vec<f64> = (0..5)
-            .map(|_| {
-                let start = std::time::Instant::now();
-                f();
-                start.elapsed().as_secs_f64() * 1e3
-            })
-            .collect();
-        let first = t[0];
-        t.sort_by(f64::total_cmp);
-        println!(
-            "{name}: first {first:.0} ms, then {:.0} to {:.0}",
-            t[0], t[4]
-        );
-        t[2]
-    };
-    let eq = MonoEdit {
-        contrast_eq: everything(DiffusePreset::None).contrast_eq,
-        ..Default::default()
-    };
-    let amount = MonoEdit {
-        local_contrast: LocalContrast {
-            amount: 60.0,
-            detail: 30.0,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    let all_four = MonoEdit {
-        local_contrast: everything(DiffusePreset::None).local_contrast,
-        ..Default::default()
-    };
-    let run = |e: &MonoEdit| drop(detail_ev(&p, e));
-    let guide_ms = time("guide", &|| drop(guide(&p, &ToneEq::default())));
-    let eq_ms = time("contrast eq, 8 scales", &|| run(&eq));
-    let laplacian_ms = time("local Laplacian, amount and detail", &|| run(&amount));
-    time("local Laplacian, all four", &|| run(&all_four));
-    time("local_ev", &|| drop(local_ev(&p)));
-    for d in PRESETS {
-        time(&format!("diffuse {d:?}"), &|| run(&diffused(d, 0.5)));
-    }
-    assert!(guide_ms < 150.0 && eq_ms < 400.0 && laplacian_ms < 600.0);
-}
-
 /// The detail of a reduced picture is the full one's, reduced.
 #[test]
 fn a_reduced_picture_gets_the_full_ones_detail() {

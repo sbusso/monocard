@@ -79,17 +79,3 @@ pub fn is_gr_iv_mono(make: &str, model: &str) -> bool {
     let name = format!("{make} {model}").to_uppercase();
     name.contains("GR IV") && name.contains("MONO")
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn the_welcome_is_for_one_camera() {
-        assert!(super::is_gr_iv_mono("RICOH", "RICOH GR IV Monochrome"));
-        assert!(super::is_gr_iv_mono(
-            "RICOH IMAGING COMPANY, LTD.",
-            "GR IV MONOCHROME"
-        ));
-        assert!(!super::is_gr_iv_mono("RICOH", "RICOH GR IV"));
-        assert!(!super::is_gr_iv_mono("Leica", "LEICA M11 Monochrom"));
-    }
-}

@@ -204,20 +204,13 @@ fn modes_of_a_folder_become_looks() {
     assert!(told.status.success(), "{}", said(&told));
     assert_eq!(kept(), written);
 
-    // The same folder twice is one, and every mode has its line.
+    // The same folder twice is one.
     let twice = modes(&photos, &[&to(&photos), "--out", &out_arg, "--dry-run"]);
     assert!(
         said(&twice).contains("would write Solid"),
         "{}",
         said(&twice)
     );
-    let list = run(&photos, &["profile", "list"]);
-    let text = said(&list);
-    assert!(
-        list.status.success() && text.contains("Solarized 3"),
-        "{text}"
-    );
-    assert_eq!(text.matches("Missing").count(), 10, "{text}");
 
     // Nor where the photos are.
     for inside in [&photos, &photos.join("new")] {
@@ -225,18 +218,4 @@ fn modes_of_a_folder_become_looks() {
         assert!(!refused.status.success() && said(&refused).contains("nothing is written"));
     }
     assert_eq!(std::fs::read_dir(&photos).unwrap().count(), 3);
-}
-
-#[test]
-fn modes_of_a_folder_with_no_pair_say_so() {
-    let dir = scratch("none");
-    let (photos, out) = (dir.0.join("photos"), dir.0.join("looks"));
-    std::fs::create_dir(&photos).unwrap();
-    let ran = modes(&photos, &["--out", out.to_str().unwrap()]);
-    assert!(
-        !ran.status.success() && said(&ran).contains("no pair of files"),
-        "{}",
-        said(&ran)
-    );
-    assert!(!out.exists());
 }

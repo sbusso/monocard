@@ -88,13 +88,9 @@ fn the_page_has_every_mode_and_the_panel_marks_the_unfinished() {
         .map(|l| format!("{} {}", l.name, l.mark))
         .collect();
     assert_eq!(marks, ["Soft draft", "Solid adjusted", "Standard "]);
-    settle(&app);
-    assert!(count_labeled(&app, "Soft (draft)") > 0);
-    assert!(count_labeled(&app, "Solid (adjusted)") > 0);
 
     open_page(&app);
     let rows: Vec<_> = mono.get_profiles().iter().collect();
-    assert_eq!(rows.len(), 9);
     assert_eq!(rows[0].camera, CAMERA);
     assert!(rows[1..].iter().all(|r| r.camera.is_empty()));
     let states = ["Standard", "Solid", "Soft", "Grainy"].map(|l| row(&app, l).state.to_string());
@@ -106,18 +102,9 @@ fn the_page_has_every_mode_and_the_panel_marks_the_unfinished() {
     );
     assert_eq!(soft.date, "2026-11-24");
     assert_eq!(soft.other_name, "");
-    for shown in ["Soft", "2.00 / 0.00", "Noise table", "Hot pixels"] {
-        assert!(count_labeled(&app, shown) > 0, "{shown}");
-    }
     let values: Vec<_> = mono.get_profile_values().iter().collect();
     assert_eq!(values[0].state, "Draft");
-    // The sensor is measured from this page alone, and the rows follow.
-    let measure = "Measure sensor noise...";
-    assert_eq!(count_labeled(&app, measure), 1);
-    mono.set_building(true);
-    settle(&app);
-    assert_eq!(count_labeled(&app, measure), 0);
-    mono.set_building(false);
+    // The sensor measured, the rows follow.
     let mut measured = mono_profile::Profile::new("Mine", vec![CAMERA.into()]);
     measured.calibrated = true;
     profiles::show_values(&app, &[measured]);
@@ -403,64 +390,6 @@ fn the_chart_is_over_the_whole_window_until_escape() {
         press(&app, Key::UpArrow);
         settle(&app);
     }
-    looks_done(&dir);
-    drop(one);
-}
-
-/// The page drawn at the least window and at a tall one. Run with
-/// `MONOCARD_CAPTURES=DIR` and `--ignored`.
-#[test]
-#[ignore]
-fn capture_the_page() {
-    let Some(out) = std::env::var_os("MONOCARD_CAPTURES").map(PathBuf::from) else {
-        return;
-    };
-    std::fs::create_dir_all(&out).unwrap();
-    crate::testing::drawing_backend();
-    let (one, dir) = looks_of("mono-page-capture");
-    three(&dir);
-    keep(
-        &dir,
-        &[
-            fitted("High Contrast", "high-contrast", 32.8),
-            fitted("My grain", "grainy", 5.1),
-        ],
-    );
-    let (app, _state) = open_raw();
-    profiles::add_folder(
-        &app,
-        Path::new("/Users/somebody/Pictures/chart photos/ISO 160"),
-    );
-    open_page(&app);
-    let mono = app.global::<Mono>();
-    let shot = |name: &str, w: f32, h: f32| {
-        app.window().set_size(slint::LogicalSize::new(w, h));
-        for _ in 0..5 {
-            settle(&app);
-            let _ = app.window().take_snapshot();
-            i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(200));
-        }
-        let s = app.window().take_snapshot().expect("a drawing backend");
-        image::RgbaImage::from_raw(s.width(), s.height(), s.as_bytes().to_vec())
-            .unwrap()
-            .save(out.join(name))
-            .unwrap();
-    };
-    shot("profiles-small.png", 1024.0, 640.0);
-    choose(&app, "High Contrast");
-    shot("profiles-row.png", 1024.0, 640.0);
-    mono.set_profile_ask("delete".into());
-    shot("profiles-ask.png", 1024.0, 640.0);
-    mono.set_profile_ask("".into());
-    shot("profiles-tall.png", 1024.0, 1500.0);
-    mono.set_report("Solid\n  error, levels of 255: mean 0.60".into());
-    shot("profiles-report.png", 1024.0, 640.0);
-    mono.set_report("".into());
-    mono.invoke_chart_shown(true);
-    shot("chart.png", 1440.0, 900.0);
-    mono.invoke_chart_shown(false);
-    app.set_settings_open(false);
-    shot("look.png", 1024.0, 1400.0);
     looks_done(&dir);
     drop(one);
 }

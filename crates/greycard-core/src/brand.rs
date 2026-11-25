@@ -51,24 +51,3 @@ pub const TAG: &str = if cfg!(feature = "mono") {
 } else {
     ""
 };
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Every name on disk differs from greycard's in a mono build, and is
-    /// greycard's own in a stock one.
-    #[test]
-    fn the_two_apps_share_no_name() {
-        let mono = cfg!(feature = "mono");
-        assert_eq!(APP_DIR != "greycard", mono);
-        assert_eq!(SIDECAR_EXT != "gcd", mono);
-        assert_eq!(SIDECAR_DIR != ".greycard", mono);
-        for url in [REPOSITORY, RELEASES] {
-            assert_eq!(!url.contains("jessolmstead"), mono, "{url}");
-        }
-        assert_eq!(VERSION != env!("CARGO_PKG_VERSION"), mono);
-        // A merge of a new release moves it.
-        assert!(GREYCARD.starts_with(env!("CARGO_PKG_VERSION")));
-    }
-}

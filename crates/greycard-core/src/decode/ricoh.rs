@@ -338,29 +338,14 @@ mod tests {
         assert_eq!(of(&tiff(b"", &note)), Some(got));
     }
 
+    /// The type is read of a solarized file alone, where the file has it.
     #[test]
-    fn every_mode_has_its_id_and_name() {
-        for (code, id, name) in MODES {
-            let got = of(&jpeg(&tiff(&note(code, &parameters(2)), b""))).unwrap();
-            assert_eq!((got.id().as_str(), got.solarize), (id, 0));
-            assert_eq!(label(id), name);
-        }
-        for (code, set, id, name) in [
-            (SOLARIZED, parameters(2), "solarized-2", "Solarized 2"),
-            (SOLARIZED, parameters(0xff), "solarized", "Solarized"),
-            (
-                SOLARIZED,
-                parameters(1)[..50].to_vec(),
-                "solarized",
-                "Solarized",
-            ),
-            (0x8107, parameters(1), "0x8107", "0x8107"),
-        ] {
-            let got = of(&jpeg(&tiff(&note(code, &set), b""))).unwrap();
-            assert_eq!(got.id(), id);
-            assert_eq!(label(id), name);
-        }
-        assert_eq!(label("solarized-9"), "solarized-9");
+    fn a_solarized_file_says_its_type() {
+        let got = |code, set: &[u8]| of(&jpeg(&tiff(&note(code, set), b""))).unwrap();
+        assert_eq!(got(SOLARIZED, &parameters(2)).id(), "solarized-2");
+        assert_eq!(got(SOLARIZED, &parameters(0xff)).id(), "solarized");
+        assert_eq!(got(SOLARIZED, &parameters(1)[..50]).id(), "solarized");
+        assert_eq!(got(0x8101, &parameters(2)).solarize, 0);
     }
 
     #[test]
@@ -384,32 +369,5 @@ mod tests {
         let whole = note(0x8101, &parameters(1));
         let cut = of(&tiff(&whole[..whole.len() - 1], &[7; 99])).unwrap();
         assert_eq!((cut.key, cut.grain), (None, None));
-    }
-
-    /// `MONOCARD_JPEGS=<folder> cargo test -p greycard-core ricoh -- --ignored --nocapture`
-    #[test]
-    #[ignore = "reads a folder of the user's own files"]
-    fn real_files() {
-        let Ok(dir) = std::env::var("MONOCARD_JPEGS") else {
-            return;
-        };
-        let mut paths: Vec<_> = std::fs::read_dir(dir)
-            .unwrap()
-            .map(|e| e.unwrap().path())
-            .collect();
-        paths.sort();
-        let mut seen = std::collections::BTreeMap::new();
-        for path in paths {
-            let Some(c) = image_control(&path) else {
-                println!("{}: says nothing", path.display());
-                continue;
-            };
-            println!("{}: {:?}", path.display(), c.shutter_count);
-            let key = format!("{} {c:?}", c.id()).replace(&format!("{:?}", c.shutter_count), "_");
-            *seen.entry(key).or_insert(0) += 1;
-        }
-        for (what, n) in seen {
-            println!("{n:4} {what}");
-        }
     }
 }

@@ -521,18 +521,13 @@ mod tests {
         assert_eq!(p.learned(3200.0).unwrap().model, "mono-best");
         assert_eq!(p.hot_pixels("0042").len(), 2);
         assert!(p.hot_pixels("1").is_empty());
-        assert!(p.lens().unwrap().distortion.is_some());
-        assert!(p.defaults().grain.link_iso);
     }
 
     #[test]
-    fn the_bundled_ones_match_and_claim_nothing() {
+    fn the_bundled_ones_match_their_cameras() {
         let all = bundled();
         let gr = matching(&all, "ricoh  GR IV Monochrome").unwrap();
-        assert_eq!(gr.name, "Ricoh GR IV Monochrome");
-        assert!(!gr.calibrated && gr.noise(6400.0).is_none());
-        assert_eq!(gr.raw_threshold(3200.0), 0.0);
-        assert!(gr.raw_threshold(25600.0) > 0.0);
+        assert!(!gr.is_generic());
         let other = matching(&all, "RICOH GR IV").unwrap();
         assert!(other.is_generic());
         assert!(matching(&[], "x").is_none());

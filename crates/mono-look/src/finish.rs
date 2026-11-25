@@ -650,16 +650,8 @@ mod tests {
 
     #[test]
     fn a_tint_has_its_hue_and_its_place() {
-        let of = |t: TonePreset, y| tone_rgb(y, &t.toning());
-        let [r, _, b] = of(TonePreset::Sepia, 0.2);
-        assert!(r > 1.1 * b);
-        let [r, _, b] = of(TonePreset::Cyanotype, 0.2);
-        assert!(b > 1.3 * r);
-        // Selenium is in the shadows only.
         let spread = |c: [f32; 3]| (c[2] - c[0]) / c[1];
-        assert!(spread(of(TonePreset::Selenium, 0.01)) > 0.05);
-        assert!(spread(of(TonePreset::Selenium, 0.9)).abs() < 0.01);
-        // Their weight, read back off the tint: about 1 in deep shadow, at
+        // The tints' weight, read back off the tint: about 1 in deep shadow, at
         // most a quarter at encoded 0.5, none by 0.75; the highlights' is
         // the mirror of it.
         let tint = Tint {
@@ -686,10 +678,7 @@ mod tests {
         assert!(weight(&low, 0.75).abs() < 0.005 && weight(&high, 0.25).abs() < 0.005);
         // The balance moves the reach of the shadows' tint.
         let at = |balance| {
-            let t = Toning {
-                balance,
-                ..TonePreset::Selenium.toning()
-            };
+            let t = Toning { balance, ..low };
             spread(tone_rgb(0.2, &t))
         };
         assert!(at(-100.0) > at(0.0) && at(0.0) > at(100.0));

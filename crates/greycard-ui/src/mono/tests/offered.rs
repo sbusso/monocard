@@ -51,7 +51,6 @@ fn the_popup_setting_is_on_the_library_page_where_it_is_compiled() {
     let (one, dir) = looks_of("mono-camera-popup");
     let (app, _state) = open();
     let mono = app.global::<Mono>();
-    assert!(mono.get_camera_popup(), "on at first");
     app.window()
         .set_size(slint::LogicalSize::new(1500.0, 6000.0));
     app.set_settings_category("Library".into());

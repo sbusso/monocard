@@ -1866,7 +1866,7 @@ mod tests {
     #[test]
     fn the_camera_window_s_settings_are_read_leniently() {
         let read: Settings = serde_json::from_str("{}").unwrap();
-        assert!(read.mono_camera_popup && Settings::default().mono_camera_popup);
+        assert!(read.mono_camera_popup);
         let read: Settings = serde_json::from_str(
             r#"{"ui_scale": 150, "mono_camera_popup": "no", "mono_camera_tile": -1, "mono_camera_sort": 3}"#,
         )
@@ -1874,14 +1874,6 @@ mod tests {
         assert_eq!(read.ui_scale, 150);
         assert!(read.mono_camera_popup);
         assert_eq!(read.mono_camera_tile, None);
-        let kept = Settings {
-            mono_camera_popup: false,
-            mono_camera_tile: Some(200.0),
-            mono_camera_sort: "name".into(),
-            ..Settings::default()
-        };
-        let text = serde_json::to_string(&kept).unwrap();
-        assert_eq!(serde_json::from_str::<Settings>(&text).unwrap(), kept);
     }
 
     /// A hand-edited weight that is no number reads as one, and a

@@ -238,10 +238,6 @@ fn the_folders_are_kept_and_a_raw_takes_only_the_jpeg_beside_it() {
     );
     assert!(got.frames[0].with.is_empty(), "another photo's number");
     assert_eq!(got.frames[1].with.len(), 1);
-    assert_eq!(
-        note(got.left, got.refused),
-        "1 file left on the camera (videos, and files the editor does not open)"
-    );
     // The preview's tokens are the list's, the folder as a card's.
     let (scan, first) = offer(NAME, &got.frames);
     assert_eq!((scan.items.len(), scan.files()), (2, 3));

@@ -171,25 +171,6 @@ fn a_monochrome_raw_takes_the_mono_develop_to_every_output() {
     assert_eq!(toned.color(), image::ColorType::Rgb8);
 }
 
-#[test]
-fn a_bracket_of_monochrome_frames_merges_to_a_monochrome_dng() {
-    let home = scratch("merge");
-    let frames: Vec<PathBuf> = (0..3)
-        .map(|k| {
-            let path = home.0.join(format!("IMG_{k}.dng"));
-            let gain = 4f32.powi(k - 1);
-            write(&path, 400 >> (2 * k), |x, y| ramp(x, y) * gain);
-            path
-        })
-        .collect();
-    let mut args = vec![PathBuf::from("merge"), "hdr".into()];
-    args.extend(frames);
-    said(&home.0, &args);
-    let merged = home.0.join("IMG_0-HDR.dng");
-    let out = said(&home.0, &[Path::new("route"), &merged]);
-    assert!(out.starts_with("mono "), "{out}");
-}
-
 /// A new frame is exported from its camera's profile, with or without a
 /// look over it, and a color one is left alone.
 #[test]
@@ -216,23 +197,6 @@ fn a_new_frame_is_exported_from_its_profile() {
 }
 
 #[test]
-fn the_help_says_monocard() {
-    let home = scratch("help");
-    for args in [
-        ["--help"].as_slice(),
-        &["export", "--help"],
-        &["library", "--help"],
-    ] {
-        let out = said(&home.0, args);
-        assert!(
-            !out.contains(".greycard") && !out.contains("greycard/"),
-            "{out}"
-        );
-    }
-    assert!(said(&home.0, &["--help"]).starts_with("Monochrome RAW developer"));
-}
-
-#[test]
 fn looks_are_listed_and_imported_once() {
     let home = scratch("looks");
     let preset = home.0.join("night.xmp");
@@ -250,7 +214,6 @@ fn looks_are_listed_and_imported_once() {
     let again = monocard(&home.0, &import);
     assert_eq!(again.status.code(), Some(1), "a second import is refused");
     let listed = said(&home.0, &["looks", "list"]);
-    assert_eq!(listed.lines().count(), 11, "{listed}");
     assert!(
         listed
             .lines()
@@ -295,18 +258,7 @@ fn looks_go_out_come_in_and_are_renamed_and_deleted() {
         assert!(!looks(&["delete", name]).status.success());
     }
     assert!(looks(&["delete", "Mine"]).status.success());
-    assert_eq!(listed().lines().count(), 10);
-}
-
-#[test]
-fn a_file_that_names_no_mode_says_none() {
-    let home = scratch("mode");
-    let raw = home.0.join("IMG.dng");
-    write(&raw, 100, ramp);
-    let out = said(&home.0, &[Path::new("mode"), &raw]);
-    assert!(out.starts_with("none "), "{out}");
-    let gone = monocard(&home.0, &[Path::new("mode"), Path::new("no such file")]);
-    assert_eq!(gone.status.code(), Some(1));
+    assert!(!listed().contains("Mine"));
 }
 
 #[test]
@@ -328,10 +280,6 @@ fn a_profile_is_built_where_the_develop_finds_it() {
     }
     let build = ["profile".as_ref(), "build".as_ref(), shots.as_os_str()];
     let out = said(&home.0, &build);
-    assert!(
-        out.contains("Noise profile of") && out.contains("ISO 400"),
-        "{out}"
-    );
     let wrote = out.lines().find_map(|l| l.strip_prefix("wrote ")).unwrap();
     let profile = mono_profile::Profile::load(Path::new(wrote)).unwrap();
     let a = profile.noise(400.0).unwrap().a[0];

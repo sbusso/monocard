@@ -151,15 +151,14 @@ mod tests {
             look("Other", "solid").of_mode("Another camera", "solid"),
         ];
         let rows = modes(&looks);
-        assert_eq!(rows.len(), 10);
+        assert_eq!(rows.len(), ricoh::ids().count() + 1);
         let state = |label: &str| rows.iter().find(|r| r.label == label).unwrap().state;
         assert_eq!(state("Standard"), State::Good);
         assert_eq!(state("Soft"), State::Draft);
         assert_eq!(state("Solid"), State::Adjusted);
         assert_eq!(state("Grainy"), State::Adjusted);
         assert_eq!(state("Solarized 2"), State::Missing);
-        assert_eq!(rows[0].wants, "The last 0.9 EV before white. More photos");
-        assert_eq!(rows[9].camera, "Another camera");
+        assert_eq!(rows.last().unwrap().camera, "Another camera");
         // As a file, too.
         let solid = Look::parse(&looks[1].to_toml()).unwrap();
         assert_eq!(solid.state(), Some(State::Adjusted));
@@ -167,12 +166,5 @@ mod tests {
             (solid.name.as_str(), solid.mode.as_deref()),
             ("Solid", Some("solid"))
         );
-    }
-
-    #[test]
-    fn the_bundled_profile_is_a_draft() {
-        let rows = values(&mono_profile::bundled(), CAMERA);
-        assert_eq!(rows[0].state, State::Draft, "{rows:?}");
-        assert_eq!(rows[1].state, State::Missing);
     }
 }

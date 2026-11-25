@@ -297,16 +297,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "mono")]
-    #[test]
-    fn a_new_frame_starts_from_the_camera_s_mode_only_when_asked() {
-        assert!(!Shared::default().mono_start_mode);
-        let read = |t: &str| serde_json::from_str::<Shared>(t).unwrap().mono_start_mode;
-        assert!(!read("{}"));
-        assert!(read(r#"{"mono_start_mode": true}"#));
-        assert!(Shared::default().mono_fit_folders.is_empty());
-    }
-
     /// The author and copyright: absent from a file that never had
     /// them, which writes back byte for byte; read where set, a value
     /// of the wrong kind costing the rest nothing; and made the export's

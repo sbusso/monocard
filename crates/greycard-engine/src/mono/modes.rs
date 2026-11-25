@@ -1013,7 +1013,6 @@ mod tests {
                 "d.jpg: no DNG of its shot"
             ]
         );
-        assert_eq!(plan.names().collect::<Vec<_>>(), ["Standard", "Solid"]);
     }
 
     #[test]

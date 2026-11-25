@@ -516,23 +516,6 @@ mod tests {
         );
     }
 
-    /// `--ignored --nocapture` in an optimized build: a GR IV frame.
-    #[test]
-    #[ignore = "a timing, not a check"]
-    fn timing() {
-        let m = model(1e-3, 4e-6);
-        let p = noisy(&Plane::filled(6192, 4128, 0.18), &m, 1);
-        for mode in [DenoiseMode::Profiled, DenoiseMode::Wavelet] {
-            let t = std::time::Instant::now();
-            profiled(&p, &m, &edit(mode));
-            eprintln!("{mode:?}: {:.2} s", t.elapsed().as_secs_f32());
-        }
-        let mut q = p.clone();
-        let t = std::time::Instant::now();
-        crate::raw_wavelet(&mut q, &m, 20.0);
-        eprintln!("raw wavelet: {:.2} s", t.elapsed().as_secs_f32());
-    }
-
     #[test]
     fn a_silent_model_or_a_tiny_plane_is_left_whole() {
         let p = Plane::filled(8, 8, 0.2);
