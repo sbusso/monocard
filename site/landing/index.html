@@ -36,7 +36,15 @@
       <img src="assets/icon.svg" width="28" height="28" alt="">
       <span>Monocard</span>
     </a>
-    <nav class="top-links" aria-label="Pages"><a class="top-link" href="changelog.html">Changelog</a><a class="top-link" href="#source" data-repo>Source on GitHub</a></nav>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="#zones">Features</a></li>
+        <li><a href="./guide/">Guide</a></li>
+        <li><a href="./changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="#downloads">Download</a>
+    </nav>
   </div>
 </header>
 
@@ -81,7 +89,14 @@
              alt="The Monocard window in Develop: a monochrome photo in the middle, the filmstrip under it, the history on the left, and the histogram and the LOOK panel on the right.">
       </div>
       <figcaption>
-        <span>Develop, with the LOOK panel open. Keys: <kbd>A</kbd> before, <kbd>B</kbd> after, <kbd>S</kbd> split, <kbd>Z</kbd> zones, <kbd>C</kbd> clip map.</span>
+        <span>The Develop tab, with the Street look on.</span>
+        <span class="keys" role="group" aria-label="Views of the picture">Try the keys:
+          <button type="button" data-view="before" aria-pressed="false"><kbd>A</kbd> before</button>
+          <button type="button" data-view="develop" aria-pressed="true"><kbd>B</kbd> after</button>
+          <button type="button" data-view="split" aria-pressed="false"><kbd>S</kbd> split</button>
+          <button type="button" data-view="zones" aria-pressed="false"><kbd>Z</kbd> zones</button>
+          <button type="button" data-view="clip" aria-pressed="false"><kbd>C</kbd> clip map</button>
+        </span>
       </figcaption>
     </figure>
     <dl class="facts">
