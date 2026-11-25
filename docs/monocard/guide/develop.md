@@ -36,11 +36,15 @@ Elsewhere, some of these keys do something else. See [Keys](keys.md).
 
 The scopes stay above the tabs. **Histogram** shows how many pixels are at each level. **Wave** shows the levels across the width of the picture. **Selection** counts only the pixels of the chosen mask, on the Masks tab. Point at the picture to see its level, **L** from 0 to 255.
 
+![The histogram at the left and the waveform at the right](images/scopes.webp "Histogram and Wave. The white square says that the picture reaches white")
+
 The squares in the corners of **Histogram** light when the picture reaches black or white. Click one to mark those pixels with lines. **J** turns both marks on or off. They show what the file clips. The [clip map](#highlights) shows what the sensor clipped.
 
 ## LOOK
 
 A look sets several controls at once. Click a tile to put it on, and **None** to take it off. **Strength** goes from 0 to 100%. See [Looks](looks.md).
+
+![The LOOK panel with eleven tiles](images/panel-look.webp "The LOOK panel. Each tile is the open photo under that look")
 
 ## BASIC
 
@@ -52,6 +56,10 @@ A look sets several controls at once. Click a tile to put it on, and **None** to
 | **Midtones** | -100 to +100 | 0 | Lightens or darkens between black and white |
 | **Whites** | -100 to +100 | 0 | The same control as **Shoulder** in [HIGHLIGHTS](#highlights). Positive values compress |
 | **Display transform** | **Sigmoid**, **AgX** | **Sigmoid** | Fits the light of the scene to the screen and the print |
+
+![The BASIC panel with Transform open](images/panel-basic.webp "BASIC, with Transform open")
+
+![A photo of sheets on a line with Sigmoid and with AgX](images/transform-effect.webp "The display transforms, at the same settings")
 
 ### Transform
 
@@ -67,6 +75,10 @@ A look sets several controls at once. Click a tile to put it on, and **None** to
 
 **Preset** sets the curve to **Linear**, **Soft S**, **Strong S**, **Lifted**, or **Faded**. Click the curve to add a point, up to 16. Drag a point to move it. Double-click a point to remove it. The two end points stay.
 
+![The curve with four points over the histogram, and the four levels](images/panel-curve.webp "The curve, with Levels open")
+
+![One photo under the five presets of the curve](images/curves.webp "The presets of the curve")
+
 The histogram is behind the curve. When the sensor clipped in the photo, a dashed line shows where its white is, and the part beyond it is hatched.
 
 **Levels** has **Input black**, **Input white**, **Output black**, and **Output white**, each from 0 to 100%.
@@ -74,6 +86,10 @@ The histogram is behind the curve. When the sensor clipped in the photo, a dashe
 ## LIGHT
 
 LIGHT is the tone equalizer. It lightens or darkens each tone and keeps edges. The nine sliders, **-8 EV** to **0 EV**, are one stop of light each, from the deepest shadows to the brightest light. Each one goes from -2 to +2 EV.
+
+![The LIGHT panel with Zone mask open](images/panel-light.webp "LIGHT, with Zone mask open")
+
+![A street at night, before and after](images/light-effect.webp "The sliders from -7 EV to -3 EV raised, and the last two lowered")
 
 ### Zone mask
 
@@ -89,6 +105,10 @@ The zone mask is a smoothed copy of the photo. It decides which slider acts wher
 ### Zone view
 
 **Zone view (Z)** paints the picture in flat greys, one for each zone, with a legend. **Zones** sets how many, from 5 to 11. Eleven are zones 0 to X. An export does not have them.
+
+![The Develop tab with the zone view on](images/zone-view.webp "The zone view")
+
+![Eleven grey squares, from 0 to X](images/zone-legend.webp "The legend of the zone view, enlarged")
 
 **Masks** opens the [Masks](masks.md) tab.
 
@@ -106,9 +126,15 @@ The zone mask is a smoothed copy of the photo. It decides which slider acts wher
 | **Raw threshold from the profile** | On, off | On | Takes the raw threshold from the camera profile |
 | **Raw threshold** | 0 to 100 | 0 | A light denoise of the raw data, also with **Denoise** off. Dimmed while the switch above is on |
 
+![The Denoise controls](images/panel-denoise.webp "Denoise")
+
+![A wall at ISO 3200 without denoise, with it, and with a part of the grain kept](images/denoise-effect.webp "A photo at ISO 3200, at 200%")
+
 ### Sharpen
 
 **Sharpen** is **None**, **Capture** for fine detail, **Deblur** for the blur of the lens, or **Local** for local contrast. **Strength** goes from 0 to 100%. The default is 50%.
+
+![A person at a railing under the four choices of Sharpen](images/sharpen-effect.webp "The choices of Sharpen, at 200%")
 
 ### Local contrast
 
@@ -121,11 +147,19 @@ Each slider goes from -100 to +100.
 | **Highlights** | The contrast in the highlights |
 | **Shadows** | The contrast in the shadows |
 
+![Sharpen and Local contrast](images/panel-sharpen.webp "Sharpen and Local contrast")
+
+![A concrete wall, without and with local contrast](images/local-contrast-effect.webp "Amount of local contrast")
+
 ### Contrast equalizer
 
 **Fine**, **Medium**, **Coarse**, and **Structure** change contrast by size, from fine texture to large forms. Each one goes from -100 to +100.
 
 **Curve by scale** has a bar for each of eight sizes, the finest at the left. Drag a bar, with **Shift** for finer moves. Double-click it to put it back to 0. The bars add to the four sliders.
+
+![The contrast equalizer with its bars](images/panel-equalizer.webp "The contrast equalizer, with Curve by scale open")
+
+![Wet stones with no change, with Fine raised, and with Structure raised](images/equalizer-effect.webp "Fine and Structure")
 
 ## HIGHLIGHTS
 
@@ -138,6 +172,14 @@ Clipped data is lost. These controls shape the way into white.
 | **Edge inpaint** | On, off | Off | Smooths the border of a clipped area |
 | **Radius** | 2 to 6 px | 4 px | The reach of **Edge inpaint** |
 | **Merge brackets** | | | Merges 2 to 5 frames that you selected in the filmstrip. See [Merge](merge.md) |
+
+![The HIGHLIGHTS panel](images/panel-highlights.webp "HIGHLIGHTS")
+
+![The Develop tab with the clip map on](images/clip-map.webp "The clip map")
+
+![White cloth with diagonal stripes](images/clip-zoom.webp "The stripes of the clip map, enlarged")
+
+![White cloth with Shoulder at -70, 0, and +70](images/shoulder-effect.webp "Shoulder")
 
 To keep highlights, use the camera's highlight-weighted metering and negative exposure compensation, and lift the shadows in Monocard.
 
@@ -152,6 +194,10 @@ To keep highlights, use the camera's highlight-weighted metering and negative ex
 | **Roughness** | 0 to 100% | 50% | How rough the grain is |
 | **Link to ISO** | On, off | Off | Makes the grain stronger at a high ISO |
 
+![The Grain controls](images/panel-grain.webp "Grain")
+
+![A wall without grain, with fine grain, and with large grain](images/grain-effect.webp "Amount and Size of the grain")
+
 ### Toning
 
 Toning is the only tool that makes color. A toned photo is [exported in color](export.md#grey-or-color). **Toning** sets the sliders below it to **None**, **Selenium**, **Sepia**, **Platinum**, **Cyanotype**, or **Gold**.
@@ -163,6 +209,10 @@ Toning is the only tool that makes color. A toned photo is [exported in color](e
 | **Shadows hue**, **Shadows** | 0 to 360°, 0 to 100% | Hue and amount for the shadows |
 | **Balance** | -100 to +100 | Negative values spread the tint of the shadows, positive values that of the highlights |
 
+![The Toning controls](images/panel-toning.webp "Toning")
+
+![A harbor untoned and under the five toning presets](images/toning-effect.webp "The presets of Toning")
+
 ### Vignette
 
 | Control | Range | Default | What it does |
@@ -172,9 +222,17 @@ Toning is the only tool that makes color. A toned photo is [exported in color](e
 | **Feather** | 0 to 100 | 50 | How soft it is |
 | **Roundness** | 0 to 100 | 50 | 0 is a rounded rectangle, 50 the shape of the frame, 100 a circle |
 
+![The Vignette controls](images/panel-vignette.webp "Vignette")
+
+![A beach with Amount at 0, -50, and +50](images/vignette-effect.webp "Amount of the vignette")
+
 ### Solarize
 
 **Solarize** reverses tones: **Mid** about the middle, **Ends** at both ends, or **Shadows** in the shadows. **Off** is the default. **Fitted** shows when a fitted look set a curve of its own. **Strength** goes from 0 to 100%.
+
+![The Solarize controls](images/panel-solarize.webp "Solarize")
+
+![A staircase under the four choices of Solarize](images/solarize-effect.webp "The choices of Solarize")
 
 ### View and proof
 
@@ -186,7 +244,11 @@ These controls change the view, not the file.
 | **Picture** | **After**, **Before**, **Split** | The same as **B**, **A**, and **S** |
 | **Paper proof** | **Off**, **Matte**, **Baryta**, **Newsprint** | Shows a [paper proof](export.md#paper-proof) |
 
+![The View and proof controls](images/panel-view.webp "View and proof")
+
 In **Split**, drag the handle to move the line, or click it and use the arrow keys. Double-click it to center the line.
+
+![A photo with the edit at the right of a line and the photo before it at the left](images/split.webp "Split")
 
 ### Crop and lens
 

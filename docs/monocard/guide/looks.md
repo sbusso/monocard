@@ -19,6 +19,8 @@ Click a tile in the **LOOK** panel. Each tile shows the open photo under that lo
 | **Warm Fibre** | A warm paper tone across the picture |
 | **High Key** | Bright, few true blacks |
 
+![One photo under the ten looks](images/looks.webp "The ten looks on one photo")
+
 Solar 1 to 3 are not matched to the camera's Solarized modes. Selenium and Warm Fibre tone the photo, so it [exports in color](export.md#grey-or-color).
 
 ## Save your own look
@@ -100,6 +102,8 @@ On the camera, set every parameter of the modes to its default. Turn off Highlig
 5. Click **Fit all**. A report says which files were left out, and why.
 
 The **CAMERA MODES** table shows each mode:
+
+![The Camera profiles page with the table of the modes](images/camera-profiles.webp "Settings..., Camera profiles")
 
 | State | Meaning |
 | --- | --- |

@@ -12,6 +12,8 @@ To remove all of the edit, choose **Reset to Original** in the photo's menu. You
 
 HISTORY lists the steps of your edit, such as "Exposure +0.50 EV", "Look: Street", or "Preset: Soft". It keeps the last 50 steps and **Original**. An export adds a row too.
 
+![The left pane with PRESETS, SNAPSHOTS, and HISTORY](images/history.webp "The left pane of Develop")
+
 Hold the pointer over a step to see it on the photo. Click it to go back to it. The steps after it stay until you change something. **Reset to Original** puts the photo back to the start.
 
 The history is kept with the edit, so it is there the next time that you open the photo.
@@ -51,6 +53,8 @@ All versions are in the same `.mcd` file. They share the stars, the flag, the la
 
 Everything but the masks is checked at first. You can check a whole section or its parts. A part that you copy alone leaves the rest of its section as it is on each photo.
 
+![The Sync settings sheet](images/sync.webp "Sync settings")
+
 Crop and retouch are never copied.
 
 To sync at once with no sheet, middle-click the sync button or a photo.
@@ -71,6 +75,8 @@ A preset is an edit, or a part of one, that you keep to use on other photos. Mon
 2. Type a **Name**.
 3. Check the parts to keep. The parts that differ from the defaults are checked.
 4. Click **Save**.
+
+![The Save preset sheet](images/save-preset.webp "Save preset")
 
 | Section | What it holds |
 | --- | --- |

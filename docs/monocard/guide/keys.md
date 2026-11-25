@@ -2,6 +2,8 @@
 
 This chapter lists the keys of Monocard. To see them in the window, press **?** or choose **Help** > **Keys (?)**. On a Mac, use Cmd where this guide says Ctrl. Keys that you can change are in [Settings](settings.md#keys).
 
+![The Keys sheet](images/keys.webp "The keys in the window")
+
 ## Move around
 
 | Key | What it does |

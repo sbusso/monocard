@@ -44,6 +44,18 @@ Monocard asks GitHub once a day whether there is a new version. It sends only th
 
 ## The window
 
+![The Loupe in Develop, with nine numbers on its parts](images/window.webp "The Loupe in Develop. The sample photos in this guide are generated.")
+
+1. **Library** and **Loupe**, which switch the view
+2. The navigator
+3. The history of the edit
+4. **Settings...**, **Help**, and **Report a problem...**
+5. The photo
+6. The scopes
+7. The tabs
+8. The panels of the tab
+9. The filmstrip
+
 | Part | What it holds |
 | --- | --- |
 | Left pane | **Library** and **Loupe** at the top, which switch the view. Below them are **Open folder...**, **Import...**, and the lists of the view. **Settings...**, **Help**, and **Report a problem...** are at the bottom. |

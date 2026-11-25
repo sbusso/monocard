@@ -1,19 +1,23 @@
 #!/usr/bin/env -S uv run --script
 # /// script
 # requires-python = ">=3.10"
-# dependencies = ["markdown==3.8"]
+# dependencies = ["markdown==3.8", "pillow==11.3.0"]
 # ///
 """The user guide's pages, from docs/monocard/guide/*.md to site/landing/guide/.
 
-Fails on a link to a chapter or a heading that is not there.
+Fails on a link to a chapter or a heading that is not there, on a picture
+that is not there, and on one that no chapter shows. The pictures are at
+two pixels to a point, so each is shown at half its size.
 """
 
 import html
 import re
+import shutil
 import sys
 from pathlib import Path
 
 import markdown
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "docs/monocard/guide"
@@ -106,6 +110,24 @@ def main():
 
     wrong = []
     OUT.mkdir(exist_ok=True)
+    shown = set()
+
+    def figure(m):
+        name, alt, caption = m["src"], m["alt"], m["title"] or ""
+        shown.add(name)
+        if not (SOURCE / name).is_file():
+            wrong.append(f"picture: {name}")
+            return m[0]
+        with Image.open(SOURCE / name) as im:
+            w, h = im.width // 2, im.height // 2
+        wide = ' class="wide"' if w > 736 else ""
+        return (
+            f'<figure{wide}><a href="{name}"><img src="{name}" alt="{alt}" width="{w}" height="{h}"'
+            f' loading="lazy" decoding="async"></a>'
+            + (f"<figcaption>{caption}</figcaption>" if caption else "")
+            + "</figure>"
+        )
+
     for i, name in enumerate(ORDER):
         top, body, _ = chapters[name]
 
@@ -119,6 +141,11 @@ def main():
             return f'href="{here}#{at}"' if at else f'href="{page(to)}"'
 
         body = re.sub(r'href="((?!https?:)[^"]+)"', link, body)
+        body = re.sub(
+            r'<p><img alt="(?P<alt>[^"]*)" src="(?P<src>[^"]+)"(?: title="(?P<title>[^"]*)")? /></p>',
+            figure,
+            body,
+        )
         body = body.replace("<table>", '<div class="table" tabindex="0"><table>')
         body = body.replace("</table>", "</table></div>")
         first = re.search(r"<p>(.*?)</p>", body, re.S)[1]
@@ -147,6 +174,13 @@ def main():
             ),
             encoding="utf-8",
         )
+    wrong += [
+        f"no chapter shows images/{p.name}"
+        for p in (SOURCE / "images").glob("*")
+        if f"images/{p.name}" not in shown
+    ]
+    shutil.rmtree(OUT / "images", ignore_errors=True)
+    shutil.copytree(SOURCE / "images", OUT / "images")
     if wrong:
         sys.exit("links to nothing:\n" + "\n".join(wrong))
 

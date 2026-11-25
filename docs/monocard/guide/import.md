@@ -18,6 +18,8 @@ Monocard copies photos from a memory card, from a folder, or from a Ricoh GR IV 
 | **Backup** | A second folder that gets a copy of every file. **Clear** takes it off |
 | **Verify against the card** | Compares photos already in **To** with the card, byte for byte |
 
+![The Import sheet](images/import.webp "The Import sheet")
+
 The line below **Name** shows where the first photo goes.
 
 ### What is copied
@@ -61,6 +63,8 @@ On a Mac, Monocard can import from a Ricoh GR IV Monochrome on a USB cable. Othe
 2. Wait for the list. It can grow for some seconds. If photos are missing, click **Read again**.
 3. Set **To**, **Folders**, **Name**, **Preset**, and **Backup**, as for a card.
 4. Select photos and click **Import selected**, or click **Import all**.
+
+![The camera window with rows of photos by day](images/camera-window.webp "The camera window")
 
 **Import all** leaves out the photos that are marked **Imported** and the ones that the window does not show.
 

@@ -20,7 +20,11 @@ Marks are kept in the `.mcd` file of the photo, with your edit. All [versions](p
 
 Click **Cull** above the photo, or press **C** in the grid. In the Develop tab with a monochrome photo open, **C** shows the clip map. Click **Cull** there.
 
+![The Cull tab with a photo of sheets on a line](images/cull.webp "The Cull tab")
+
 The panel has these rows under CULLING:
+
+![The CULLING section](images/cull-panel.webp "CULLING, enlarged")
 
 | Row | What it does |
 | --- | --- |
@@ -51,11 +55,15 @@ METADATA is below CULLING, with the title, the caption, the keywords, and the ca
 
 Press **V**, or click **2** or **4** beside **Compare**. Monocard shows the photo and the ones next to it. The keys for stars, flags, and labels act on the photo that is chosen.
 
+![Four photos side by side in the Cull tab](images/compare.webp "Four photos compared. The frame marks the one that the keys act on")
+
 To compare the versions of one photo, use **Compare versions** in its menu. To compare the photos of a stack, use **Compare stack**.
 
 ## The lightbox
 
 Press **L** to see the photos large, on a plain background. The background is the **Canvas** of [Settings](settings.md#editing).
+
+![The lightbox with four photos across](images/lightbox.webp "The lightbox")
 
 - To show from two to six photos across, use **Tile size** or **+** and **−**. It starts at four.
 - Use the arrow keys to choose a photo. The keys for stars, flags, and labels work here.

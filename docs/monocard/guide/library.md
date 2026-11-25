@@ -18,6 +18,8 @@ Click **Open folder...** at the top of the left pane, or press **Ctrl+O**. The n
 
 ## The grid
 
+![The Library: the lists at the left, the filter bar at the top, and a grid of photos](images/library.webp "The Library, with the filter bar on")
+
 - Use the arrow keys, **Home**, and **End** to move.
 - To select more photos, use Ctrl+click or Shift+click. **Ctrl+A** selects all the photos that are shown.
 - To change the size of the tiles, drag **Tile size**, press **+** or **−**, or use Ctrl with the wheel. The size is from 96 to 512 pixels.
@@ -32,9 +34,13 @@ A photo with an edit shows the edit and not the camera's picture. These marks ar
 | Bookmark | The photo is in a collection |
 | **+JPEG** | The camera's JPEG is with the raw |
 
+![Four tiles of the grid, enlarged](images/library-marks.webp "Marks on the tiles, enlarged: a blue label, a bookmark, a version named Dark, and a stack of two")
+
 A [version](presets-and-history.md#versions) has its own tile after the photo. A file that cannot be read says **Unreadable**.
 
 ## Roots
+
+![The left pane with ROOTS, FOLDERS, COLLECTIONS, EXPORT QUEUE, and METADATA](images/library-pane.webp "The left pane of the Library")
 
 A root is a folder that you add to your library. Monocard keeps an index of the photos in it, so that you can filter all your roots together. The roots are under **ROOTS** in the left pane of the grid.
 
@@ -51,6 +57,8 @@ When the disk of a root is not connected, the root says **offline**. You can sti
 ## The filter bar
 
 The filter bar is in the header of the grid and in the **CULLING** section. Press **Ctrl+F** or **/** to type in it.
+
+![The filter bar with rating>=4 in its text field](images/filter-bar.webp "The filter bar, enlarged, with a term typed")
 
 | Control | What it shows |
 | --- | --- |

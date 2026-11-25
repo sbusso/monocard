@@ -8,6 +8,8 @@ Click **Export...** at the bottom of the right pane, press **Ctrl+Shift+E**, or 
 
 After an export from the sheet, **Ctrl+E** exports again with the same choices, and the sheet does not open.
 
+![The Export sheet](images/export.webp "The Export sheet")
+
 ## Grey or color
 
 | The photo | The file | The profile |

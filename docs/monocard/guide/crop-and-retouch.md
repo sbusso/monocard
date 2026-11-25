@@ -16,7 +16,11 @@ Crop and straighten a photo, correct the lens, and remove dust and unwanted thin
 | **Portrait** | Turns the aspect upright |
 | **Guides** | **Thirds**, **Golden ratio**, **Golden spiral**, **Diagonals**, **Triangles**, or **None** |
 
+![The Crop tab with the golden spiral over a photo of stairs](images/crop.webp "A crop, with the Golden spiral")
+
 Press **O** for the next guide. Press **Shift+O** to turn the spiral or the triangles. The aspect of a new crop is in [Settings](settings.md#editing).
+
+![The Crop tab with CROP, ROTATE, and PERSPECTIVE](images/panel-crop.webp "The Crop tab, enlarged")
 
 ### Angle
 
@@ -74,6 +78,8 @@ Click the **Retouch** tab. Choose **Heal**, **Clone**, or **Fill**, and then wor
 Use the wheel or **[** and **]** to change the size, **Shift+[** and **Shift+]** for the feather, and **Ctrl+[** and **Ctrl+]** for the opacity. Hold **Space** and drag, or **Shift** and drag, to move the photo.
 
 The list in the section shows each repair, such as "Heal 1". Click one to choose it. Click its bin, **Remove**, to delete it.
+
+![RETOUCH with two repairs in its list](images/panel-retouch.webp "RETOUCH, with two repairs")
 
 For **Heal** and **Clone**, Monocard chooses the part to copy from. To change it, choose the repair in the list with the tool in hand. Two pins show the repair and its source. Drag them.
 

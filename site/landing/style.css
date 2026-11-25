@@ -513,7 +513,12 @@ html:not(.js) .js-only { display: none; }
 .guide-nav li a:hover { color: var(--text); }
 .guide-nav [aria-current] { border-color: var(--accent); color: var(--text); }
 .guide-nav .toc a:target-current { border-color: var(--accent); color: var(--text); }
-.guide-text { min-width: 0; max-width: 46rem; }
+.guide-text { min-width: 0; }
+.guide-text > :not(figure.wide) { max-width: 46rem; }
+.guide-text figure { margin-top: 1.5rem; }
+.guide-text figure.wide { max-width: 60rem; }
+.guide-text figure a { display: block; width: fit-content; max-width: 100%; }
+.guide-text figure img { display: block; max-width: 100%; height: auto; outline: 1px solid var(--border-strong); outline-offset: -1px; }
 .guide-text > h1 { font-size: clamp(2.25rem, 1.3rem + 3vw, 3.5rem); }
 .guide-text > h1 + p { margin-top: 1.25rem; font-size: 1.1875rem; line-height: 1.75rem; color: var(--secondary); }
 .guide-text h2 { --h2: 1.75rem; line-height: 1.2; margin: 3rem 0 0; }

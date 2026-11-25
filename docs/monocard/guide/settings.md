@@ -18,6 +18,8 @@ The Settings sheet has seven pages. Click **Settings...** at the bottom of the l
 
 ### Library
 
+![The Library page](images/settings-library.webp "Library")
+
 | Row | What it does |
 | --- | --- |
 | **Start in** | The folder to open at the start: the last one, or one that you choose |
@@ -33,6 +35,8 @@ The Settings sheet has seven pages. Click **Settings...** at the bottom of the l
 | NETWORK FOLDERS | How often to look for changes in network folders, in minutes. 0 is never |
 
 ### Editing
+
+![The Editing page](images/settings-editing.webp "Editing")
 
 | Row | What it does |
 | --- | --- |
@@ -66,9 +70,13 @@ This page lists the models that Monocard can download, such as those for [masks]
 
 This page lists the [keys](keys.md) that you can change. Click a key and press the new one. **Esc** keeps the old one. **Delete** or **Backspace** sets it to none. **Reset to defaults** puts all keys back.
 
+![The Keys page](images/settings-keys.webp "Keys")
+
 ### About
 
 This page shows the version of Monocard, the version of Greycard that it is built on, and the credits.
+
+![The About page](images/settings-about.webp "About")
 
 | Row | What it does |
 | --- | --- |

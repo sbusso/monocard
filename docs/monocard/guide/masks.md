@@ -6,6 +6,8 @@ A mask limits an edit to a part of the photo. You make masks on the **Masks** ta
 
 **ADJUSTMENTS** at the top of the tab holds **Global** and your masks. Click a row to choose it.
 
+![The list with Global and two masks](images/masks-list.webp "The list of masks")
+
 - **New mask** adds an empty mask. A photo can have up to 16.
 - The dot of a row switches the mask on or off. The bin of the chosen row deletes it.
 - Right-click a mask for **Duplicate mask**, **Copy mask**, **Copy masks**, and **Paste mask**. You can paste a mask on another photo.
@@ -17,9 +19,13 @@ A mask limits an edit to a part of the photo. You make masks on the **Masks** ta
 | **O** | Shows or hides the chosen mask |
 | **Esc** | Puts the drawing tool down |
 
+![A street at night, without and with two masks](images/mask-effect.webp "One mask on the wet street and one on the doorway")
+
 ## MASK
 
 The section has the name of the mask, which you can change.
+
+![The MASK section of a mask with a radial shape](images/panel-mask.webp "MASK, with a Radial shape chosen")
 
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
@@ -45,6 +51,10 @@ Click a button under **Add a shape**. From the second shape on, **Add**, **Subtr
 For **Linear**, drag across the photo. The edit is full where you start and fades to nothing where you stop. Hold **Shift** to keep the angle to steps of 15 degrees.
 
 For **Radial**, press at the center and drag out. Hold **Shift** to keep a circle. **Feather** sets how much of the shape fades, from 0 to 100%. The default is 50%.
+
+![A linear mask with its three lines](images/mask-linear.webp "A Linear shape, with Show mask on")
+
+![An ellipse with four handles over a doorway](images/mask-radial.webp "The handles of a Radial shape, enlarged. The stripes are the mask")
 
 Drag the shape to move it, and its handles to change it.
 
@@ -104,6 +114,8 @@ These tools act only where the mask is.
 | **Local contrast** | -100 to +100 | 0 | Changes local contrast |
 | **Zones** | -2 to +2 EV each | 0 | The nine sliders of [LIGHT](develop.md#light), **-8 EV** to **0 EV** |
 | **Curve and levels** | | | **Preset**, the curve, and the levels, as in [BASIC](develop.md#curve) |
+
+![MASK TOOLS with Zones and Curve and levels open](images/panel-mask-tools.webp "MASK TOOLS, with Zones and Curve and levels open")
 
 The reset arrow puts the tools back and leaves the shapes. Double-click a slider to put it back to its default.
 
