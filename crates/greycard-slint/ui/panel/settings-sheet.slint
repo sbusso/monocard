@@ -1371,24 +1371,24 @@ export component SettingsSheet inherits Rectangle {
                             }
                             if Mono.on: MonoAbout { }
                             Rectangle { height: Theme.space-1; }
-                            if !Mono.on: Text {
+                            Text {
                                 text: @tr("UPDATES");
                                 font-size: Theme.font-xs;
                                 font-weight: Theme.weight-medium;
                                 color: Theme.text-secondary;
                             }
-                            if !Mono.on: Toggle {
+                            Toggle {
                                 label: @tr("Check for a new version at launch");
                                 checked <=> root.update-check;
                                 toggled => { root.update-check-changed(); }
                             }
-                            if !Mono.on: Text {
+                            Text {
                                 text: @tr("Once a day; sends only the version number.");
                                 font-size: Theme.font-xs;
                                 color: Theme.text-muted;
                                 wrap: word-wrap;
                             }
-                            if !Mono.on: HorizontalLayout {
+                            HorizontalLayout {
                                 spacing: Theme.space-2;
                                 Text {
                                     text: root.update-note;

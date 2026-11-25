@@ -23,18 +23,11 @@ use slint::ComponentHandle;
 
 use crate::{App, Shared, settings, tr};
 
-/// Whether this build has releases to ask about: Monocard has none yet,
-/// and greycard's are never offered in its place.
-pub const ON: bool = greycard_core::brand::RELEASES.is_some();
-
-/// The one address asked; no address where there is nothing to ask.
-pub const LATEST: &str = match greycard_core::brand::RELEASES {
-    Some(url) => url,
-    None => "",
-};
+/// The one address asked.
+pub const LATEST: &str = greycard_core::brand::RELEASES;
 
 /// The repository a release's page is under.
-const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+const REPOSITORY: &str = greycard_core::brand::REPOSITORY;
 
 /// How long a check's answer stands before the launch asks again.
 pub const DAY: u64 = 24 * 60 * 60;
@@ -45,7 +38,7 @@ const TIMEOUT: Duration = Duration::from_secs(5);
 /// This build's version, plain: what is compared with the latest
 /// release and sent in the User-Agent. A build from a commit compares
 /// as the release it is numbered for; its label is for people.
-pub const VERSION: &str = greycard_version::VERSION;
+pub const VERSION: &str = greycard_core::brand::VERSION;
 
 /// What the settings keep of the check.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -118,8 +111,7 @@ pub struct Version {
 /// pre-release, a `+` suffix (build metadata) is ignored. None for
 /// anything else.
 pub fn parse_version(s: &str) -> Option<Version> {
-    let s = s.trim();
-    let s = s.strip_prefix(['v', 'V']).unwrap_or(s);
+    let s = shown(s);
     let s = s.split('+').next()?;
     let (core, pre) = match s.split_once('-') {
         Some((core, suffix)) => (core, Some(suffix)),
@@ -154,9 +146,11 @@ pub fn is_newer(tag: &str, current: &str) -> bool {
     }
 }
 
-/// The tag as the pane says it: "0.1.4", not "v0.1.4".
+/// The tag as the pane says it: "0.1.4", not "v0.1.4", nor
+/// "monocard-v0.1.4" in Monocard.
 pub fn shown(tag: &str) -> &str {
     let t = tag.trim();
+    let t = t.strip_prefix(greycard_core::brand::TAG).unwrap_or(t);
     t.strip_prefix(['v', 'V']).unwrap_or(t)
 }
 
@@ -230,7 +224,7 @@ pub fn github(url: &str) -> Result<String, FetchError> {
         .timeout_global(Some(TIMEOUT))
         .https_only(true)
         .max_redirects(2)
-        .user_agent(format!("greycard/{VERSION}"))
+        .user_agent(format!("{}/{VERSION}", greycard_core::brand::NAME))
         .accept("application/vnd.github+json")
         .accept_encoding(ureq::config::AutoHeaderValue::None)
         .build()
@@ -251,9 +245,6 @@ fn offline(_: &str) -> Result<String, FetchError> {
 
 /// Ask, and read the answer.
 pub fn check(fetch: Fetch) -> Outcome {
-    if !ON {
-        return Outcome::Refused;
-    }
     match fetch(LATEST) {
         Ok(body) => match parse_release(&body) {
             Some(r) => Outcome::Found(r),
@@ -316,7 +307,7 @@ pub fn words(outcome: &Outcome, current: &str) -> String {
 
 /// The left pane's entry, from what the settings keep.
 pub(crate) fn show(app: &App, kept: &Kept) {
-    let (version, url) = offer(kept, VERSION).filter(|_| ON).unwrap_or_default();
+    let (version, url) = offer(kept, VERSION).unwrap_or_default();
     app.set_update_version(version.into());
     app.set_update_url(url.into());
 }
@@ -375,9 +366,9 @@ fn spawn(app: &App, fetch: Fetch, persist: bool, asked: Option<u64>) {
 /// At startup: the entry from what was kept, and the check if this
 /// launch is due one.
 pub(crate) fn start(app: &App, batch: bool, kept: &Kept) {
-    app.set_update_check(kept.check && ON);
+    app.set_update_check(kept.check);
     show(app, kept);
-    if !ON || cfg!(test) || !at_launch(batch, kept, now()) {
+    if cfg!(test) || !at_launch(batch, kept, now()) {
         return;
     }
     tracing::info!("update: asking GitHub for the latest release");
@@ -403,16 +394,6 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>) {
             let Some(app) = app_weak.upgrade() else {
                 return;
             };
-            if !ON {
-                app.set_update_note(
-                    format!(
-                        "{} has no releases to check yet",
-                        greycard_core::brand::NAME
-                    )
-                    .into(),
-                );
-                return;
-            }
             // One at a time: the button waits for this answer.
             if app.get_update_checking() {
                 return;
@@ -532,6 +513,7 @@ mod tests {
     /// A build from a commit compares, and names itself to GitHub, as
     /// its plain version does: the constant both use has no commit.
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's releases")]
     fn a_build_from_a_commit_compares_as_its_version() {
         assert_eq!(VERSION, env!("CARGO_PKG_VERSION"));
         let v = parse_version(VERSION).unwrap();
@@ -542,6 +524,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg_attr(feature = "mono", ignore = "names greycard's releases")]
     fn the_answer_is_read_for_its_tag_and_page() {
         let body = r#"{
             "url": "https://api.github.com/repos/jessolmstead/greycard/releases/1",
@@ -577,16 +560,33 @@ mod tests {
         assert_eq!(parse_release("<html>rate limited</html>"), None);
     }
 
-    /// Monocard asks nothing and offers nothing until it has releases.
+    /// Monocard asks for its own releases, by its own version.
     #[test]
     #[cfg(feature = "mono")]
-    fn no_release_of_greycards_is_ever_asked_for() {
-        const { assert!(!ON) };
-        assert_eq!(check(|_| panic!("asked")), Outcome::Refused);
+    fn monocards_releases_are_read() {
+        assert_eq!(
+            LATEST,
+            "https://api.github.com/repos/sbusso/monocard/releases/latest"
+        );
+        let page = "https://github.com/sbusso/monocard/releases/tag/monocard-v0.1.10";
+        let body = format!(r#"{{"tag_name": "monocard-v0.1.10", "html_url": "{page}"}}"#);
+        let found = parse_release(&body).unwrap();
+        assert_eq!(found.url, page);
+        assert!(is_newer(&found.tag, "0.1.9"));
+        assert!(!is_newer(&found.tag, "0.1.10"));
+        let kept = after(&Kept::default(), &Outcome::Found(found), 1, false);
+        assert_eq!(offer(&kept, "0.1.9"), Some(("0.1.10".into(), page.into())));
+        // Its own tag is no news, and greycard's page is not opened.
+        assert!(!is_newer(&format!("monocard-v{VERSION}"), VERSION));
+        let theirs = "https://github.com/jessolmstead/greycard/releases/tag/v0.13.0";
+        let body = format!(r#"{{"tag_name": "v0.13.0", "html_url": "{theirs}"}}"#);
+        assert_eq!(
+            parse_release(&body).unwrap().url,
+            "https://github.com/sbusso/monocard/releases/latest"
+        );
     }
 
     #[test]
-    #[cfg_attr(feature = "mono", ignore = "Monocard has no releases to ask for")]
     fn a_check_is_its_fetch_read() {
         fn found(url: &str) -> Result<String, FetchError> {
             assert_eq!(url, LATEST);
@@ -719,7 +719,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg_attr(feature = "mono", ignore = "Monocard has no releases to ask for")]
     fn the_pane_shows_the_kept_release_and_the_sheet_the_check() {
         let app = crate::testing::window(1);
         let _state = crate::testing::state_for(&app, Vec::new());

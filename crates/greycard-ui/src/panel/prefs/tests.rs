@@ -617,7 +617,7 @@ fn the_about_category_says_the_version_and_the_folders() {
     );
     assert_eq!(
         crate::testing::count_id(&app, "SettingsSheet::check-now-button"),
-        usize::from(crate::update::ON)
+        1
     );
     // Each folder greycard's own; on Windows the logs go in a
     // folder of their own under the library's, and the library and

@@ -38,12 +38,18 @@ pub const REPOSITORY: &str = if cfg!(feature = "mono") {
 } else {
     env!("CARGO_PKG_REPOSITORY")
 };
-/// The address the update check asks; none for Monocard, which must never
-/// offer greycard's releases, and whose tags the check does not read.
-pub const RELEASES: Option<&str> = if cfg!(feature = "mono") {
-    None
+/// The address the update check asks: Monocard never offers greycard's
+/// releases.
+pub const RELEASES: &str = if cfg!(feature = "mono") {
+    "https://api.github.com/repos/sbusso/monocard/releases/latest"
 } else {
-    Some("https://api.github.com/repos/jessolmstead/greycard/releases/latest")
+    "https://api.github.com/repos/jessolmstead/greycard/releases/latest"
+};
+/// What stands before the version in a release's tag, besides the `v`.
+pub const TAG: &str = if cfg!(feature = "mono") {
+    "monocard-"
+} else {
+    ""
 };
 
 #[cfg(test)]
@@ -58,7 +64,7 @@ mod tests {
         assert_eq!(APP_DIR != "greycard", mono);
         assert_eq!(SIDECAR_EXT != "gcd", mono);
         assert_eq!(SIDECAR_DIR != ".greycard", mono);
-        for url in [Some(REPOSITORY), RELEASES].into_iter().flatten() {
+        for url in [REPOSITORY, RELEASES] {
             assert_eq!(!url.contains("jessolmstead"), mono, "{url}");
         }
         assert_eq!(VERSION != env!("CARGO_PKG_VERSION"), mono);
