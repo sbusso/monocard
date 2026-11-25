@@ -9,8 +9,8 @@ pub const WELCOME_TITLE: &str = "Ricoh GR IV Monochrome";
 pub const WELCOME: &[&str] = &[
     "Monocard develops this file on one channel, from the sensor's own data. Start with \
 the LOOK and BASIC panels. The other panels are for the rest of the print.",
-    "The bundled profile for this camera is used: its noise model for each ISO, and, on a \
-photo with no edit, its starting display transform and sharpening.",
+    "The bundled profile for this camera is used: on a photo with no edit, its starting \
+display transform and sharpening. It holds no noise measurements yet.",
     "The HIGHLIGHTS panel shows what the sensor clipped (key C). Clipped data is lost: this \
 sensor has no other channel to take it from. The shoulder and the edge inpaint shape the \
 way into white. A bracket merge is the way to keep more.",
@@ -27,8 +27,7 @@ offered. Use a yellow, orange, or red filter on the lens.";
 
 /// Which keys the mono views take, and what else has them.
 pub const KEYS_HELP: &str = "On this tab, A shows before, B after, S the split, Z the zones, and \
-C the clip map. The other tabs, the grid, and color frames keep the usual keys: B collection, \
-S soft proof, Z zoom, C cull.";
+C the clip map. The other tabs and the grid keep the usual keys: B collection, Z zoom, C cull.";
 
 /// A control's tooltip; "" for none.
 pub fn tip(id: &str) -> &'static str {

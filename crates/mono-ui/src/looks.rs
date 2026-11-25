@@ -94,6 +94,7 @@ pub fn save_user(dir: &Path, name: &str, e: &MonoEdit) -> Result<(), String> {
 /// look does not.
 pub fn import_xmp(dir: &Path, file: &Path) -> Result<(String, Vec<String>), String> {
     let read = mono_look::xmp::import_file(file).map_err(|e| e.to_string())?;
+    looks::free(dir, &read.look.name).map_err(|e| e.to_string())?;
     looks::save(dir, &read.look).map_err(|e| e.to_string())?;
     load_user(dir);
     Ok((read.look.name, read.skipped))
@@ -215,6 +216,17 @@ mod tests {
         assert!(export(&out, "Mine").is_err(), "never over a file");
         assert!(export(&out, "Hard").is_ok() && export(&out, "Nothing").is_err());
         assert!(import_toml(&dir, &file).is_err(), "a name taken");
+        // A preset without a name takes its file's.
+        let preset = |name: &str| {
+            let file = out.join(format!("{name}.xmp"));
+            let text = r#"<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/" crs:ConvertToGrayscale="True" crs:Contrast2012="20"/></rdf:RDF>"#;
+            std::fs::write(&file, text).unwrap();
+            import_xmp(&dir, &file).map(|(name, _)| name)
+        };
+        assert!(preset("Mine").is_err() && preset("Hard").is_err(), "taken");
+        assert_eq!(preset("Preset").unwrap(), "Preset");
+        assert!(preset("Preset").is_err(), "imported already");
+        delete_user(&dir, "Preset").unwrap();
         assert_eq!(rename_user(&dir, "Mine", " Yours ").unwrap(), "Yours");
         assert!(
             rename_user(&dir, "Yours", "Hard").is_err(),

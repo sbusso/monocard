@@ -656,7 +656,7 @@ fn is_builtin(name: &str) -> bool {
 }
 
 /// An error where the name is a built-in look's or one of the folder's.
-fn free(dir: &Path, name: &str) -> Result<()> {
+pub fn free(dir: &Path, name: &str) -> Result<()> {
     if is_builtin(name) || !named(dir, name)?.is_empty() {
         return field("name", format!("there is a look named {name} already"));
     }

@@ -4226,11 +4226,7 @@ fn help_has_the_keys_and_the_guide_and_a_test_opens_no_browser() {
     let (_state, _worker) = crate::testing::state_for(&app, crate::testing::folder(3));
     assert_eq!(crate::testing::count_id(&app, "App::help-button"), 1);
     app.invoke_guide_asked();
-    if !cfg!(feature = "mono") {
-        assert_eq!(app.get_status(), "the guide is open in the browser");
-    } else {
-        assert!(app.get_status().ends_with("has no guide online yet"));
-    }
+    assert_eq!(app.get_status(), "the guide is open in the browser");
     assert_eq!(Shown::sheet("keys"), Ok(Shown::Keys));
     assert_eq!(Shown::sheet("help"), Ok(Shown::Help));
     Shown::Keys.open(&app);

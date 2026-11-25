@@ -1276,6 +1276,10 @@ pub(crate) fn binding_rows(map: &Keymap, mac: bool) -> Vec<BindRow> {
 /// The guide, at the version this build is: the Keys chapter and the
 /// rest, as the release it came from has them.
 pub(crate) fn guide_url() -> String {
+    // Monocard's is on its site, for the latest release.
+    if cfg!(feature = "mono") {
+        return "https://sbusso.github.io/monocard/guide/".into();
+    }
     format!(
         "{}/blob/v{}/docs/user-guide.md",
         env!("CARGO_PKG_REPOSITORY"),
@@ -1435,12 +1439,6 @@ pub(crate) fn install(app: &App) {
             let Some(app) = app_weak.upgrade() else {
                 return;
             };
-            // Monocard has no guide of its own online yet.
-            if cfg!(feature = "mono") {
-                let name = greycard_core::brand::NAME;
-                app.set_status(format!("{name} has no guide online yet").into());
-                return;
-            }
             let url = guide_url();
             tracing::info!("help: opening {url}");
             app.set_status(tr!("the guide is open in the browser").into());
