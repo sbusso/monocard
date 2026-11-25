@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="An export writes your photo as a new file, with its edit. This chapter covers the Export sheet, grey and color files, the queue, and the paper proof.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/export.html">
+<title>Export: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html">Library</a></li>
+          <li><a href="import.html">Import</a></li>
+          <li><a href="culling.html">Cull</a></li>
+          <li><a href="develop.html">Develop</a></li>
+          <li><a href="looks.html">Looks</a></li>
+          <li><a href="masks.html">Masks</a></li>
+          <li><a href="crop-and-retouch.html">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html">Presets, history, and versions</a></li>
+          <li><a href="merge.html">Merge photos</a></li>
+          <li><a href="export.html" aria-current="page">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#open-the-sheet">Open the sheet</a></li>
+        <li><a href="#grey-or-color">Grey or color</a></li>
+        <li><a href="#the-rows-of-the-sheet">The rows of the sheet</a></li>
+        <li><a href="#presets">Presets</a></li>
+        <li><a href="#stop-an-export">Stop an export</a></li>
+        <li><a href="#the-queue">The queue</a></li>
+        <li><a href="#paper-proof">Paper proof</a></li>
+        <li><a href="#edit-in-another-app">Edit in another app</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="export">Export</h1>
+<p>An export writes your photo as a new file, with its edit. This chapter covers the Export sheet, grey and color files, the queue, and the paper proof.</p>
+<h2 id="open-the-sheet">Open the sheet</h2>
+<p>Click <strong>Export...</strong> at the bottom of the right pane, press <strong>Ctrl+Shift+E</strong>, or right-click a photo and choose <strong>Export...</strong>. With two or more photos selected, each one is exported with its own edit.</p>
+<p>After an export from the sheet, <strong>Ctrl+E</strong> exports again with the same choices, and the sheet does not open.</p>
+<figure><a href="images/export.webp"><img src="images/export.webp" alt="The Export sheet" width="418" height="864" loading="lazy" decoding="async"></a><figcaption>The Export sheet</figcaption></figure>
+<h2 id="grey-or-color">Grey or color</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>The photo</th>
+<th>The file</th>
+<th>The profile</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Not toned</td>
+<td>One grey channel</td>
+<td><strong>Grey Gamma 2.2</strong> or <strong>Dot Gain 20%</strong>. With another choice, Grey Gamma 2.2</td>
+</tr>
+<tr>
+<td>Toned</td>
+<td>RGB</td>
+<td><strong>sRGB</strong> or <strong>Display P3</strong>. With another choice, sRGB</td>
+</tr>
+</tbody>
+</table></div>
+<p>A photo is toned when an amount in <a href="develop.html#toning">Toning</a> is over 0. The line under <strong>Profile</strong> says which file you get. Use Grey Gamma 2.2 for screens, and Dot Gain 20% when a printer asks for it.</p>
+<h2 id="the-rows-of-the-sheet">The rows of the sheet</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Row</th>
+<th>Choices</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Preset</strong></td>
+<td>Your presets</td>
+<td><strong>None</strong></td>
+<td>Sets all the rows</td>
+</tr>
+<tr>
+<td><strong>Format</strong></td>
+<td><strong>JPEG</strong>, <strong>PNG</strong>, <strong>TIFF 16-bit</strong>, <strong>WebP</strong></td>
+<td>JPEG</td>
+<td>JPEG is the smallest. TIFF 16-bit keeps the most tones. The others are 8 bits</td>
+</tr>
+<tr>
+<td><strong>Quality</strong></td>
+<td>50 to 100</td>
+<td>92</td>
+<td>For JPEG only</td>
+</tr>
+<tr>
+<td><strong>Long edge</strong></td>
+<td><strong>Full</strong>, <strong>4096</strong>, <strong>2048</strong>, <strong>1024</strong>, <strong>Custom</strong></td>
+<td>Full</td>
+<td>The longer side in pixels. A photo is never made larger</td>
+</tr>
+<tr>
+<td><strong>Sharpen</strong></td>
+<td><strong>Off</strong>, <strong>Low</strong>, <strong>Standard</strong>, <strong>High</strong></td>
+<td>Standard</td>
+<td>Sharpens after the picture is made smaller. At the full size it does nothing</td>
+</tr>
+<tr>
+<td><strong>Profile</strong></td>
+<td><strong>sRGB</strong>, <strong>Display P3</strong>, <strong>Grey Gamma 2.2</strong>, <strong>Dot Gain 20%</strong></td>
+<td>sRGB</td>
+<td>See <a href="#grey-or-color">Grey or color</a></td>
+</tr>
+<tr>
+<td><strong>Embed profile</strong></td>
+<td>On, off</td>
+<td>On</td>
+<td>Writes the profile in the file</td>
+</tr>
+<tr>
+<td><strong>Metadata</strong></td>
+<td><strong>All</strong>, <strong>No edit</strong>, <strong>None</strong></td>
+<td>All</td>
+<td>The camera's data and the edit, the camera's data, or nothing</td>
+</tr>
+<tr>
+<td><strong>Subfolder</strong></td>
+<td>A name</td>
+<td>Empty</td>
+<td>A folder beside each original. It wins over <strong>Folder</strong></td>
+</tr>
+<tr>
+<td><strong>Name</strong></td>
+<td>A pattern</td>
+<td><code>{name}</code></td>
+<td>The name of the file. See <a href="#names">Names</a></td>
+</tr>
+<tr>
+<td><strong>If it exists</strong></td>
+<td><strong>Increment</strong>, <strong>Overwrite</strong>, <strong>Skip</strong></td>
+<td>Increment</td>
+<td>See <a href="#existing-files">Existing files</a></td>
+</tr>
+<tr>
+<td><strong>Watermark</strong></td>
+<td><strong>Off</strong>, <strong>Text</strong>, <strong>Image</strong></td>
+<td>Off</td>
+<td>A mark over the picture</td>
+</tr>
+<tr>
+<td><strong>Border</strong></td>
+<td><strong>Off</strong>, four greys, <strong>Match</strong></td>
+<td>Off</td>
+<td>A band around the picture</td>
+</tr>
+<tr>
+<td><strong>Folder</strong></td>
+<td><strong>Choose...</strong></td>
+<td>The last one chosen</td>
+<td>Where <strong>Export</strong> writes</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="watermark">Watermark</h3>
+<p>Choose <strong>Text</strong> and type a line in <strong>White</strong> or <strong>Black</strong>, or choose <strong>Image</strong> and a PNG file. Click a square of the grid to place it. <strong>Size</strong> goes from 1 to 50% of the long edge, <strong>Margin</strong> from 0 to 10%, and <strong>Opacity</strong> from 5 to 100%. In a grey file, the mark is grey.</p>
+<h3 id="border">Border</h3>
+<p>Click <strong>White</strong>, light grey, dark grey, <strong>Black</strong>, or <strong>Match</strong>. Match is the mean tone of the picture. <strong>Width</strong> goes from 0.5 to 25% of the long edge. The border is added outside the picture, so the file is larger. The window does not show it.</p>
+<h3 id="names">Names</h3>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Becomes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{name}</code></td>
+<td>The name of the original</td>
+</tr>
+<tr>
+<td><code>{seq}</code></td>
+<td>The number of the photo in the export. <code>{seq:101}</code> starts at 101</td>
+</tr>
+<tr>
+<td><code>{date}</code></td>
+<td>The day it was taken. <code>{date:%Y%m%d}</code> sets the form</td>
+</tr>
+<tr>
+<td><code>{camera}</code></td>
+<td>The camera</td>
+</tr>
+</tbody>
+</table></div>
+<p>In the folder of the original, the file is <code>IMG_0001.monocard.jpg</code>, so it never takes the name of the camera's JPEG.</p>
+<h3 id="existing-files">Existing files</h3>
+<ul>
+<li><strong>Increment</strong> writes <code>IMG_0001-1.jpg</code> beside the file.</li>
+<li><strong>Overwrite</strong> replaces it. Monocard lists the files first, and asks.</li>
+<li><strong>Skip</strong> writes nothing.</li>
+</ul>
+<h2 id="presets">Presets</h2>
+<p>A first start has four presets:</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Preset</th>
+<th>What it writes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Grey JPEG</strong></td>
+<td>JPEG, quality 92, Grey Gamma 2.2</td>
+</tr>
+<tr>
+<td><strong>Grey TIFF</strong></td>
+<td>16-bit TIFF, Grey Gamma 2.2</td>
+</tr>
+<tr>
+<td><strong>Toned JPEG</strong></td>
+<td>JPEG, quality 92, sRGB</td>
+</tr>
+<tr>
+<td><strong>Web</strong></td>
+<td>JPEG, quality 85, 2048 on the long edge, sharpened</td>
+</tr>
+</tbody>
+</table></div>
+<p>To make your own, set the rows, click <strong>Save as...</strong>, and type a name. <strong>(edited)</strong> shows when the rows are no longer those of the preset. <strong>Delete</strong> removes the preset.</p>
+<h2 id="stop-an-export">Stop an export</h2>
+<p>While several photos are exported, <strong>Export...</strong> becomes <strong>Stop export</strong>. Click it or press <strong>Esc</strong> to stop after the photo in hand.</p>
+<h2 id="the-queue">The queue</h2>
+<p><strong>Add to queue</strong> keeps the photos, their edits as they are now, and the rows of the sheet. Nothing is written yet. To write them, open the sheet and click <strong>Export the queue</strong>. <strong>Clear</strong> empties the queue, after it asks. The queue stays when you quit.</p>
+<h2 id="paper-proof">Paper proof</h2>
+<p>A paper proof shows on the screen how the picture looks on a paper, with its white and its deepest black. In <strong>FINISH</strong>, open <strong>View and proof</strong> and choose <strong>Matte</strong>, <strong>Baryta</strong>, or <strong>Newsprint</strong> in <strong>Paper proof</strong>. <strong>Off</strong> is the default. The papers are typical values, not a measurement of one product. The proof does not change the file.</p>
+<h2 id="edit-in-another-app">Edit in another app</h2>
+<p>Add an app in <strong>Settings...</strong>, <strong>Editing</strong>, <strong>Edit in</strong>. Then right-click a photo and choose <strong>Edit in...</strong>. Monocard writes a 16-bit TIFF beside the original and opens it in the app.</p>
+<p>You can also export <a href="command-line.html">from the command line</a>.</p>
+    <nav class="guide-next" aria-label="Chapters"><a href="merge.html" rel="prev">← Merge photos</a><a href="settings.html" rel="next">Settings →</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

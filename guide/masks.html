@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="A mask limits an edit to a part of the photo. You make masks on the Masks tab. The edit on the Develop tab stays under all of them.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/masks.html">
+<title>Masks: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html">Library</a></li>
+          <li><a href="import.html">Import</a></li>
+          <li><a href="culling.html">Cull</a></li>
+          <li><a href="develop.html">Develop</a></li>
+          <li><a href="looks.html">Looks</a></li>
+          <li><a href="masks.html" aria-current="page">Masks</a></li>
+          <li><a href="crop-and-retouch.html">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html">Presets, history, and versions</a></li>
+          <li><a href="merge.html">Merge photos</a></li>
+          <li><a href="export.html">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#the-list-of-masks">The list of masks</a></li>
+        <li><a href="#mask">MASK</a></li>
+        <li><a href="#add-a-shape">Add a shape</a></li>
+        <li><a href="#mask-tools">MASK TOOLS</a></li>
+        <li><a href="#masks-on-other-photos">Masks on other photos</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="masks">Masks</h1>
+<p>A mask limits an edit to a part of the photo. You make masks on the <strong>Masks</strong> tab. The edit on the Develop tab stays under all of them.</p>
+<h2 id="the-list-of-masks">The list of masks</h2>
+<p><strong>ADJUSTMENTS</strong> at the top of the tab holds <strong>Global</strong> and your masks. Click a row to choose it.</p>
+<figure><a href="images/masks-list.webp"><img src="images/masks-list.webp" alt="The list with Global and two masks" width="350" height="204" loading="lazy" decoding="async"></a><figcaption>The list of masks</figcaption></figure>
+<ul>
+<li><strong>New mask</strong> adds an empty mask. A photo can have up to 16.</li>
+<li>The dot of a row switches the mask on or off. The bin of the chosen row deletes it.</li>
+<li>Right-click a mask for <strong>Duplicate mask</strong>, <strong>Copy mask</strong>, <strong>Copy masks</strong>, and <strong>Paste mask</strong>. You can paste a mask on another photo.</li>
+</ul>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>M</strong></td>
+<td>Makes a mask with a Linear shape. The next drag places it</td>
+</tr>
+<tr>
+<td><strong>Shift+M</strong></td>
+<td>The same with a Radial shape</td>
+</tr>
+<tr>
+<td><strong>O</strong></td>
+<td>Shows or hides the chosen mask</td>
+</tr>
+<tr>
+<td><strong>Esc</strong></td>
+<td>Puts the drawing tool down</td>
+</tr>
+</tbody>
+</table></div>
+<figure class="wide"><a href="images/mask-effect.webp"><img src="images/mask-effect.webp" alt="A street at night, without and with two masks" width="1084" height="360" loading="lazy" decoding="async"></a><figcaption>One mask on the wet street and one on the doorway</figcaption></figure>
+<h2 id="mask">MASK</h2>
+<p>The section has the name of the mask, which you can change.</p>
+<figure><a href="images/panel-mask.webp"><img src="images/panel-mask.webp" alt="The MASK section of a mask with a radial shape" width="350" height="592" loading="lazy" decoding="async"></a><figcaption>MASK, with a Radial shape chosen</figcaption></figure>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Show mask</strong></td>
+<td>On, off</td>
+<td>Off</td>
+<td>Marks the mask with diagonal stripes, stronger where it acts more. It turns off when you change a tool of the mask</td>
+</tr>
+<tr>
+<td><strong>Invert</strong></td>
+<td>On, off</td>
+<td>Off</td>
+<td>Acts where the shapes are not</td>
+</tr>
+<tr>
+<td><strong>Refine edge</strong></td>
+<td>0 to 100%</td>
+<td>0%</td>
+<td>Draws the edge of the mask to the edges in the photo</td>
+</tr>
+<tr>
+<td><strong>Opacity</strong></td>
+<td>0 to 100%</td>
+<td>100%</td>
+<td>Sets how much of the edit of the mask goes on</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Shapes</strong> lists the shapes of the mask. In a row, the dot switches the shape on or off, the half-filled circle inverts it, and <strong>×</strong> removes it. Click a row to see the settings of the shape.</p>
+<h2 id="add-a-shape">Add a shape</h2>
+<p>Click a button under <strong>Add a shape</strong>. From the second shape on, <strong>Add</strong>, <strong>Subtract</strong>, and <strong>Intersect</strong> set how the next one joins the mask:</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Choice</th>
+<th>The mask becomes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Add</strong></td>
+<td>The mask and the shape</td>
+</tr>
+<tr>
+<td><strong>Subtract</strong></td>
+<td>The mask without the shape</td>
+</tr>
+<tr>
+<td><strong>Intersect</strong></td>
+<td>Only where both are</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="linear-and-radial">Linear and Radial</h3>
+<p>For <strong>Linear</strong>, drag across the photo. The edit is full where you start and fades to nothing where you stop. Hold <strong>Shift</strong> to keep the angle to steps of 15 degrees.</p>
+<p>For <strong>Radial</strong>, press at the center and drag out. Hold <strong>Shift</strong> to keep a circle. <strong>Feather</strong> sets how much of the shape fades, from 0 to 100%. The default is 50%.</p>
+<figure class="wide"><a href="images/mask-linear.webp"><img src="images/mask-linear.webp" alt="A linear mask with its three lines" width="1280" height="820" loading="lazy" decoding="async"></a><figcaption>A Linear shape, with Show mask on</figcaption></figure>
+<figure><a href="images/mask-radial.webp"><img src="images/mask-radial.webp" alt="An ellipse with four handles over a doorway" width="243" height="240" loading="lazy" decoding="async"></a><figcaption>The handles of a Radial shape, enlarged. The stripes are the mask</figcaption></figure>
+<p>Drag the shape to move it, and its handles to change it.</p>
+<h3 id="brush">Brush</h3>
+<p>Click <strong>Brush</strong> and paint. While a brush is chosen, the button is <strong>Paint</strong>, and you go on with the same brush.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>Keys</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Size</strong></td>
+<td>0.2 to 50% of the width</td>
+<td>5%</td>
+<td><strong>[</strong> and <strong>]</strong>, or the wheel</td>
+</tr>
+<tr>
+<td><strong>Feather</strong></td>
+<td>0 to 100%</td>
+<td>50%</td>
+<td><strong>Shift+[</strong> and <strong>Shift+]</strong></td>
+</tr>
+<tr>
+<td><strong>Opacity</strong></td>
+<td>0 to 100%</td>
+<td>100%</td>
+<td><strong>Ctrl+[</strong> and <strong>Ctrl+]</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Add</strong> adds to the mask. <strong>Subtract</strong> takes from the whole mask. <strong>Erase</strong> removes only what this brush painted.</p>
+<h3 id="luminance">Luminance</h3>
+<p><strong>Luminance</strong> takes a range of tones, from <strong>Low</strong> to <strong>High</strong>. <strong>Low fade</strong> and <strong>High fade</strong> soften its ends.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Low</strong></td>
+<td>0 to 100</td>
+<td>70</td>
+</tr>
+<tr>
+<td><strong>Low fade</strong></td>
+<td>0 to 50</td>
+<td>10</td>
+</tr>
+<tr>
+<td><strong>High</strong></td>
+<td>0 to 100</td>
+<td>100</td>
+</tr>
+<tr>
+<td><strong>High fade</strong></td>
+<td>0 to 50</td>
+<td>0</td>
+</tr>
+</tbody>
+</table></div>
+<p>It reads the light of the photo at the global <strong>Exposure</strong>, before the curve and the display transform. The tools of a mask do not move it.</p>
+<h3 id="subject-background-sky-and-others">Subject, Background, Sky, and others</h3>
+<p>A learned model finds these shapes.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Button</th>
+<th>What it takes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Subject</strong></td>
+<td>The main subject</td>
+</tr>
+<tr>
+<td><strong>Background</strong></td>
+<td>Everything but the subject</td>
+</tr>
+<tr>
+<td><strong>Sky</strong></td>
+<td>The sky. <strong>Pick</strong> then adds sky with a click, and removes it with a right-click</td>
+</tr>
+<tr>
+<td><strong>Landscape</strong></td>
+<td>Opens a menu of what it found, such as water or foliage</td>
+</tr>
+<tr>
+<td><strong>Object</strong></td>
+<td>What you click. Right-click to leave something out, or drag a box</td>
+</tr>
+<tr>
+<td><strong>People</strong></td>
+<td>Opens a menu: the whole person, or a part such as <strong>Face</strong> or <strong>Hair</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>A model can be wrong. Check the result with <strong>Show mask</strong>.</p>
+<h3 id="models">Models</h3>
+<p>Monocard asks before it downloads a model, and the sheet names the model and its size. The models that are there, and what they need, are in <strong>Settings...</strong>, <strong>Models</strong>. See <a href="settings.html">Settings</a>.</p>
+<p>The models work on a grey copy of your photo. The photo does not leave your computer.</p>
+<h2 id="mask-tools">MASK TOOLS</h2>
+<p>These tools act only where the mask is.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Exposure</strong></td>
+<td>-4 to +4 EV</td>
+<td>0</td>
+<td>Lightens or darkens</td>
+</tr>
+<tr>
+<td><strong>Local contrast</strong></td>
+<td>-100 to +100</td>
+<td>0</td>
+<td>Changes local contrast</td>
+</tr>
+<tr>
+<td><strong>Zones</strong></td>
+<td>-2 to +2 EV each</td>
+<td>0</td>
+<td>The nine sliders of <a href="develop.html#light">LIGHT</a>, <strong>-8 EV</strong> to <strong>0 EV</strong></td>
+</tr>
+<tr>
+<td><strong>Curve and levels</strong></td>
+<td></td>
+<td></td>
+<td><strong>Preset</strong>, the curve, and the levels, as in <a href="develop.html#curve">BASIC</a></td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/panel-mask-tools.webp"><img src="images/panel-mask-tools.webp" alt="MASK TOOLS with Zones and Curve and levels open" width="350" height="928" loading="lazy" decoding="async"></a><figcaption>MASK TOOLS, with Zones and Curve and levels open</figcaption></figure>
+<p>The reset arrow puts the tools back and leaves the shapes. Double-click a slider to put it back to its default.</p>
+<p>Contrast, blacks, midtones, whites, the contrast equalizer, sharpening, denoise, grain, and toning have no mask. Edit them for the whole photo on the Develop tab.</p>
+<h2 id="masks-on-other-photos">Masks on other photos</h2>
+<p><a href="presets-and-history.html">Sync and paste</a> can copy masks to other photos. Subject, Background, Sky, Landscape, and People are made again for each photo.</p>
+    <nav class="guide-next" aria-label="Chapters"><a href="looks.html" rel="prev">← Looks</a><a href="crop-and-retouch.html" rel="next">Crop, lens, and retouch →</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

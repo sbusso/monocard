@@ -1,0 +1,620 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="The Develop tab edits the whole photo. This chapter goes through its six panels from top to bottom. To edit a part of the photo, see Masks.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/develop.html">
+<title>Develop: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html">Library</a></li>
+          <li><a href="import.html">Import</a></li>
+          <li><a href="culling.html">Cull</a></li>
+          <li><a href="develop.html" aria-current="page">Develop</a></li>
+          <li><a href="looks.html">Looks</a></li>
+          <li><a href="masks.html">Masks</a></li>
+          <li><a href="crop-and-retouch.html">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html">Presets, history, and versions</a></li>
+          <li><a href="merge.html">Merge photos</a></li>
+          <li><a href="export.html">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#work-with-the-panels">Work with the panels</a></li>
+        <li><a href="#keys">Keys</a></li>
+        <li><a href="#scopes">Scopes</a></li>
+        <li><a href="#look">LOOK</a></li>
+        <li><a href="#basic">BASIC</a></li>
+        <li><a href="#light">LIGHT</a></li>
+        <li><a href="#detail">DETAIL</a></li>
+        <li><a href="#highlights">HIGHLIGHTS</a></li>
+        <li><a href="#finish">FINISH</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="develop">Develop</h1>
+<p>The <strong>Develop</strong> tab edits the whole photo. This chapter goes through its six panels from top to bottom. To edit a part of the photo, see <a href="masks.html">Masks</a>.</p>
+<h2 id="work-with-the-panels">Work with the panels</h2>
+<ul>
+<li>Click the title of a panel, or a line with an arrow such as <strong>Levels</strong>, to fold or open it.</li>
+<li>Click the reset arrow in a title to put the panel back to what the photo started with.</li>
+<li>Drag a slider. Hold <strong>Shift</strong> to move it a tenth as far. Double-click it to put it back to its default.</li>
+<li>Click the number of a slider to type a value.</li>
+<li>Click a slider, then use the arrow keys or the mouse wheel for small steps.</li>
+</ul>
+<p>Every change is a step in <a href="presets-and-history.html">HISTORY</a>.</p>
+<h3 id="where-a-photo-starts">Where a photo starts</h3>
+<p>A raw with no edit starts from its camera's profile. The one for the Ricoh GR IV Monochrome sets <strong>Sharpen</strong> to <strong>Capture</strong> at 25% and turns <strong>Link to ISO</strong> on. You can also start from <a href="looks.html#start-from-the-cameras-mode">the camera's picture mode</a>.</p>
+<h3 id="develop-a-jpeg">Develop a JPEG</h3>
+<p>The camera already rendered a JPEG, so Monocard applies no display transform to it, and it starts as the camera made it. <strong>Display transform</strong>, and <strong>Contrast</strong>, <strong>Shoulder</strong>, and <strong>Toe</strong> under <strong>Transform</strong>, do not show. The camera profile and the hot pixel repair do not apply.</p>
+<h2 id="keys">Keys</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>What it does on the Develop tab</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>A</strong></td>
+<td>Shows the photo before your edit</td>
+</tr>
+<tr>
+<td><strong>B</strong></td>
+<td>Shows your edit</td>
+</tr>
+<tr>
+<td><strong>S</strong></td>
+<td>Shows before and after, split, and back</td>
+</tr>
+<tr>
+<td><strong>Z</strong></td>
+<td>Zone view, on or off</td>
+</tr>
+<tr>
+<td><strong>C</strong></td>
+<td>Clip map, on or off</td>
+</tr>
+</tbody>
+</table></div>
+<p>Elsewhere, some of these keys do something else. See <a href="keys.html">Keys</a>.</p>
+<h2 id="scopes">Scopes</h2>
+<p>The scopes stay above the tabs. <strong>Histogram</strong> shows how many pixels are at each level. <strong>Wave</strong> shows the levels across the width of the picture. <strong>Selection</strong> counts only the pixels of the chosen mask, on the Masks tab. Point at the picture to see its level, <strong>L</strong> from 0 to 255.</p>
+<figure><a href="images/scopes.webp"><img src="images/scopes.webp" alt="The histogram at the left and the waveform at the right" width="728" height="170" loading="lazy" decoding="async"></a><figcaption>Histogram and Wave. The white square says that the picture reaches white</figcaption></figure>
+<p>The squares in the corners of <strong>Histogram</strong> light when the picture reaches black or white. Click one to mark those pixels with lines. <strong>J</strong> turns both marks on or off. They show what the file clips. The <a href="#highlights">clip map</a> shows what the sensor clipped.</p>
+<h2 id="look">LOOK</h2>
+<p>A look sets several controls at once. Click a tile to put it on, and <strong>None</strong> to take it off. <strong>Strength</strong> goes from 0 to 100%. See <a href="looks.html">Looks</a>.</p>
+<figure><a href="images/panel-look.webp"><img src="images/panel-look.webp" alt="The LOOK panel with eleven tiles" width="350" height="570" loading="lazy" decoding="async"></a><figcaption>The LOOK panel. Each tile is the open photo under that look</figcaption></figure>
+<h2 id="basic">BASIC</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Exposure</strong></td>
+<td>-5 to +5 EV</td>
+<td>0</td>
+<td>Brightens or darkens in stops</td>
+</tr>
+<tr>
+<td><strong>Contrast</strong></td>
+<td>-100 to +100</td>
+<td>0</td>
+<td>Changes contrast around middle grey</td>
+</tr>
+<tr>
+<td><strong>Blacks</strong></td>
+<td>-100 to +100</td>
+<td>0</td>
+<td>Lifts or lowers the tones below middle grey</td>
+</tr>
+<tr>
+<td><strong>Midtones</strong></td>
+<td>-100 to +100</td>
+<td>0</td>
+<td>Lightens or darkens between black and white</td>
+</tr>
+<tr>
+<td><strong>Whites</strong></td>
+<td>-100 to +100</td>
+<td>0</td>
+<td>The same control as <strong>Shoulder</strong> in <a href="#highlights">HIGHLIGHTS</a>. Positive values compress</td>
+</tr>
+<tr>
+<td><strong>Display transform</strong></td>
+<td><strong>Sigmoid</strong>, <strong>AgX</strong></td>
+<td><strong>Sigmoid</strong></td>
+<td>Fits the light of the scene to the screen and the print</td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/panel-basic.webp"><img src="images/panel-basic.webp" alt="The BASIC panel with Transform open" width="350" height="420" loading="lazy" decoding="async"></a><figcaption>BASIC, with Transform open</figcaption></figure>
+<figure class="wide"><a href="images/transform-effect.webp"><img src="images/transform-effect.webp" alt="A photo of sheets on a line with Sigmoid and with AgX" width="1084" height="360" loading="lazy" decoding="async"></a><figcaption>The display transforms, at the same settings</figcaption></figure>
+<h3 id="transform">Transform</h3>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Contrast</strong></td>
+<td>0.5 to 3</td>
+<td>1.5</td>
+<td>The slope at middle grey</td>
+</tr>
+<tr>
+<td><strong>Shoulder</strong></td>
+<td>0 to 100%</td>
+<td>50%</td>
+<td>How softly the highlights roll off</td>
+</tr>
+<tr>
+<td><strong>Toe</strong></td>
+<td>0 to 100%</td>
+<td>50%</td>
+<td>How softly the shadows roll off</td>
+</tr>
+<tr>
+<td><strong>White ceiling</strong></td>
+<td>50 to 100%</td>
+<td>100%</td>
+<td>The light of paper white</td>
+</tr>
+<tr>
+<td><strong>Black floor</strong></td>
+<td>0 to 0.1</td>
+<td>0</td>
+<td>The light of the deepest black</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="curve">Curve</h3>
+<p><strong>Preset</strong> sets the curve to <strong>Linear</strong>, <strong>Soft S</strong>, <strong>Strong S</strong>, <strong>Lifted</strong>, or <strong>Faded</strong>. Click the curve to add a point, up to 16. Drag a point to move it. Double-click a point to remove it. The two end points stay.</p>
+<figure><a href="images/panel-curve.webp"><img src="images/panel-curve.webp" alt="The curve with four points over the histogram, and the four levels" width="350" height="561" loading="lazy" decoding="async"></a><figcaption>The curve, with Levels open</figcaption></figure>
+<figure class="wide"><a href="images/curves.webp"><img src="images/curves.webp" alt="One photo under the five presets of the curve" width="1066" height="270" loading="lazy" decoding="async"></a><figcaption>The presets of the curve</figcaption></figure>
+<p>The histogram is behind the curve. When the sensor clipped in the photo, a dashed line shows where its white is, and the part beyond it is hatched.</p>
+<p><strong>Levels</strong> has <strong>Input black</strong>, <strong>Input white</strong>, <strong>Output black</strong>, and <strong>Output white</strong>, each from 0 to 100%.</p>
+<h2 id="light">LIGHT</h2>
+<p>LIGHT is the tone equalizer. It lightens or darkens each tone and keeps edges. The nine sliders, <strong>-8 EV</strong> to <strong>0 EV</strong>, are one stop of light each, from the deepest shadows to the brightest light. Each one goes from -2 to +2 EV.</p>
+<figure><a href="images/panel-light.webp"><img src="images/panel-light.webp" alt="The LIGHT panel with Zone mask open" width="350" height="559" loading="lazy" decoding="async"></a><figcaption>LIGHT, with Zone mask open</figcaption></figure>
+<figure class="wide"><a href="images/light-effect.webp"><img src="images/light-effect.webp" alt="A street at night, before and after" width="1084" height="360" loading="lazy" decoding="async"></a><figcaption>The sliders from -7 EV to -3 EV raised, and the last two lowered</figcaption></figure>
+<h3 id="zone-mask">Zone mask</h3>
+<p>The zone mask is a smoothed copy of the photo. It decides which slider acts where.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Smoothing</strong></td>
+<td>0 to 25%</td>
+<td>5%</td>
+<td>The width of the smoothing, as a share of the short edge</td>
+</tr>
+<tr>
+<td><strong>Edges</strong></td>
+<td>0 to 10</td>
+<td>3</td>
+<td>How hard the mask keeps edges</td>
+</tr>
+<tr>
+<td><strong>Mask contrast</strong></td>
+<td>-2 to +2 EV</td>
+<td>0</td>
+<td>Spreads the tones over more of the sliders, or fewer</td>
+</tr>
+<tr>
+<td><strong>Mask exposure</strong></td>
+<td>-4 to +4 EV</td>
+<td>0</td>
+<td>Moves the tones along the sliders</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="zone-view">Zone view</h3>
+<p><strong>Zone view (Z)</strong> paints the picture in flat greys, one for each zone, with a legend. <strong>Zones</strong> sets how many, from 5 to 11. Eleven are zones 0 to X. An export does not have them.</p>
+<figure class="wide"><a href="images/zone-view.webp"><img src="images/zone-view.webp" alt="The Develop tab with the zone view on" width="1280" height="820" loading="lazy" decoding="async"></a><figcaption>The zone view</figcaption></figure>
+<figure><a href="images/zone-legend.webp"><img src="images/zone-legend.webp" alt="Eleven grey squares, from 0 to X" width="360" height="45" loading="lazy" decoding="async"></a><figcaption>The legend of the zone view, enlarged</figcaption></figure>
+<p><strong>Masks</strong> opens the <a href="masks.html">Masks</a> tab.</p>
+<h2 id="detail">DETAIL</h2>
+<h3 id="denoise">Denoise</h3>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Denoise</strong></td>
+<td><strong>Off</strong>, <strong>Profiled</strong>, <strong>Wavelet</strong>, <strong>Fast</strong>, <strong>Best</strong></td>
+<td><strong>Off</strong></td>
+<td>Chooses the method. <strong>Fast</strong> and <strong>Best</strong> need a learned model that does not come with Monocard, and use <strong>Profiled</strong> without it</td>
+</tr>
+<tr>
+<td><strong>Strength</strong></td>
+<td>0 to 100</td>
+<td>50</td>
+<td>How much noise goes</td>
+</tr>
+<tr>
+<td><strong>Detail</strong></td>
+<td>0 to 100</td>
+<td>50</td>
+<td>How much detail comes back. <strong>Profiled</strong> and <strong>Wavelet</strong> only</td>
+</tr>
+<tr>
+<td><strong>Shadows</strong></td>
+<td>0 to 100</td>
+<td>0</td>
+<td>More smoothing in the deepest tones. <strong>Profiled</strong> and <strong>Wavelet</strong> only</td>
+</tr>
+<tr>
+<td><strong>Keep sensor grain</strong></td>
+<td>0 to 100</td>
+<td>0</td>
+<td>Puts back a part of the noise</td>
+</tr>
+<tr>
+<td><strong>Raw threshold from the profile</strong></td>
+<td>On, off</td>
+<td>On</td>
+<td>Takes the raw threshold from the camera profile</td>
+</tr>
+<tr>
+<td><strong>Raw threshold</strong></td>
+<td>0 to 100</td>
+<td>0</td>
+<td>A light denoise of the raw data, also with <strong>Denoise</strong> off. Dimmed while the switch above is on</td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/panel-denoise.webp"><img src="images/panel-denoise.webp" alt="The Denoise controls" width="350" height="266" loading="lazy" decoding="async"></a><figcaption>Denoise</figcaption></figure>
+<figure class="wide"><a href="images/denoise-effect.webp"><img src="images/denoise-effect.webp" alt="A wall at ISO 3200 without denoise, with it, and with a part of the grain kept" width="1088" height="280" loading="lazy" decoding="async"></a><figcaption>A photo at ISO 3200, at 200%</figcaption></figure>
+<h3 id="sharpen">Sharpen</h3>
+<p><strong>Sharpen</strong> is <strong>None</strong>, <strong>Capture</strong> for fine detail, <strong>Deblur</strong> for the blur of the lens, or <strong>Local</strong> for local contrast. <strong>Strength</strong> goes from 0 to 100%. The default is 50%.</p>
+<figure class="wide"><a href="images/sharpen-effect.webp"><img src="images/sharpen-effect.webp" alt="A person at a railing under the four choices of Sharpen" width="1132" height="280" loading="lazy" decoding="async"></a><figcaption>The choices of Sharpen, at 200%</figcaption></figure>
+<h3 id="local-contrast">Local contrast</h3>
+<p>Each slider goes from -100 to +100.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>What it changes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Amount</strong></td>
+<td>The local contrast at every size</td>
+</tr>
+<tr>
+<td><strong>Detail</strong></td>
+<td>The fine detail only</td>
+</tr>
+<tr>
+<td><strong>Highlights</strong></td>
+<td>The contrast in the highlights</td>
+</tr>
+<tr>
+<td><strong>Shadows</strong></td>
+<td>The contrast in the shadows</td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/panel-sharpen.webp"><img src="images/panel-sharpen.webp" alt="Sharpen and Local contrast" width="350" height="235" loading="lazy" decoding="async"></a><figcaption>Sharpen and Local contrast</figcaption></figure>
+<figure class="wide"><a href="images/local-contrast-effect.webp"><img src="images/local-contrast-effect.webp" alt="A concrete wall, without and with local contrast" width="1084" height="380" loading="lazy" decoding="async"></a><figcaption>Amount of local contrast</figcaption></figure>
+<h3 id="contrast-equalizer">Contrast equalizer</h3>
+<p><strong>Fine</strong>, <strong>Medium</strong>, <strong>Coarse</strong>, and <strong>Structure</strong> change contrast by size, from fine texture to large forms. Each one goes from -100 to +100.</p>
+<p><strong>Curve by scale</strong> has a bar for each of eight sizes, the finest at the left. Drag a bar, with <strong>Shift</strong> for finer moves. Double-click it to put it back to 0. The bars add to the four sliders.</p>
+<figure><a href="images/panel-equalizer.webp"><img src="images/panel-equalizer.webp" alt="The contrast equalizer with its bars" width="350" height="281" loading="lazy" decoding="async"></a><figcaption>The contrast equalizer, with Curve by scale open</figcaption></figure>
+<figure class="wide"><a href="images/equalizer-effect.webp"><img src="images/equalizer-effect.webp" alt="Wet stones with no change, with Fine raised, and with Structure raised" width="1088" height="280" loading="lazy" decoding="async"></a><figcaption>Fine and Structure</figcaption></figure>
+<h2 id="highlights">HIGHLIGHTS</h2>
+<p>Clipped data is lost. These controls shape the way into white.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Clip map (C)</strong></td>
+<td>On, off</td>
+<td>Off</td>
+<td>Marks with diagonal stripes what the sensor clipped</td>
+</tr>
+<tr>
+<td><strong>Shoulder</strong></td>
+<td>-100 to +100</td>
+<td>0</td>
+<td>Compresses the last 1.5 stops before clipping. Negative values open them</td>
+</tr>
+<tr>
+<td><strong>Edge inpaint</strong></td>
+<td>On, off</td>
+<td>Off</td>
+<td>Smooths the border of a clipped area</td>
+</tr>
+<tr>
+<td><strong>Radius</strong></td>
+<td>2 to 6 px</td>
+<td>4 px</td>
+<td>The reach of <strong>Edge inpaint</strong></td>
+</tr>
+<tr>
+<td><strong>Merge brackets</strong></td>
+<td></td>
+<td></td>
+<td>Merges 2 to 5 frames that you selected in the filmstrip. See <a href="merge.html">Merge</a></td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/panel-highlights.webp"><img src="images/panel-highlights.webp" alt="The HIGHLIGHTS panel" width="350" height="267" loading="lazy" decoding="async"></a><figcaption>HIGHLIGHTS</figcaption></figure>
+<figure class="wide"><a href="images/clip-map.webp"><img src="images/clip-map.webp" alt="The Develop tab with the clip map on" width="1280" height="820" loading="lazy" decoding="async"></a><figcaption>The clip map</figcaption></figure>
+<figure><a href="images/clip-zoom.webp"><img src="images/clip-zoom.webp" alt="White cloth with diagonal stripes" width="360" height="280" loading="lazy" decoding="async"></a><figcaption>The stripes of the clip map, enlarged</figcaption></figure>
+<figure class="wide"><a href="images/shoulder-effect.webp"><img src="images/shoulder-effect.webp" alt="White cloth with Shoulder at -70, 0, and +70" width="1088" height="280" loading="lazy" decoding="async"></a><figcaption>Shoulder</figcaption></figure>
+<p>To keep highlights, use the camera's highlight-weighted metering and negative exposure compensation, and lift the shadows in Monocard.</p>
+<h2 id="finish">FINISH</h2>
+<h3 id="grain">Grain</h3>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Amount</strong></td>
+<td>0 to 100%</td>
+<td>0%</td>
+<td>The strength, most in the midtones</td>
+</tr>
+<tr>
+<td><strong>Size</strong></td>
+<td>0 to 100%</td>
+<td>30%</td>
+<td>The size of the grain</td>
+</tr>
+<tr>
+<td><strong>Roughness</strong></td>
+<td>0 to 100%</td>
+<td>50%</td>
+<td>How rough the grain is</td>
+</tr>
+<tr>
+<td><strong>Link to ISO</strong></td>
+<td>On, off</td>
+<td>Off</td>
+<td>Makes the grain stronger at a high ISO</td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/panel-grain.webp"><img src="images/panel-grain.webp" alt="The Grain controls" width="350" height="191" loading="lazy" decoding="async"></a><figcaption>Grain</figcaption></figure>
+<figure class="wide"><a href="images/grain-effect.webp"><img src="images/grain-effect.webp" alt="A wall without grain, with fine grain, and with large grain" width="1088" height="280" loading="lazy" decoding="async"></a><figcaption>Amount and Size of the grain</figcaption></figure>
+<h3 id="toning">Toning</h3>
+<p>Toning is the only tool that makes color. A toned photo is <a href="export.html#grey-or-color">exported in color</a>. <strong>Toning</strong> sets the sliders below it to <strong>None</strong>, <strong>Selenium</strong>, <strong>Sepia</strong>, <strong>Platinum</strong>, <strong>Cyanotype</strong>, or <strong>Gold</strong>.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Overall hue</strong>, <strong>Overall</strong></td>
+<td>0 to 360°, 0 to 100%</td>
+<td>Hue and amount for all tones</td>
+</tr>
+<tr>
+<td><strong>Highlights hue</strong>, <strong>Highlights</strong></td>
+<td>0 to 360°, 0 to 100%</td>
+<td>Hue and amount for the highlights</td>
+</tr>
+<tr>
+<td><strong>Shadows hue</strong>, <strong>Shadows</strong></td>
+<td>0 to 360°, 0 to 100%</td>
+<td>Hue and amount for the shadows</td>
+</tr>
+<tr>
+<td><strong>Balance</strong></td>
+<td>-100 to +100</td>
+<td>Negative values spread the tint of the shadows, positive values that of the highlights</td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/panel-toning.webp"><img src="images/panel-toning.webp" alt="The Toning controls" width="350" height="317" loading="lazy" decoding="async"></a><figcaption>Toning</figcaption></figure>
+<figure class="wide"><a href="images/toning-effect.webp"><img src="images/toning-effect.webp" alt="A harbor untoned and under the five toning presets" width="1088" height="484" loading="lazy" decoding="async"></a><figcaption>The presets of Toning</figcaption></figure>
+<h3 id="vignette">Vignette</h3>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Amount</strong></td>
+<td>-100 to +100</td>
+<td>0</td>
+<td>Darkens or lightens the corners</td>
+</tr>
+<tr>
+<td><strong>Midpoint</strong></td>
+<td>0 to 100</td>
+<td>50</td>
+<td>How far from the center it begins</td>
+</tr>
+<tr>
+<td><strong>Feather</strong></td>
+<td>0 to 100</td>
+<td>50</td>
+<td>How soft it is</td>
+</tr>
+<tr>
+<td><strong>Roundness</strong></td>
+<td>0 to 100</td>
+<td>50</td>
+<td>0 is a rounded rectangle, 50 the shape of the frame, 100 a circle</td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/panel-vignette.webp"><img src="images/panel-vignette.webp" alt="The Vignette controls" width="350" height="149" loading="lazy" decoding="async"></a><figcaption>Vignette</figcaption></figure>
+<figure class="wide"><a href="images/vignette-effect.webp"><img src="images/vignette-effect.webp" alt="A beach with Amount at 0, -50, and +50" width="1088" height="240" loading="lazy" decoding="async"></a><figcaption>Amount of the vignette</figcaption></figure>
+<h3 id="solarize">Solarize</h3>
+<p><strong>Solarize</strong> reverses tones: <strong>Mid</strong> about the middle, <strong>Ends</strong> at both ends, or <strong>Shadows</strong> in the shadows. <strong>Off</strong> is the default. <strong>Fitted</strong> shows when a fitted look set a curve of its own. <strong>Strength</strong> goes from 0 to 100%.</p>
+<figure><a href="images/panel-solarize.webp"><img src="images/panel-solarize.webp" alt="The Solarize controls" width="350" height="109" loading="lazy" decoding="async"></a><figcaption>Solarize</figcaption></figure>
+<figure class="wide"><a href="images/solarize-effect.webp"><img src="images/solarize-effect.webp" alt="A staircase under the four choices of Solarize" width="866" height="320" loading="lazy" decoding="async"></a><figcaption>The choices of Solarize</figcaption></figure>
+<h3 id="view-and-proof">View and proof</h3>
+<p>These controls change the view, not the file.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Choices</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Surround</strong></td>
+<td><strong>18% grey</strong>, <strong>Black</strong>, <strong>White</strong></td>
+<td>Sets the tone around the picture</td>
+</tr>
+<tr>
+<td><strong>Picture</strong></td>
+<td><strong>After</strong>, <strong>Before</strong>, <strong>Split</strong></td>
+<td>The same as <strong>B</strong>, <strong>A</strong>, and <strong>S</strong></td>
+</tr>
+<tr>
+<td><strong>Paper proof</strong></td>
+<td><strong>Off</strong>, <strong>Matte</strong>, <strong>Baryta</strong>, <strong>Newsprint</strong></td>
+<td>Shows a <a href="export.html#paper-proof">paper proof</a></td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/panel-view.webp"><img src="images/panel-view.webp" alt="The View and proof controls" width="350" height="173" loading="lazy" decoding="async"></a><figcaption>View and proof</figcaption></figure>
+<p>In <strong>Split</strong>, drag the handle to move the line, or click it and use the arrow keys. Double-click it to center the line.</p>
+<figure class="wide"><a href="images/split.webp"><img src="images/split.webp" alt="A photo with the edit at the right of a line and the photo before it at the left" width="1280" height="820" loading="lazy" decoding="async"></a><figcaption>Split</figcaption></figure>
+<h3 id="crop-and-lens">Crop and lens</h3>
+<p><strong>Crop and straighten</strong> opens the <a href="crop-and-retouch.html">Crop</a> tab. <strong>Lens corrections</strong> shows or hides the <strong>LENS</strong> panel under FINISH:</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Maker</strong>, <strong>Find a lens</strong>, <strong>Lens</strong></td>
+<td>Choose the lens</td>
+</tr>
+<tr>
+<td><strong>Get lens profiles</strong></td>
+<td>Downloads the profiles. It shows when there are none</td>
+</tr>
+<tr>
+<td><strong>Profile</strong></td>
+<td>Uses the profile of the lens</td>
+</tr>
+<tr>
+<td><strong>Distortion</strong>, <strong>Vignetting</strong></td>
+<td>Turn each correction on or off</td>
+</tr>
+<tr>
+<td><strong>Manual</strong></td>
+<td>Corrects distortion by hand, -50 to +50</td>
+</tr>
+<tr>
+<td><strong>Auto scale</strong></td>
+<td>Enlarges the picture to hide empty edges</td>
+</tr>
+<tr>
+<td><strong>Scale</strong></td>
+<td>50 to 200%, with <strong>Auto scale</strong> off</td>
+</tr>
+</tbody>
+</table></div>
+    <nav class="guide-next" aria-label="Chapters"><a href="culling.html" rel="prev">← Cull</a><a href="looks.html" rel="next">Looks →</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

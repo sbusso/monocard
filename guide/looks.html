@@ -1,0 +1,300 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="A look sets several controls of the Develop tab at once. This chapter covers the bundled looks, your own looks, and the picture modes of a Ricoh GR.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/looks.html">
+<title>Looks: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html">Library</a></li>
+          <li><a href="import.html">Import</a></li>
+          <li><a href="culling.html">Cull</a></li>
+          <li><a href="develop.html">Develop</a></li>
+          <li><a href="looks.html" aria-current="page">Looks</a></li>
+          <li><a href="masks.html">Masks</a></li>
+          <li><a href="crop-and-retouch.html">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html">Presets, history, and versions</a></li>
+          <li><a href="merge.html">Merge photos</a></li>
+          <li><a href="export.html">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#put-a-look-on">Put a look on</a></li>
+        <li><a href="#save-your-own-look">Save your own look</a></li>
+        <li><a href="#the-cameras-picture-modes">The camera's picture modes</a></li>
+        <li><a href="#measure-the-sensors-noise">Measure the sensor's noise</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="looks">Looks</h1>
+<p>A look sets several controls of the <a href="develop.html">Develop</a> tab at once. This chapter covers the bundled looks, your own looks, and the picture modes of a Ricoh GR.</p>
+<h2 id="put-a-look-on">Put a look on</h2>
+<p>Click a tile in the <strong>LOOK</strong> panel. Each tile shows the open photo under that look. A look replaces the one before it. <strong>None</strong> takes it off and puts its controls back.</p>
+<p><strong>Strength</strong> fades the look, from 0 to 100%. The controls hold the values of the look, so you can change any of them afterward.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Look</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Street</strong></td>
+<td>Neutral, full tonal range, a gentle shoulder</td>
+</tr>
+<tr>
+<td><strong>Hard</strong></td>
+<td>Deep blacks, strong midtone contrast, fine grain</td>
+</tr>
+<tr>
+<td><strong>Soft Print</strong></td>
+<td>Lifted blacks, paper white at 0.94, low contrast</td>
+</tr>
+<tr>
+<td><strong>Night Push</strong></td>
+<td>Pushed film, for ISO 12800 and up, with denoise and grain</td>
+</tr>
+<tr>
+<td><strong>Solar 1</strong>, <strong>Solar 2</strong>, <strong>Solar 3</strong></td>
+<td>Tone reversed about the middle, at both ends, or in the shadows</td>
+</tr>
+<tr>
+<td><strong>Selenium</strong></td>
+<td>A cool tone in the shadows only</td>
+</tr>
+<tr>
+<td><strong>Warm Fibre</strong></td>
+<td>A warm paper tone across the picture</td>
+</tr>
+<tr>
+<td><strong>High Key</strong></td>
+<td>Bright, few true blacks</td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/looks.webp"><img src="images/looks.webp" alt="One photo under the ten looks" width="724" height="1216" loading="lazy" decoding="async"></a><figcaption>The ten looks on one photo</figcaption></figure>
+<p>Solar 1 to 3 are not matched to the camera's Solarized modes. Selenium and Warm Fibre tone the photo, so it <a href="export.html#grey-or-color">exports in color</a>.</p>
+<h2 id="save-your-own-look">Save your own look</h2>
+<ol>
+<li>Set the controls of the six panels.</li>
+<li>Click <strong>Save as look</strong>, type a name, and click <strong>Save</strong>.</li>
+</ol>
+<p>The look holds each control that is not at its default, <strong>Exposure</strong> too. It does not hold the crop, the lens, the masks, or the retouch. A name of your own that is in use is written over. A name of a bundled look is refused.</p>
+<p>With a look on, <strong>Export</strong> writes it as a file. For your own looks, there are also <strong>Rename</strong> and <strong>Delete</strong>. Photos that have a renamed or deleted look keep their values, but <strong>Strength</strong> no longer works on them. The open photo follows a rename.</p>
+<h3 id="import-a-look-or-a-lightroom-preset">Import a look or a Lightroom preset</h3>
+<p>Click <strong>Import look or preset</strong> and choose a file:</p>
+<ul>
+<li>A look (<code>.toml</code>).</li>
+<li>A monochrome Lightroom preset (<code>.xmp</code>). Monocard takes the basic tone, the curves, clarity, texture, grain, split toning, and vignette. A line under the button lists what it left out, such as color values and masks. The picture is not equal to Lightroom's.</li>
+</ul>
+<p>A name that is in use is refused.</p>
+<h3 id="the-file-of-a-look">The file of a look</h3>
+<p>A look is a text file in TOML format. Monocard reads this folder when it starts:</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>System</th>
+<th>Folder</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>macOS</td>
+<td><code>~/Library/Application Support/monocard/looks-mono</code></td>
+</tr>
+<tr>
+<td>Linux</td>
+<td><code>~/.config/monocard/looks-mono</code></td>
+</tr>
+<tr>
+<td>Windows</td>
+<td><code>%APPDATA%\monocard\looks-mono</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>A file names only the values that it sets:</p>
+<pre><code class="language-toml">name = &quot;My look&quot;
+description = &quot;Soft, with grain.&quot;
+
+[tools.display]
+contrast = 1.3
+white_ceiling = 0.95
+
+[tools.grain]
+amount = 0.25
+</code></pre>
+<p>To see the names of the sections and values, save a look and open its file. A control that shows a percentage is 0 to 1 in the file. A number out of range is set to the nearest end. A file with an unknown name is refused.</p>
+<h2 id="the-cameras-picture-modes">The camera's picture modes</h2>
+<p>A Ricoh GR IV Monochrome writes its picture mode in each file. Ricoh calls it Image Control. The mode changes the JPEG only, and not the DNG.</p>
+<p>Monocard can fit a look of a mode from pairs of a DNG and its JPEG. No such look comes with Monocard. Yours show under <strong>Camera modes</strong> in the LOOK panel when a raw of that camera is open, and not for a JPEG.</p>
+<h3 id="what-is-measured">What is measured</h3>
+<p>These results come from one camera and two photos of the test chart. Standard and Solid also use one scene. The error is the mean, in levels of 255.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Result</th>
+<th>Error</th>
+<th>What is missing</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Standard</td>
+<td>Good</td>
+<td>0.26</td>
+<td>The last stop before white</td>
+</tr>
+<tr>
+<td>Solid</td>
+<td>Good</td>
+<td>0.39</td>
+<td>The same</td>
+</tr>
+<tr>
+<td>Solarized 1</td>
+<td>Good</td>
+<td>0.41</td>
+<td>The same</td>
+</tr>
+<tr>
+<td>Solarized 2</td>
+<td>Good, close to the limit</td>
+<td>1.29</td>
+<td>The same</td>
+</tr>
+<tr>
+<td>Solarized 3</td>
+<td>Good</td>
+<td>0.66</td>
+<td>The same</td>
+</tr>
+<tr>
+<td>Soft</td>
+<td>Draft</td>
+<td>1.02</td>
+<td>Local contrast</td>
+</tr>
+<tr>
+<td>High Contrast</td>
+<td>Draft</td>
+<td>1.49</td>
+<td>Grain. The cause of the rest is not known</td>
+</tr>
+<tr>
+<td>HDR Tone</td>
+<td>Draft</td>
+<td>4.81</td>
+<td>It is local, so a curve is only near it</td>
+</tr>
+<tr>
+<td>Grainy</td>
+<td>Missing</td>
+<td></td>
+<td>Photos</td>
+</tr>
+</tbody>
+</table></div>
+<p>The fit finds the tone curve only. Grain, sharpening, vignette, and toning are not fitted.</p>
+<h3 id="fit-a-mode-from-your-photos">Fit a mode from your photos</h3>
+<p>On the camera, set every parameter of the modes to its default. Turn off Highlight Correction, Shadow Correction, noise reduction, and Peripheral Illumination Correction.</p>
+<ol>
+<li>Shoot RAW+JPEG in Standard, or develop one DNG in the camera in each mode. The Solarized modes need a Standard JPEG of the same DNG.</li>
+<li>Copy the DNGs and the JPEGs to a folder. Do not edit them.</li>
+<li>Open <strong>Settings...</strong> and choose <strong>Camera profiles</strong>.</li>
+<li>Under <strong>PHOTOS FOR THE FIT</strong>, click <strong>Add folder...</strong>. Subfolders are not read, and nothing is written in the folder.</li>
+<li>Click <strong>Fit all</strong>. A report says which files were left out, and why.</li>
+</ol>
+<p>The <strong>CAMERA MODES</strong> table shows each mode:</p>
+<figure><a href="images/camera-profiles.webp"><img src="images/camera-profiles.webp" alt="The Camera profiles page with the table of the modes" width="586" height="950" loading="lazy" decoding="async"></a><figcaption>Settings..., Camera profiles</figcaption></figure>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>State</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Good</strong></td>
+<td>Fitted, and the error is in the limits, in levels of 255: mean 1.5, 95% of the blocks at 4 or less, largest 8</td>
+</tr>
+<tr>
+<td><strong>Draft</strong></td>
+<td>Fitted, and the error is over the limits. You can use it, and its tile says draft</td>
+</tr>
+<tr>
+<td><strong>Adjusted</strong></td>
+<td>You changed the look by hand</td>
+</tr>
+<tr>
+<td><strong>Missing</strong></td>
+<td>There is no fit</td>
+</tr>
+</tbody>
+</table></div>
+<p>Click a row for <strong>Use</strong>, <strong>Adjust</strong>, <strong>Export</strong>, <strong>Delete</strong>, and <strong>Fit</strong> or <strong>Fit again</strong>. <strong>Adjust</strong> puts the look on the open photo. Change the controls, then save the look under the same name. <strong>Fit all</strong> does not write over an adjusted look.</p>
+<h3 id="the-test-chart">The test chart</h3>
+<p>Under <strong>TEST CHART</strong>, <strong>Test chart</strong> fills the screen with 40 grey steps over 10 stops. <strong>Save chart...</strong> saves it as a picture. The page says how to photograph it.</p>
+<h3 id="start-from-the-cameras-mode">Start from the camera's mode</h3>
+<p>In <strong>Settings...</strong>, <strong>Editing</strong>, turn on <strong>Start from the camera's mode</strong>. A raw with no edit then starts from the look that you fitted to its mode. The setting is off by default.</p>
+<h2 id="measure-the-sensors-noise">Measure the sensor's noise</h2>
+<p>Take flat frames, evenly lit, and dark frames, with the lens cap on, a few at each ISO. Dark frames of one second or longer are for hot pixels.</p>
+<ol>
+<li>In <strong>Settings...</strong>, <strong>Camera profiles</strong>, click <strong>Measure sensor noise...</strong>.</li>
+<li>Choose the folder of the frames.</li>
+</ol>
+<p>A report shows the result. Monocard keeps the profile in the <code>cameras</code> folder beside <code>looks-mono</code>, and uses it from the next develop. No look changes.</p>
+    <nav class="guide-next" aria-label="Chapters"><a href="develop.html" rel="prev">← Develop</a><a href="masks.html" rel="next">Masks →</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

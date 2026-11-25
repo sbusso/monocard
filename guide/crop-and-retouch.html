@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="Crop and straighten a photo, correct the lens, and remove dust and unwanted things. Crop and retouch are part of the edit and can be undone. They are never copied to other photos by Sync. On a Mac, use Cmd where this guide says Ctrl.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/crop-and-retouch.html">
+<title>Crop, lens, and retouch: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html">Library</a></li>
+          <li><a href="import.html">Import</a></li>
+          <li><a href="culling.html">Cull</a></li>
+          <li><a href="develop.html">Develop</a></li>
+          <li><a href="looks.html">Looks</a></li>
+          <li><a href="masks.html">Masks</a></li>
+          <li><a href="crop-and-retouch.html" aria-current="page">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html">Presets, history, and versions</a></li>
+          <li><a href="merge.html">Merge photos</a></li>
+          <li><a href="export.html">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#crop">Crop</a></li>
+        <li><a href="#lens-corrections">Lens corrections</a></li>
+        <li><a href="#retouch">Retouch</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="crop-lens-and-retouch">Crop, lens, and retouch</h1>
+<p>Crop and straighten a photo, correct the lens, and remove dust and unwanted things. Crop and retouch are part of the edit and can be undone. They are never copied to other photos by <a href="presets-and-history.html#copy-an-edit-to-other-photos">Sync</a>. On a Mac, use Cmd where this guide says Ctrl.</p>
+<h2 id="crop">Crop</h2>
+<ol>
+<li>Click the <strong>Crop</strong> tab, press <strong>R</strong>, or click <strong>Crop and straighten</strong> under FINISH.</li>
+<li>Under CROP, choose an <strong>Aspect</strong>, and then drag the edges or the corners of the crop.</li>
+<li>Click <strong>Done</strong>, or press <strong>R</strong> again.</li>
+</ol>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Draw</strong></td>
+<td>Draws a new crop on the photo</td>
+</tr>
+<tr>
+<td><strong>Aspect</strong></td>
+<td><strong>Free</strong>, <strong>Original</strong>, <strong>1:1</strong>, <strong>3:2</strong>, <strong>4:3</strong>, <strong>5:4</strong>, <strong>16:9</strong>, <strong>65:24</strong>, or <strong>Custom</strong></td>
+</tr>
+<tr>
+<td><strong>Custom</strong></td>
+<td>Your own aspect, shown when you choose it. Type the width and the height, as <code>7:5</code></td>
+</tr>
+<tr>
+<td><strong>Portrait</strong></td>
+<td>Turns the aspect upright</td>
+</tr>
+<tr>
+<td><strong>Guides</strong></td>
+<td><strong>Thirds</strong>, <strong>Golden ratio</strong>, <strong>Golden spiral</strong>, <strong>Diagonals</strong>, <strong>Triangles</strong>, or <strong>None</strong></td>
+</tr>
+</tbody>
+</table></div>
+<figure class="wide"><a href="images/crop.webp"><img src="images/crop.webp" alt="The Crop tab with the golden spiral over a photo of stairs" width="1280" height="820" loading="lazy" decoding="async"></a><figcaption>A crop, with the Golden spiral</figcaption></figure>
+<p>Press <strong>O</strong> for the next guide. Press <strong>Shift+O</strong> to turn the spiral or the triangles. The aspect of a new crop is in <a href="settings.html#editing">Settings</a>.</p>
+<figure><a href="images/panel-crop.webp"><img src="images/panel-crop.webp" alt="The Crop tab with CROP, ROTATE, and PERSPECTIVE" width="350" height="572" loading="lazy" decoding="async"></a><figcaption>The Crop tab, enlarged</figcaption></figure>
+<h3 id="angle">Angle</h3>
+<p>Under ROTATE:</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Level</strong></td>
+<td>Draw a line along something that must be level or upright</td>
+</tr>
+<tr>
+<td><strong>Auto level</strong></td>
+<td>Finds the angle from the photo</td>
+</tr>
+<tr>
+<td><strong>Rotate left</strong>, <strong>Rotate right</strong></td>
+<td>Turns the photo in the edit</td>
+</tr>
+<tr>
+<td><strong>Flip</strong>, <strong>Flip vertical</strong></td>
+<td>Mirrors the photo</td>
+</tr>
+<tr>
+<td><strong>Angle</strong></td>
+<td>Turns the photo by −45 to +45 degrees</td>
+</tr>
+<tr>
+<td><strong>Turn left</strong>, <strong>Turn right</strong></td>
+<td>Turns the photo as shown everywhere. It is not part of the edit</td>
+</tr>
+</tbody>
+</table></div>
+<h3 id="perspective">Perspective</h3>
+<p>Under PERSPECTIVE:</p>
+<ul>
+<li><strong>Verticals</strong> and <strong>Horizontals</strong>: draw two lines on the photo, along edges that must be upright or level.</li>
+<li><strong>Vertical</strong> and <strong>Horizontal</strong>: correct the perspective by hand, from −40 to +40 degrees.</li>
+<li><strong>Reset all</strong> removes the crop, the rotation, and the perspective.</li>
+</ul>
+<h2 id="lens-corrections">Lens corrections</h2>
+<p>Click <strong>Lens corrections</strong> under FINISH to show or hide the LENS section.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Maker</strong>, <strong>Find a lens</strong>, <strong>Lens</strong></td>
+<td>Chooses the lens, if Monocard does not find it</td>
+</tr>
+<tr>
+<td><strong>Get lens profiles</strong></td>
+<td>Downloads the lens database. It is shown when there is none</td>
+</tr>
+<tr>
+<td><strong>Profile</strong></td>
+<td>Turns the profile on or off</td>
+</tr>
+<tr>
+<td><strong>Distortion</strong>, <strong>Vignetting</strong></td>
+<td>The strength of each correction</td>
+</tr>
+<tr>
+<td><strong>Manual</strong></td>
+<td>Your own correction, from −50 to +50</td>
+</tr>
+<tr>
+<td><strong>Auto scale</strong></td>
+<td>Enlarges the photo to hide empty edges</td>
+</tr>
+<tr>
+<td><strong>Scale</strong></td>
+<td>Sets the size, from 50 to 200%</td>
+</tr>
+</tbody>
+</table></div>
+<p>If a DNG has its own distortion correction, Monocard uses that one and not the profile's. New edits start with lens corrections on. To change this, see <a href="settings.html#editing">Settings</a>. Monocard has no correction of chromatic aberration, because a monochrome photo has no color fringes to correct.</p>
+<h2 id="retouch">Retouch</h2>
+<p>Click the <strong>Retouch</strong> tab. Choose <strong>Heal</strong>, <strong>Clone</strong>, or <strong>Fill</strong>, and then work on the photo.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Heal</strong></td>
+<td>Copies another part of the photo and matches its brightness</td>
+</tr>
+<tr>
+<td><strong>Clone</strong></td>
+<td>Copies another part of the photo as it is</td>
+</tr>
+<tr>
+<td><strong>Fill</strong></td>
+<td>Removes a thing and makes a new picture in its place</td>
+</tr>
+</tbody>
+</table></div>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Start</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Size</strong></td>
+<td>0.2 to 30%</td>
+<td>2%</td>
+</tr>
+<tr>
+<td><strong>Feather</strong></td>
+<td>0 to 100%</td>
+<td>30%</td>
+</tr>
+<tr>
+<td><strong>Opacity</strong></td>
+<td>0 to 100%</td>
+<td>100%</td>
+</tr>
+</tbody>
+</table></div>
+<p>Use the wheel or <strong>[</strong> and <strong>]</strong> to change the size, <strong>Shift+[</strong> and <strong>Shift+]</strong> for the feather, and <strong>Ctrl+[</strong> and <strong>Ctrl+]</strong> for the opacity. Hold <strong>Space</strong> and drag, or <strong>Shift</strong> and drag, to move the photo.</p>
+<p>The list in the section shows each repair, such as "Heal 1". Click one to choose it. Click its bin, <strong>Remove</strong>, to delete it.</p>
+<figure><a href="images/panel-retouch.webp"><img src="images/panel-retouch.webp" alt="RETOUCH with two repairs in its list" width="350" height="152" loading="lazy" decoding="async"></a><figcaption>RETOUCH, with two repairs</figcaption></figure>
+<p>For <strong>Heal</strong> and <strong>Clone</strong>, Monocard chooses the part to copy from. To change it, choose the repair in the list with the tool in hand. Two pins show the repair and its source. Drag them.</p>
+<h3 id="fill">Fill</h3>
+<ol>
+<li>Choose <strong>Fill</strong> and one of the three kinds.</li>
+<li>Paint over the thing to remove, in one or more strokes. Strokes that touch become one fill.</li>
+<li>Press <strong>Enter</strong> or click <strong>Generate</strong>. <strong>Esc</strong> drops the strokes.</li>
+</ol>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Kind</th>
+<th>What it does</th>
+<th>Download</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Patch</strong></td>
+<td>Fills from the picture around it</td>
+<td>About 210 MB</td>
+</tr>
+<tr>
+<td><strong>Fast</strong></td>
+<td>Makes a new picture in four steps. It is rougher on large areas</td>
+<td>5.5 GB, and 390 MB more</td>
+</tr>
+<tr>
+<td><strong>Best</strong></td>
+<td>Makes a new picture in full. It takes longer</td>
+<td>5.5 GB</td>
+</tr>
+</tbody>
+</table></div>
+<p>Monocard asks before it downloads a model and shows its license. After that, everything runs on your computer and no photo is sent.</p>
+<p><strong>Fast</strong> and <strong>Best</strong> need a graphics card that Monocard can use, with at least 6.3 GiB of memory if it is a separate card. Without one, they are not available. On a fill that <strong>Fast</strong> or <strong>Best</strong> made, <strong>Another</strong> makes a different result.</p>
+<p>Fill works on monochrome photos. The result is grey.</p>
+    <nav class="guide-next" aria-label="Chapters"><a href="masks.html" rel="prev">← Masks</a><a href="presets-and-history.html" rel="next">Presets, history, and versions →</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

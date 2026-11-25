@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="Monocard merges some photos of one scene into one new DNG. The new DNG is monochrome, is listed like your other photos, and opens for editing. The source photos are not changed. On a Mac, use Cmd where this guide says Ctrl.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/merge.html">
+<title>Merge photos: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html">Library</a></li>
+          <li><a href="import.html">Import</a></li>
+          <li><a href="culling.html">Cull</a></li>
+          <li><a href="develop.html">Develop</a></li>
+          <li><a href="looks.html">Looks</a></li>
+          <li><a href="masks.html">Masks</a></li>
+          <li><a href="crop-and-retouch.html">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html">Presets, history, and versions</a></li>
+          <li><a href="merge.html" aria-current="page">Merge photos</a></li>
+          <li><a href="export.html">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#what-you-can-merge">What you can merge</a></li>
+        <li><a href="#merge-the-selected-photos">Merge the selected photos</a></li>
+        <li><a href="#merge-to-hdr">Merge to HDR</a></li>
+        <li><a href="#merge-to-panorama">Merge to Panorama</a></li>
+        <li><a href="#merge-to-focus-stack">Merge to Focus stack</a></li>
+        <li><a href="#the-new-dng">The new DNG</a></li>
+        <li><a href="#merge-from-the-command-line">Merge from the command line</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="merge-photos">Merge photos</h1>
+<p>Monocard merges some photos of one scene into one new DNG. The new DNG is monochrome, is listed like your other photos, and opens for editing. The source photos are not changed. On a Mac, use Cmd where this guide says Ctrl.</p>
+<h2 id="what-you-can-merge">What you can merge</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Photos to take</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Merge to HDR</strong></td>
+<td>One view, with different exposures</td>
+<td>Detail in the bright and the dark parts</td>
+</tr>
+<tr>
+<td><strong>Merge to Panorama</strong></td>
+<td>Views that overlap</td>
+<td>One wide picture</td>
+</tr>
+<tr>
+<td><strong>Merge to Focus stack</strong></td>
+<td>One view, with the focus at different distances</td>
+<td>One picture that is sharp from near to far</td>
+</tr>
+</tbody>
+</table></div>
+<p>All three take DNG files of a monochrome sensor. A JPEG, PNG, or TIFF is refused, because it is not a raw file.</p>
+<p>The panorama and the focus stack have had little testing with monochrome photos.</p>
+<h2 id="merge-the-selected-photos">Merge the selected photos</h2>
+<ol>
+<li>Select two or more photos in the grid or the filmstrip.</li>
+<li>Right-click one and choose a merge command.</li>
+<li>Wait. The status line shows the progress.</li>
+</ol>
+<p>At the end, the status line says "merged N frames into NAME". If the merge is refused, it says "not merged" and gives the reason.</p>
+<p>You can also click <strong>Merge brackets</strong> under HIGHLIGHTS in the Develop tab. It merges the two to five photos that you selected in the filmstrip to HDR.</p>
+<h2 id="merge-to-hdr">Merge to HDR</h2>
+<p>Take from two to five photos with different shutter speeds and the same aperture and focus. Use a tripod if you can. Small moves between the photos are corrected.</p>
+<ul>
+<li>The photo in the middle of the exposures is the base. Its edit is used for the new DNG, with the exposure at 0.</li>
+<li>The sensor data of the photos is combined, before the tone controls. Brighter photos give the shadows, and darker photos give the highlights.</li>
+<li>A thing that moves between the photos is taken from one of them.</li>
+</ul>
+<p>The merge is refused if:</p>
+<ul>
+<li>The photos are of two cameras or two sizes.</li>
+<li>A photo does not state its exposure.</li>
+<li>The exposures are too far apart.</li>
+</ul>
+<p>A merge of more than five photos works in a different way, and has had less testing.</p>
+<h2 id="merge-to-panorama">Merge to Panorama</h2>
+<p>Take the photos in order, from one side to the other, with one focal length. Let each one overlap the next one.</p>
+<ul>
+<li>The distortion of the lens is corrected before the merge, if there is a <a href="crop-and-retouch.html#lens-corrections">lens profile</a>.</li>
+<li>The result is cut to the largest rectangle that has no empty edge.</li>
+<li>The result has at most 100 megapixels.</li>
+<li>The photo in the middle of the turn gives the view and the edit. Its exposure, lens corrections, crop, retouch, and masks are left out.</li>
+</ul>
+<h2 id="merge-to-focus-stack">Merge to Focus stack</h2>
+<p>Keep the camera still, and change only the focus from one photo to the next. Select the photos in focus order, of one camera and one size.</p>
+<ul>
+<li>The photo in the middle gives the position and the edit, with its exposure.</li>
+<li>The other photos are aligned to it. A photo that cannot be aligned is left out, and the log says which and why.</li>
+<li>Each part of the picture comes from the photo in which it is sharpest.</li>
+<li>If there is not enough free memory, the merge is refused. Close other programs and try again.</li>
+</ul>
+<h2 id="the-new-dng">The new DNG</h2>
+<p>The new file is beside the first of the photos.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Merge</th>
+<th>Name</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>HDR</td>
+<td><code>IMG_0001-HDR.dng</code></td>
+</tr>
+<tr>
+<td>Panorama</td>
+<td><code>IMG_0001-pano.dng</code></td>
+</tr>
+<tr>
+<td>Focus stack</td>
+<td><code>IMG_0001 stack.dng</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>If the name is taken, a number is added. A file is never written over.</p>
+<p>If the photos are in one folder, and you are not in a collection, the new photo and its sources become a <a href="library.html#stacks">stack</a> with the new photo on top.</p>
+<h2 id="merge-from-the-command-line">Merge from the command line</h2>
+<p>The <code>monocard</code> program has the same merges, with more options. See <a href="command-line.html#merge-and-stack">Command line</a>.</p>
+    <nav class="guide-next" aria-label="Chapters"><a href="presets-and-history.html" rel="prev">← Presets, history, and versions</a><a href="export.html" rel="next">Export →</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

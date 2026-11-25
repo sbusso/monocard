@@ -1,17 +1,12 @@
-// Monocard landing page. No dependency, no request.
+// Monocard landing page. No dependency. The only requests are for the views
+// of the first picture, when one is asked for.
 (function () {
   'use strict';
   var doc = document.documentElement;
   doc.classList.add('js');
 
-  // The source address is written once, on #repo in index.html.
-  var repo = document.getElementById('repo');
-  if (repo) {
-    document.querySelectorAll('[data-repo]').forEach(function (a) { a.href = repo.href; });
-  }
-
-  // The download buttons are for the Mac as they are written. On another
-  // system they take its row of the download list: name, logo, address, note.
+  // The download button is for the Mac as it is written. On another
+  // system it takes the card in Download: name, logo, address, note.
   function system() {
     var data = navigator.userAgentData;
     var p = (data && data.platform) || navigator.platform || '';
@@ -30,12 +25,44 @@
       if (row) { logo.firstElementChild.setAttribute('href', '#os-' + os); } else { logo.remove(); }
     });
     document.querySelectorAll('[data-note]').forEach(function (n) {
-      n.textContent = row ? row.querySelector('dd span').textContent + ' New and little tested.'
+      n.textContent = row ? row.querySelector('header p').textContent + '. ' + row.querySelector('[data-needs]').textContent + ' New and little tested.'
         : 'For a computer with macOS, Linux or Windows.';
     });
     document.querySelectorAll('[data-others]').forEach(function (a) {
       if (!row) { a.parentNode.remove(); return; }
       a.textContent = os === 'linux' ? 'macOS and Windows' : 'macOS and Linux';
+    });
+    document.querySelectorAll('.get-card').forEach(function (c) {
+      c.querySelector('.btn').classList.toggle('btn-main', c === row);
+    });
+  }
+
+  // The keys of the Develop tab, on the first picture. They only change which
+  // picture shows, and work while it is in view. S, Z, and C turn off again.
+  var keys = document.querySelector('.keys');
+  if (keys) {
+    var shot = keys.closest('figure');
+    var shotImg = shot.querySelector('img');
+    var buttons = Array.prototype.slice.call(keys.querySelectorAll('button'));
+    var view = 'develop';
+    var show = function (next) {
+      if (next === view) { next = next === 'before' ? 'before' : 'develop'; }
+      view = next;
+      buttons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.view === view)); });
+      var name = 'assets/app-' + (view === 'develop' ? '' : 'view-') + view;
+      var ready = new Image();
+      ready.sizes = shotImg.sizes;
+      ready.srcset = name + '-1200.webp 1200w, ' + name + '-2400.webp 2400w';
+      ready.decode().then(function () {
+        if (view === next) { shotImg.srcset = ready.srcset; shotImg.src = name + '-2400.webp'; }
+      }, function () {});
+    };
+    buttons.forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.view); }); });
+    document.addEventListener('keydown', function (e) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.repeat || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) { return; }
+      var r = shot.getBoundingClientRect();
+      var b = buttons.find(function (x) { return x.querySelector('kbd').textContent.toLowerCase() === e.key.toLowerCase(); });
+      if (b && r.bottom > 0 && r.top < window.innerHeight) { show(b.dataset.view); }
     });
   }
 

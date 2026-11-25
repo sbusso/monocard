@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="The Library shows your photos as a grid. This chapter describes how to open folders, filter and sort photos, add keywords, and use collections, stacks, and archives. On a Mac, use Cmd where this guide says Ctrl.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/library.html">
+<title>Library: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html" aria-current="page">Library</a></li>
+          <li><a href="import.html">Import</a></li>
+          <li><a href="culling.html">Cull</a></li>
+          <li><a href="develop.html">Develop</a></li>
+          <li><a href="looks.html">Looks</a></li>
+          <li><a href="masks.html">Masks</a></li>
+          <li><a href="crop-and-retouch.html">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html">Presets, history, and versions</a></li>
+          <li><a href="merge.html">Merge photos</a></li>
+          <li><a href="export.html">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#which-photos-are-listed">Which photos are listed</a></li>
+        <li><a href="#open-a-folder">Open a folder</a></li>
+        <li><a href="#the-grid">The grid</a></li>
+        <li><a href="#roots">Roots</a></li>
+        <li><a href="#the-filter-bar">The filter bar</a></li>
+        <li><a href="#sort">Sort</a></li>
+        <li><a href="#keywords-and-title">Keywords and title</a></li>
+        <li><a href="#collections">Collections</a></li>
+        <li><a href="#stacks">Stacks</a></li>
+        <li><a href="#archives">Archives</a></li>
+        <li><a href="#where-your-edits-are-kept">Where your edits are kept</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="library">Library</h1>
+<p>The Library shows your photos as a grid. This chapter describes how to open folders, filter and sort photos, add keywords, and use collections, stacks, and archives. On a Mac, use Cmd where this guide says Ctrl.</p>
+<h2 id="which-photos-are-listed">Which photos are listed</h2>
+<p>Monocard lists monochrome photos only. Color photos are not listed, counted, or opened, and their files stay as they are. When a folder has no monochrome photos, the status line says so. For the exact rule, see <a href="./#which-photos-are-listed">Which photos are listed</a>.</p>
+<p>A DNG and a JPEG with the same name in the same folder are one photo. The photo has the mark <strong>+JPEG</strong>, and one rating, flag, label, and set of keywords. To list the JPEG as its own photo, turn on <strong>Treat a JPEG beside its raw as a separate frame</strong> in <a href="settings.html#library">Settings</a>.</p>
+<h2 id="open-a-folder">Open a folder</h2>
+<p>Click <strong>Open folder...</strong> at the top of the left pane, or press <strong>Ctrl+O</strong>. The name of the open folder is below the button. Click the name for the last ten folders.</p>
+<p><strong>Library</strong> and <strong>Loupe</strong> at the top of the left pane switch between the grid and one photo.</p>
+<p><strong>G</strong> does the same. <strong>E</strong>, <strong>Enter</strong>, or a double-click opens the photo in the Loupe, and <strong>D</strong> opens it in Develop. For all the keys, see <a href="keys.html">Keys</a>.</p>
+<h2 id="the-grid">The grid</h2>
+<figure class="wide"><a href="images/library.webp"><img src="images/library.webp" alt="The Library: the lists at the left, the filter bar at the top, and a grid of photos" width="1280" height="820" loading="lazy" decoding="async"></a><figcaption>The Library, with the filter bar on</figcaption></figure>
+<ul>
+<li>Use the arrow keys, <strong>Home</strong>, and <strong>End</strong> to move.</li>
+<li>To select more photos, use Ctrl+click or Shift+click. <strong>Ctrl+A</strong> selects all the photos that are shown.</li>
+<li>To change the size of the tiles, drag <strong>Tile size</strong>, press <strong>+</strong> or <strong>−</strong>, or use Ctrl with the wheel. The size is from 96 to 512 pixels.</li>
+<li>Right-click a photo for its menu.</li>
+</ul>
+<p>A photo with an edit shows the edit and not the camera's picture. These marks are at the top right of a thumbnail:</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Mark</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Pencil</td>
+<td>The photo has an edit</td>
+</tr>
+<tr>
+<td>Picture with an arrow</td>
+<td>The photo was exported</td>
+</tr>
+<tr>
+<td>Bookmark</td>
+<td>The photo is in a collection</td>
+</tr>
+<tr>
+<td><strong>+JPEG</strong></td>
+<td>The camera's JPEG is with the raw</td>
+</tr>
+</tbody>
+</table></div>
+<figure class="wide"><a href="images/library-marks.webp"><img src="images/library-marks.webp" alt="Four tiles of the grid, enlarged" width="945" height="185" loading="lazy" decoding="async"></a><figcaption>Marks on the tiles, enlarged: a blue label, a bookmark, a version named Dark, and a stack of two</figcaption></figure>
+<p>A <a href="presets-and-history.html#versions">version</a> has its own tile after the photo. A file that cannot be read says <strong>Unreadable</strong>.</p>
+<h2 id="roots">Roots</h2>
+<figure><a href="images/library-pane.webp"><img src="images/library-pane.webp" alt="The left pane with ROOTS, FOLDERS, COLLECTIONS, EXPORT QUEUE, and METADATA" width="226" height="740" loading="lazy" decoding="async"></a><figcaption>The left pane of the Library</figcaption></figure>
+<p>A root is a folder that you add to your library. Monocard keeps an index of the photos in it, so that you can filter all your roots together. The roots are under <strong>ROOTS</strong> in the left pane of the grid.</p>
+<ul>
+<li>To add a root, click <strong>+ Add a root...</strong>. To add the open folder, click <strong>+ Add this folder</strong>.</li>
+<li><strong>All roots</strong> lists every photo in your library.</li>
+<li>Right-click a root for <strong>Rename...</strong>, <strong>Use as an archive</strong>, and <strong>Remove from library</strong>. These do not change the folder on the disk.</li>
+</ul>
+<p><strong>FOLDERS</strong> shows the folders inside the open root. Turn on <strong>With subfolders</strong> to show a folder with everything under it. When it is off, the folders inside the open folder are tiles above the photos.</p>
+<p>A folder on your own disk is watched, and new photos show at once. A folder on a network is read again every 10 minutes. You can change the time in Settings.</p>
+<p>When the disk of a root is not connected, the root says <strong>offline</strong>. You can still browse, filter, and cull its photos from the local previews.</p>
+<h2 id="the-filter-bar">The filter bar</h2>
+<p>The filter bar is in the header of the grid and in the <strong>CULLING</strong> section. Press <strong>Ctrl+F</strong> or <strong>/</strong> to type in it.</p>
+<figure class="wide"><a href="images/filter-bar.webp"><img src="images/filter-bar.webp" alt="The filter bar with rating&gt;=4 in its text field" width="1050" height="141" loading="lazy" decoding="async"></a><figcaption>The filter bar, enlarged, with a term typed</figcaption></figure>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Stars</strong></td>
+<td>Photos with that rating. Click <strong>or more</strong> to change it to <strong>exactly</strong></td>
+</tr>
+<tr>
+<td><strong>Flag</strong></td>
+<td><strong>Unflagged</strong>, <strong>Pick</strong>, or <strong>Reject</strong></td>
+</tr>
+<tr>
+<td><strong>Label</strong></td>
+<td>One of the five colors, or no label</td>
+</tr>
+<tr>
+<td><strong>Camera</strong>, <strong>Lens</strong>, <strong>Day</strong></td>
+<td>Photos with that value</td>
+</tr>
+<tr>
+<td><strong>Kind</strong></td>
+<td><strong>Raw</strong>, <strong>JPEG</strong>, <strong>PNG</strong>, or <strong>TIFF</strong></td>
+</tr>
+<tr>
+<td><strong>Keyword</strong></td>
+<td>Photos with that keyword</td>
+</tr>
+<tr>
+<td><strong>ISO</strong>, <strong>Focal</strong></td>
+<td>Photos in a range. Drag the two ends</td>
+</tr>
+</tbody>
+</table></div>
+<p>Chips of one group add to each other. Chips of different groups narrow each other. <strong>Camera</strong>, <strong>Lens</strong>, <strong>Day</strong>, <strong>ISO</strong>, and <strong>Focal</strong> show after Monocard has indexed the folder. <strong>Clear</strong> shows all the photos again.</p>
+<p>Words in the text field find photos by file name or keyword. You can also type terms:</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>camera:</code>, <code>lens:</code>, <code>name:</code>, <code>folder:</code>, <code>keyword:</code></td>
+<td><code>camera:GR</code></td>
+</tr>
+<tr>
+<td><code>iso</code>, <code>focal</code>, <code>aperture</code>, <code>shutter</code>, <code>focus</code></td>
+<td><code>iso&gt;=3200</code></td>
+</tr>
+<tr>
+<td><code>rating</code></td>
+<td><code>rating&gt;=3</code></td>
+</tr>
+<tr>
+<td><code>date</code></td>
+<td><code>date:2026-09</code></td>
+</tr>
+<tr>
+<td><code>flag</code></td>
+<td><code>flag:pick</code></td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td><code>label:none</code></td>
+</tr>
+<tr>
+<td><code>kind</code></td>
+<td><code>kind:raw</code></td>
+</tr>
+<tr>
+<td><code>has:versions</code></td>
+<td>Photos that have a version</td>
+</tr>
+</tbody>
+</table></div>
+<p>Use <code>=</code>, <code>!=</code>, <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, and <code>&gt;=</code> for numbers and dates. Put a value that has a space in double quotes.</p>
+<h2 id="sort">Sort</h2>
+<p>Click the arrows at the end of the filter bar. You can sort by <strong>Capture time</strong>, <strong>Name</strong>, <strong>Rating</strong>, <strong>Date edited</strong>, or <strong>Focus</strong>, in either direction. Focus is a score of how sharp the sharpest part of the photo is.</p>
+<h2 id="keywords-and-title">Keywords and title</h2>
+<p>The <strong>METADATA</strong> section has <strong>Title</strong> and <strong>Keywords</strong>. It is in the left pane of the grid, and below the <strong>CULLING</strong> section in Cull.</p>
+<ul>
+<li>To add a keyword, type it and press <strong>Enter</strong> or a comma. To remove it, click the <strong>x</strong> on its chip.</li>
+<li>To keep a title, press <strong>Enter</strong>.</li>
+</ul>
+<p>Both change all the selected photos. A keyword that only some of them have is dimmed. Click it to add it to the others.</p>
+<h2 id="collections">Collections</h2>
+<p>A collection is a list of photos from any folders, in an order that you choose. The photos stay where they are. Collections are under <strong>COLLECTIONS</strong> in the left pane of the grid.</p>
+<ul>
+<li>To make one, click <strong>+ New collection...</strong>.</li>
+<li>To add photos, press <strong>B</strong>, or right-click and choose <strong>Add to collection</strong>. Press <strong>B</strong> again to take them out. On the Develop tab with a monochrome photo, <strong>B</strong> shows the photo after the edit instead.</li>
+<li>To change the order, drag photos in the grid.</li>
+<li>Right-click a collection for <strong>Rename...</strong>, <strong>Capture order</strong>, and <strong>Delete...</strong>. Delete removes the collection and not its photos.</li>
+</ul>
+<p>A smart collection is a saved filter. Set the filter bar, click <strong>Save...</strong>, and type a name. Its photos change as your ratings change.</p>
+<h2 id="stacks">Stacks</h2>
+<p>A stack puts photos of one folder behind one photo.</p>
+<ul>
+<li>To make one, select photos and press <strong>Ctrl+G</strong>. To undo it, press <strong>Ctrl+Shift+G</strong>.</li>
+<li>To open or close it, press <strong>S</strong> in the grid, or click its badge.</li>
+<li>To put a photo on top, press <strong>Shift+S</strong> in the grid, or choose <strong>Set as top of stack</strong> in the menu.</li>
+<li><strong>Stack bursts</strong> in the menu finds bursts and stacks each one, with its sharpest photo on top.</li>
+</ul>
+<p>What you do to a closed stack, such as a rating or an export, is done to its top photo only.</p>
+<h2 id="archives">Archives</h2>
+<p>An archive is a root that holds the long-term copy of your photos, for example on a network drive. Right-click a root and choose <strong>Use as an archive</strong>.</p>
+<ul>
+<li><strong>Back up</strong> copies the photos that are not on the archive, with their edits. Click the cloud button in the header of the grid, or right-click a photo and choose <strong>Back up to</strong> and the name of the archive.</li>
+<li><strong>Bring back</strong> copies photos from the archive to another root.</li>
+</ul>
+<p>Each copy is checked, and a picture on the archive is never written over.</p>
+<h2 id="where-your-edits-are-kept">Where your edits are kept</h2>
+<p>The edit, rating, flag, label, and keywords of a photo are in an <code>.mcd</code> file beside it. See <a href="./#where-your-edits-are-kept">Where your edits are kept</a>. Monocard can also write an <code>.xmp</code> file for other programs. See <a href="settings.html#library">Sidecars</a>.</p>
+    <nav class="guide-next" aria-label="Chapters"><a href="./" rel="prev">← Start</a><a href="import.html" rel="next">Import →</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

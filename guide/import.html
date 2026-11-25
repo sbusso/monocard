@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="Monocard copies photos from a memory card, from a folder, or from a Ricoh GR IV Monochrome on a USB cable. It writes nothing on the card or the camera, and it deletes nothing there. On a Mac, use Cmd where this guide says Ctrl.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/import.html">
+<title>Import: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html">Library</a></li>
+          <li><a href="import.html" aria-current="page">Import</a></li>
+          <li><a href="culling.html">Cull</a></li>
+          <li><a href="develop.html">Develop</a></li>
+          <li><a href="looks.html">Looks</a></li>
+          <li><a href="masks.html">Masks</a></li>
+          <li><a href="crop-and-retouch.html">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html">Presets, history, and versions</a></li>
+          <li><a href="merge.html">Merge photos</a></li>
+          <li><a href="export.html">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#import-from-a-card-or-folder">Import from a card or folder</a></li>
+        <li><a href="#add-a-folder-in-place">Add a folder in place</a></li>
+        <li><a href="#the-camera-window">The camera window</a></li>
+        <li><a href="#a-lightroom-catalog">A Lightroom catalog</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="import">Import</h1>
+<p>Monocard copies photos from a memory card, from a folder, or from a Ricoh GR IV Monochrome on a USB cable. It writes nothing on the card or the camera, and it deletes nothing there. On a Mac, use Cmd where this guide says Ctrl.</p>
+<h2 id="import-from-a-card-or-folder">Import from a card or folder</h2>
+<ol>
+<li>In the grid, click <strong>Import...</strong> in the left pane and choose <strong>From a card or folder...</strong>, or press <strong>Ctrl+Shift+I</strong>.</li>
+<li>Check <strong>From</strong>. Monocard fills it in when it finds a card. To choose another folder, click <strong>Choose...</strong>.</li>
+<li>Set the other rows.</li>
+<li>Click the import button, for example <strong>Import 214 frames</strong>.</li>
+</ol>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Row</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>To</strong></td>
+<td>The folder that the photos go into</td>
+</tr>
+<tr>
+<td><strong>Folders</strong></td>
+<td>Folders to make inside <strong>To</strong>, as a pattern. Leave it empty for none</td>
+</tr>
+<tr>
+<td><strong>Name</strong></td>
+<td>The new file name, as a pattern. <code>{name}</code> keeps the camera's name</td>
+</tr>
+<tr>
+<td><strong>Preset</strong></td>
+<td>A preset to apply to each imported photo</td>
+</tr>
+<tr>
+<td><strong>Backup</strong></td>
+<td>A second folder that gets a copy of every file. <strong>Clear</strong> takes it off</td>
+</tr>
+<tr>
+<td><strong>Verify against the card</strong></td>
+<td>Compares photos already in <strong>To</strong> with the card, byte for byte</td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/import.webp"><img src="images/import.webp" alt="The Import sheet" width="518" height="549" loading="lazy" decoding="async"></a><figcaption>The Import sheet</figcaption></figure>
+<p>The line below <strong>Name</strong> shows where the first photo goes.</p>
+<h3 id="what-is-copied">What is copied</h3>
+<ul>
+<li>DNG files of a monochrome sensor, and monochrome JPEG, PNG, and TIFF files.</li>
+<li>The camera's JPEG of a raw, with the raw's new name.</li>
+<li>An <code>.xmp</code> file, with the photo that it belongs to.</li>
+</ul>
+<p>Color photos, videos, and other files stay on the card.</p>
+<h3 id="patterns">Patterns</h3>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Token</th>
+<th>Becomes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>{date}</code></td>
+<td>The day of the photo, such as <code>2026-09-24</code></td>
+</tr>
+<tr>
+<td><code>{yyyy}</code> <code>{mm}</code> <code>{dd}</code></td>
+<td>The year, the month, and the day</td>
+</tr>
+<tr>
+<td><code>{name}</code></td>
+<td>The camera's file name, without its extension</td>
+</tr>
+<tr>
+<td><code>{camera}</code></td>
+<td>The camera model</td>
+</tr>
+<tr>
+<td><code>{seq}</code></td>
+<td>The number of the photo in this import, such as <code>0001</code></td>
+</tr>
+<tr>
+<td><code>{folder}</code></td>
+<td>The photo's folder under <strong>From</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>A <code>/</code> in <strong>Folders</strong> makes a folder in a folder, such as <code>{yyyy}/{date}</code>.</p>
+<h3 id="checks">Checks</h3>
+<p>Each copy is read back and compared with what was read from the card. If a file fails, the import stops and names it. Run the import again to continue.</p>
+<p>A photo that you imported before is not copied again. A file is never written over: a new file with a name that is taken gets <code>-1</code> after it.</p>
+<p>To stop an import, click <strong>Stop import</strong> in the left pane. The photo in hand is finished first.</p>
+<h2 id="add-a-folder-in-place">Add a folder in place</h2>
+<p>To add a folder to your library without a copy, choose <strong>Add in place</strong> at the top of the sheet. The folder becomes a <a href="library.html#roots">root</a>.</p>
+<h2 id="the-camera-window">The camera window</h2>
+<p>On a Mac, Monocard can import from a Ricoh GR IV Monochrome on a USB cable. Other cameras are not offered. This import has had little testing.</p>
+<ol>
+<li>Connect the camera with a USB cable and turn it on. The camera window opens.</li>
+<li>Wait for the list. It can grow for some seconds. If photos are missing, click <strong>Read again</strong>.</li>
+<li>Set <strong>To</strong>, <strong>Folders</strong>, <strong>Name</strong>, <strong>Preset</strong>, and <strong>Backup</strong>, as for a card.</li>
+<li>Select photos and click <strong>Import selected</strong>, or click <strong>Import all</strong>.</li>
+</ol>
+<figure class="wide"><a href="images/camera-window.webp"><img src="images/camera-window.webp" alt="The camera window with rows of photos by day" width="1024" height="640" loading="lazy" decoding="async"></a><figcaption>The camera window</figcaption></figure>
+<p><strong>Import all</strong> leaves out the photos that are marked <strong>Imported</strong> and the ones that the window does not show.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>In the window</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Show</strong></td>
+<td><strong>All</strong> photos, or <strong>Not imported</strong></td>
+</tr>
+<tr>
+<td><strong>Sort</strong>, <strong>Tile size</strong></td>
+<td>The order and the size of the pictures</td>
+</tr>
+<tr>
+<td>Click, Cmd+click, Shift+click, Cmd+A</td>
+<td>Select one photo, add or remove one, select a range, select all</td>
+</tr>
+<tr>
+<td>Arrow keys</td>
+<td>Go to another photo</td>
+</tr>
+<tr>
+<td><strong>Space</strong></td>
+<td>Selects the photo, or clears it</td>
+</tr>
+<tr>
+<td>Double-click, or <strong>Return</strong></td>
+<td>Shows a larger picture. The arrow keys go to the next one</td>
+</tr>
+<tr>
+<td><strong>Esc</strong></td>
+<td>Closes the larger picture, then clears the selection, then closes the window</td>
+</tr>
+</tbody>
+</table></div>
+<p>The window opens by itself one time for each connection, but not over a sheet or a menu, or during an import or an export. To open it yourself, click <strong>Import...</strong> and choose <strong>From the camera...</strong>. To keep it closed, turn off <strong>Open the camera window when a camera is connected</strong> in <a href="settings.html#library">Settings</a>.</p>
+<h3 id="what-is-imported-from-the-camera">What is imported from the camera</h3>
+<ul>
+<li>Only DNG and JPEG files are offered. Other files stay on the camera, and the window counts them.</li>
+<li>A DNG and a JPEG with the same name in the same folder are one photo.</li>
+</ul>
+<p>The photos are copied to a temporary folder first, so the disk needs room for them twice. Each temporary copy must have the size that the camera gives. The import is checked against that copy and not against the camera.</p>
+<p>If you click <strong>Stop</strong> during the copy from the camera, or disconnect the camera, nothing is imported.</p>
+<p>Monocard does not take pictures with the camera, change its settings, delete its photos, or connect to it by Wi-Fi.</p>
+<h2 id="a-lightroom-catalog">A Lightroom catalog</h2>
+<p><strong>Import...</strong> &gt; <strong>A Lightroom catalog...</strong> reads a Lightroom Classic catalog (<code>.lrcat</code>). Quit Lightroom first.</p>
+<p>Choose the catalog, and set the folders that were not found. Click <strong>Check</strong> and then <strong>Write</strong>.</p>
+<p>It brings ratings, flags, color labels, keywords, titles, captions, crops, virtual copies as versions, stacks, and collections, and adds the folders as roots. Tone and color settings come as a step in the history, but the develop of a monochrome photo does not use them.</p>
+<p>The import does not check whether a photo is monochrome. It also writes <code>.mcd</code> files beside the color photos of the catalog.</p>
+<p>A photo that you edited or rated in Monocard is left as it is, unless you turn on the switch to write over it.</p>
+    <nav class="guide-next" aria-label="Chapters"><a href="library.html" rel="prev">← Library</a><a href="culling.html" rel="next">Cull →</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

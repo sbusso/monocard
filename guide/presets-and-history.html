@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="Use presets and Sync to put an edit on other photos. Use the history, snapshots, and versions to keep and compare edits of one photo. In the Develop tab, the left pane has NAVIGATOR, PRESETS, SNAPSHOTS, and HISTORY. On a Mac, use Cmd where this guide says Ctrl.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/presets-and-history.html">
+<title>Presets, history, and versions: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html">Library</a></li>
+          <li><a href="import.html">Import</a></li>
+          <li><a href="culling.html">Cull</a></li>
+          <li><a href="develop.html">Develop</a></li>
+          <li><a href="looks.html">Looks</a></li>
+          <li><a href="masks.html">Masks</a></li>
+          <li><a href="crop-and-retouch.html">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html" aria-current="page">Presets, history, and versions</a></li>
+          <li><a href="merge.html">Merge photos</a></li>
+          <li><a href="export.html">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#undo">Undo</a></li>
+        <li><a href="#history">History</a></li>
+        <li><a href="#snapshots">Snapshots</a></li>
+        <li><a href="#versions">Versions</a></li>
+        <li><a href="#copy-an-edit-to-other-photos">Copy an edit to other photos</a></li>
+        <li><a href="#presets">Presets</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="presets-history-and-versions">Presets, history, and versions</h1>
+<p>Use presets and Sync to put an edit on other photos. Use the history, snapshots, and versions to keep and compare edits of one photo. In the Develop tab, the left pane has NAVIGATOR, PRESETS, SNAPSHOTS, and HISTORY. On a Mac, use Cmd where this guide says Ctrl.</p>
+<h2 id="undo">Undo</h2>
+<p>Press <strong>Ctrl+Z</strong> to undo a step, and <strong>Ctrl+Shift+Z</strong> or <strong>Ctrl+Y</strong> to redo it. Press <strong>\</strong> to see the photo as it was before the edit.</p>
+<p>To remove all of the edit, choose <strong>Reset to Original</strong> in the photo's menu. You can undo this too.</p>
+<h2 id="history">History</h2>
+<p>HISTORY lists the steps of your edit, such as "Exposure +0.50 EV", "Look: Street", or "Preset: Soft". It keeps the last 50 steps and <strong>Original</strong>. An export adds a row too.</p>
+<figure><a href="images/history.webp"><img src="images/history.webp" alt="The left pane with PRESETS, SNAPSHOTS, and HISTORY" width="226" height="575" loading="lazy" decoding="async"></a><figcaption>The left pane of Develop</figcaption></figure>
+<p>Hold the pointer over a step to see it on the photo. Click it to go back to it. The steps after it stay until you change something. <strong>Reset to Original</strong> puts the photo back to the start.</p>
+<p>The history is kept with the edit, so it is there the next time that you open the photo.</p>
+<h2 id="snapshots">Snapshots</h2>
+<p>A snapshot is a state of the edit that you keep by name.</p>
+<ol>
+<li>Click <strong>Take</strong> under SNAPSHOTS.</li>
+<li>Type a name and press <strong>Enter</strong>.</li>
+</ol>
+<p>Hold the pointer over a snapshot to see it on the photo. Each one has buttons to restore it, rename it, and remove it. To restore a snapshot is a step that you can undo.</p>
+<h2 id="versions">Versions</h2>
+<p>A version is a second edit of the same photo file. The photo is shown one time for each version.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>In the photo's menu</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>New version</strong> (<strong>Ctrl+'</strong>)</td>
+<td>Makes a version that starts from this edit</td>
+</tr>
+<tr>
+<td><strong>New version from the original</strong></td>
+<td>Makes a version with no edit</td>
+</tr>
+<tr>
+<td><strong>Rename version...</strong></td>
+<td>Changes its name</td>
+</tr>
+<tr>
+<td><strong>Swap with the original</strong></td>
+<td>Makes this version the photo's own edit, and the other one the version</td>
+</tr>
+<tr>
+<td><strong>Delete version...</strong></td>
+<td>Asks, and then deletes this version. It cannot be undone</td>
+</tr>
+<tr>
+<td><strong>Compare versions</strong></td>
+<td>Shows the versions side by side in the Cull tab</td>
+</tr>
+</tbody>
+</table></div>
+<p>All versions are in the same <code>.mcd</code> file. They share the stars, the flag, the label, and the keywords. An export of a version has the name of the version, such as <code>IMG_0001-Name.jpg</code>.</p>
+<h2 id="copy-an-edit-to-other-photos">Copy an edit to other photos</h2>
+<h3 id="sync">Sync</h3>
+<ol>
+<li>Select the photos. The photo that you are on gives the edit.</li>
+<li>Click <strong>Sync...</strong> under PRESETS, press <strong>Ctrl+Shift+S</strong>, or use the button at the top of the panel, <strong>Sync N frames to this one...</strong>.</li>
+<li>In <strong>Sync settings</strong>, check what to copy.</li>
+<li>Click <strong>Apply</strong>.</li>
+</ol>
+<p>Everything but the masks is checked at first. You can check a whole section or its parts. A part that you copy alone leaves the rest of its section as it is on each photo.</p>
+<figure><a href="images/sync.webp"><img src="images/sync.webp" alt="The Sync settings sheet" width="678" height="370" loading="lazy" decoding="async"></a><figcaption>Sync settings</figcaption></figure>
+<p>Crop and retouch are never copied.</p>
+<p>To sync at once with no sheet, middle-click the sync button or a photo.</p>
+<h3 id="copy-and-paste">Copy and paste</h3>
+<ol>
+<li>On one photo, press <strong>Ctrl+C</strong>, or choose <strong>Copy settings</strong> in its menu.</li>
+<li>Select other photos, and press <strong>Ctrl+V</strong>, or choose <strong>Paste settings</strong>.</li>
+<li>Check what to paste and click <strong>Paste</strong>.</li>
+</ol>
+<h2 id="presets">Presets</h2>
+<p>A preset is an edit, or a part of one, that you keep to use on other photos. Monocard has no presets of its own. A preset is different from a <a href="looks.html">look</a>: a preset can also hold a lens correction and masks.</p>
+<h3 id="save-a-preset">Save a preset</h3>
+<ol>
+<li>Click <strong>Save...</strong> under PRESETS.</li>
+<li>Type a <strong>Name</strong>.</li>
+<li>Check the parts to keep. The parts that differ from the defaults are checked.</li>
+<li>Click <strong>Save</strong>.</li>
+</ol>
+<figure><a href="images/save-preset.webp"><img src="images/save-preset.webp" alt="The Save preset sheet" width="678" height="387" loading="lazy" decoding="async"></a><figcaption>Save preset</figcaption></figure>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Section</th>
+<th>What it holds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Monochrome</strong></td>
+<td><strong>Exposure</strong>, <strong>Tone</strong>, <strong>Zones</strong>, <strong>Curve</strong>, <strong>Highlights</strong>, <strong>Detail</strong>, <strong>Noise</strong>, <strong>Grain</strong>, <strong>Vignette</strong>, and <strong>Toning</strong></td>
+</tr>
+<tr>
+<td><strong>Lens</strong></td>
+<td>The lens corrections</td>
+</tr>
+<tr>
+<td><strong>Masks</strong></td>
+<td>The masks. <strong>Replace masks</strong> takes the photo's own masks off. <strong>Add to masks</strong> keeps them</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Lens</strong> and <strong>Masks</strong> are not checked at first. The name of a look is kept only with the whole <strong>Monochrome</strong> section.</p>
+<h3 id="use-a-preset">Use a preset</h3>
+<p>Click a preset to apply it to the selected photos. It is one step in the history. It replaces the parts that it holds and leaves the rest of the edit.</p>
+<p>A preset can also be applied on <a href="import.html#import-from-a-card-or-folder">import</a>.</p>
+<h3 id="keep-presets-in-order">Keep presets in order</h3>
+<ul>
+<li>Click the star to make a preset a favorite. Favorites are at the top of the list too.</li>
+<li>Right-click a preset to use <strong>Move to group</strong> or <strong>Remove from group</strong>. <strong>New group...</strong> makes a group.</li>
+<li>Right-click the name of a group to use <strong>Rename group...</strong>.</li>
+<li>Click the bin, <strong>Remove</strong>, to delete a preset.</li>
+</ul>
+<h3 id="import-a-preset">Import a preset</h3>
+<p><strong>Import...</strong> under PRESETS takes <code>.gcp</code> files, which is the format of Monocard and Greycard presets. Presets that have only color settings are not listed. To import a Lightroom preset, see <a href="looks.html#import-a-look-or-a-lightroom-preset">Looks</a>.</p>
+<p>Presets are <code>.gcp</code> files in the <code>presets</code> folder. <a href="settings.html#files">Settings</a> says where it is.</p>
+    <nav class="guide-next" aria-label="Chapters"><a href="crop-and-retouch.html" rel="prev">← Crop, lens, and retouch</a><a href="merge.html" rel="next">Merge photos →</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

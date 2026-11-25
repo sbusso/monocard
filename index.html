@@ -36,7 +36,15 @@
       <img src="assets/icon.svg" width="28" height="28" alt="">
       <span>Monocard</span>
     </a>
-    <a class="top-link" href="#source" data-repo>Source on GitHub</a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="#zones">Features</a></li>
+        <li><a href="./guide/">Guide</a></li>
+        <li><a href="./changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="#downloads">Download</a>
+    </nav>
   </div>
 </header>
 
@@ -62,12 +70,14 @@
 <!-- 0 -->
 <section class="zone hero" id="one-channel" style="--g:#0f0f0f">
   <div class="wrap">
+    <p class="new"><a href="changelog.html"><span class="new-v">0.1.2</span><span>Early release<span class="new-dot" aria-hidden="true"> · </span><span class="vh">: </span>What’s new</span><span aria-hidden="true">→</span></a></p>
     <div class="hero-head">
       <h1>The darkroom for monochrome sensors.</h1>
       <div class="hero-side">
         <p>Monocard is a free, open source raw editor for cameras with no color filter on the sensor. It develops one channel, from the sensor data to the print: no demosaic, no white balance, no color conversion. The first camera is the Ricoh&nbsp;GR&nbsp;IV Monochrome.</p>
         <p class="hero-act">
           <a class="btn btn-main" data-download href="https://github.com/sbusso/monocard/releases/latest/download/Monocard.dmg"><svg class="os" aria-hidden="true"><use href="#os-mac"/></svg><span>Download for macOS</span></a>
+          <span class="note">Version 0.1.2.</span>
           <span class="note" data-note>macOS 13.4 or later, Apple silicon. Notarized.</span>
           <span class="note">Also for <a href="#downloads" data-others>Linux and Windows</a>.</span>
         </p>
@@ -79,7 +89,14 @@
              alt="The Monocard window in Develop: a monochrome photo in the middle, the filmstrip under it, the history on the left, and the histogram and the LOOK panel on the right.">
       </div>
       <figcaption>
-        <span>Develop, with the LOOK panel open. Keys: <kbd>A</kbd> before, <kbd>B</kbd> after, <kbd>S</kbd> split, <kbd>Z</kbd> zones, <kbd>C</kbd> clip map.</span>
+        <span>The Develop tab, with the Street look on.</span>
+        <span class="keys" role="group" aria-label="Views of the picture">Try the keys:
+          <button type="button" data-view="before" aria-pressed="false"><kbd>A</kbd> before</button>
+          <button type="button" data-view="develop" aria-pressed="true"><kbd>B</kbd> after</button>
+          <button type="button" data-view="split" aria-pressed="false"><kbd>S</kbd> split</button>
+          <button type="button" data-view="zones" aria-pressed="false"><kbd>Z</kbd> zones</button>
+          <button type="button" data-view="clip" aria-pressed="false"><kbd>C</kbd> clip map</button>
+        </span>
       </figcaption>
     </figure>
     <dl class="facts">
@@ -409,6 +426,47 @@
   </div>
 </section>
 
+<!-- Download -->
+<section class="get" id="downloads">
+  <div class="wrap">
+    <div class="get-head">
+      <h2>Download</h2>
+      <p class="note">Version 0.1.2, <time datetime="2026-11-25">25 November 2026</time>. Free.</p>
+    </div>
+    <!-- script.js takes the first button's address and note from the card of the visitor's system. -->
+    <div class="get-cards">
+      <article class="get-card" data-os="mac" data-name="macOS">
+        <header><svg class="os" aria-hidden="true"><use href="#os-mac"/></svg><h3>macOS</h3><p class="note">Apple silicon</p></header>
+        <a class="btn btn-main" href="https://github.com/sbusso/monocard/releases/latest/download/Monocard.dmg">Download for macOS</a>
+        <div>
+          <p class="get-file">Disk image, 59 MB</p>
+          <p class="note">Open it and drag Monocard to Applications.</p>
+          <p class="note" data-needs>macOS 13.4 or later. Notarized.</p>
+        </div>
+      </article>
+      <article class="get-card" data-os="linux" data-name="Linux">
+        <header><svg class="os" aria-hidden="true"><use href="#os-linux"/></svg><h3>Linux</h3><p class="note">64-bit Intel and AMD</p></header>
+        <a class="btn" href="https://github.com/sbusso/monocard/releases/latest/download/Monocard-linux-x86_64.AppImage">Download for Linux</a>
+        <div>
+          <p class="get-file">AppImage, 64 MB</p>
+          <p class="note">Make it executable and run it. Or unpack the <a href="https://github.com/sbusso/monocard/releases/latest/download/Monocard-linux-x86_64.tar.gz">archive</a> (70 MB) and run <code>./install.sh</code>.</p>
+          <p class="note" data-needs>glibc 2.39 or later, Vulkan.</p>
+        </div>
+      </article>
+      <article class="get-card" data-os="windows" data-name="Windows">
+        <header><svg class="os" aria-hidden="true"><use href="#os-windows"/></svg><h3>Windows</h3><p class="note">64-bit Intel and AMD</p></header>
+        <a class="btn" href="https://github.com/sbusso/monocard/releases/latest/download/Monocard-windows-x86_64.zip">Download for Windows</a>
+        <div>
+          <p class="get-file">Zip, 74 MB</p>
+          <p class="note">Unpack it and run <code>bin\monocard-ui.exe</code>.</p>
+          <p class="note" data-needs>Windows 10 or later. Not signed, so Windows asks before the first start.</p>
+        </div>
+      </article>
+    </div>
+    <p class="note get-foot">The Linux and Windows versions are new and little tested. <a href="changelog.html">All releases and their notes</a>.</p>
+  </div>
+</section>
+
 <!-- Off the scale -->
 <section class="off" id="source">
   <div class="wrap off-grid">
@@ -423,18 +481,6 @@
       </ul>
     </div>
     <div class="off-build">
-      <h2 id="downloads">Download</h2>
-      <p class="hero-act off-act">
-        <a class="btn btn-main" data-download href="https://github.com/sbusso/monocard/releases/latest/download/Monocard.dmg"><svg class="os" aria-hidden="true"><use href="#os-mac"/></svg><span>Download for macOS</span></a>
-        <span class="note" data-note>macOS 13.4 or later, Apple silicon. Notarized.</span>
-      </p>
-      <!-- Each address is written here once more; script.js takes the button's from the row of the visitor's system. -->
-      <dl class="spec off-others">
-        <div data-os="mac" data-name="macOS"><dt><svg class="os" aria-hidden="true"><use href="#os-mac"/></svg>macOS</dt><dd><a href="https://github.com/sbusso/monocard/releases/latest/download/Monocard.dmg">Disk image</a>. <span>macOS 13.4 or later, Apple silicon. Notarized.</span></dd></div>
-        <div data-os="linux" data-name="Linux"><dt><svg class="os" aria-hidden="true"><use href="#os-linux"/></svg>Linux</dt><dd><a href="https://github.com/sbusso/monocard/releases/latest/download/Monocard-linux-x86_64.AppImage">AppImage</a> or <a href="https://github.com/sbusso/monocard/releases/latest/download/Monocard-linux-x86_64.tar.gz">archive</a>. <span>64-bit Intel or AMD, glibc 2.39 or later, Vulkan.</span></dd></div>
-        <div data-os="windows" data-name="Windows"><dt><svg class="os" aria-hidden="true"><use href="#os-windows"/></svg>Windows</dt><dd><a href="https://github.com/sbusso/monocard/releases/latest/download/Monocard-windows-x86_64.zip">Zip</a>. <span>Windows 10 or later, 64-bit Intel or AMD. Not signed, so Windows asks before the first start.</span></dd></div>
-      </dl>
-      <p class="note off-new">The Linux and Windows versions are new and little tested.</p>
       <h2>Source</h2>
       <p>Monocard is free and open source, under GPL-3.0. The code and the build notes are on GitHub.</p>
       <p><a class="btn" id="repo" href="https://github.com/sbusso/monocard">Source on GitHub</a></p>

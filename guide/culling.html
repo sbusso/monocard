@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="To cull is to look through a shoot and to choose the photos to keep. You set flags, stars, and labels, and then you move the rejects out of the way. On a Mac, use Cmd where this guide says Ctrl.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/culling.html">
+<title>Cull: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html">Library</a></li>
+          <li><a href="import.html">Import</a></li>
+          <li><a href="culling.html" aria-current="page">Cull</a></li>
+          <li><a href="develop.html">Develop</a></li>
+          <li><a href="looks.html">Looks</a></li>
+          <li><a href="masks.html">Masks</a></li>
+          <li><a href="crop-and-retouch.html">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html">Presets, history, and versions</a></li>
+          <li><a href="merge.html">Merge photos</a></li>
+          <li><a href="export.html">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#flags-stars-and-labels">Flags, stars, and labels</a></li>
+        <li><a href="#the-cull-tab">The Cull tab</a></li>
+        <li><a href="#compare">Compare</a></li>
+        <li><a href="#the-lightbox">The lightbox</a></li>
+        <li><a href="#move-the-rejects">Move the rejects</a></li>
+        <li><a href="#delete-photos">Delete photos</a></li>
+        <li><a href="#correct-the-time">Correct the time</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="cull">Cull</h1>
+<p>To cull is to look through a shoot and to choose the photos to keep. You set flags, stars, and labels, and then you move the rejects out of the way. On a Mac, use Cmd where this guide says Ctrl.</p>
+<h2 id="flags-stars-and-labels">Flags, stars, and labels</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Mark</th>
+<th>Keys</th>
+<th>In the menu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stars</td>
+<td><strong>1</strong> to <strong>5</strong>. <strong>0</strong> clears them</td>
+<td><strong>Rating</strong></td>
+</tr>
+<tr>
+<td>Flag</td>
+<td><strong>P</strong> picks, <strong>X</strong> rejects, <strong>U</strong> clears</td>
+<td><strong>Pick</strong>, <strong>Reject</strong>, <strong>Unflag</strong></td>
+</tr>
+<tr>
+<td>Label</td>
+<td><strong>6</strong> red, <strong>7</strong> yellow, <strong>8</strong> green, <strong>9</strong> blue. The same key again clears it</td>
+<td><strong>Label</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>The menu opens with a right-click on a photo. The purple label is in the menu only. Labels keep their colors in Monocard.</p>
+<p>If you select more than one photo, a key or a menu item acts on all of them. <strong>Ctrl+Z</strong> undoes the last change of a mark, and <strong>Ctrl+Shift+Z</strong> does it again.</p>
+<p>Marks are kept in the <code>.mcd</code> file of the photo, with your edit. All <a href="presets-and-history.html#versions">versions</a> of a photo share them. To find photos by their marks, use the <a href="library.html#the-filter-bar">filter bar</a>.</p>
+<h2 id="the-cull-tab">The Cull tab</h2>
+<p>Click <strong>Cull</strong> above the photo, or press <strong>C</strong> in the grid. In the Develop tab with a monochrome photo open, <strong>C</strong> shows the clip map. Click <strong>Cull</strong> there.</p>
+<figure class="wide"><a href="images/cull.webp"><img src="images/cull.webp" alt="The Cull tab with a photo of sheets on a line" width="1280" height="820" loading="lazy" decoding="async"></a><figcaption>The Cull tab</figcaption></figure>
+<p>The panel has these rows under CULLING:</p>
+<figure><a href="images/cull-panel.webp"><img src="images/cull-panel.webp" alt="The CULLING section" width="360" height="332" loading="lazy" decoding="async"></a><figcaption>CULLING, enlarged</figcaption></figure>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Row</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Picture</strong></td>
+<td><strong>Camera JPEG</strong> shows the camera's picture, which opens fast. <strong>Developed</strong> shows your edit</td>
+</tr>
+<tr>
+<td><strong>Turn</strong></td>
+<td>Turns the photo: <strong>Left</strong> or <strong>Right</strong></td>
+</tr>
+<tr>
+<td><strong>Show</strong></td>
+<td>The filter bar</td>
+</tr>
+<tr>
+<td><strong>Compare</strong></td>
+<td>Shows <strong>1</strong>, <strong>2</strong>, or <strong>4</strong> photos. It is available with <strong>Camera JPEG</strong></td>
+</tr>
+<tr>
+<td><strong>Move on after a rating, flag or label</strong></td>
+<td>Goes to the next photo after each mark. It is off at first</td>
+</tr>
+<tr>
+<td><strong>Move N rejects...</strong></td>
+<td>Moves the rejects of the folder</td>
+</tr>
+<tr>
+<td><strong>Delete selection...</strong></td>
+<td>Deletes the selected photos</td>
+</tr>
+<tr>
+<td><strong>Delete rejects folder...</strong></td>
+<td>Deletes the photos in the <code>rejects</code> folder</td>
+</tr>
+<tr>
+<td><strong>Develop</strong></td>
+<td>Goes to the Develop tab</td>
+</tr>
+</tbody>
+</table></div>
+<p>METADATA is below CULLING, with the title, the caption, the keywords, and the capture data.</p>
+<h3 id="look-closer">Look closer</h3>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Key</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Space</strong></td>
+<td>Shows the photo at 1:1, or fits it</td>
+</tr>
+<tr>
+<td><strong>Z</strong></td>
+<td>Shows the photo at 3:1, or fits it</td>
+</tr>
+<tr>
+<td><strong>Shift+J</strong></td>
+<td>Focus peaking: marks the sharpest parts</td>
+</tr>
+<tr>
+<td><strong>V</strong></td>
+<td>Shows two photos, four photos, or one</td>
+</tr>
+<tr>
+<td><strong>←</strong> <strong>→</strong></td>
+<td>Goes to another photo</td>
+</tr>
+<tr>
+<td><strong>Enter</strong>, <strong>D</strong>, <strong>Esc</strong></td>
+<td>Goes to the Develop tab</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="compare">Compare</h2>
+<p>Press <strong>V</strong>, or click <strong>2</strong> or <strong>4</strong> beside <strong>Compare</strong>. Monocard shows the photo and the ones next to it. The keys for stars, flags, and labels act on the photo that is chosen.</p>
+<figure class="wide"><a href="images/compare.webp"><img src="images/compare.webp" alt="Four photos side by side in the Cull tab" width="1280" height="820" loading="lazy" decoding="async"></a><figcaption>Four photos compared. The frame marks the one that the keys act on</figcaption></figure>
+<p>To compare the versions of one photo, use <strong>Compare versions</strong> in its menu. To compare the photos of a stack, use <strong>Compare stack</strong>.</p>
+<h2 id="the-lightbox">The lightbox</h2>
+<p>Press <strong>L</strong> to see the photos large, on a plain background. The background is the <strong>Canvas</strong> of <a href="settings.html#editing">Settings</a>.</p>
+<figure class="wide"><a href="images/lightbox.webp"><img src="images/lightbox.webp" alt="The lightbox with four photos across" width="1280" height="820" loading="lazy" decoding="async"></a><figcaption>The lightbox</figcaption></figure>
+<ul>
+<li>To show from two to six photos across, use <strong>Tile size</strong> or <strong>+</strong> and <strong>−</strong>. It starts at four.</li>
+<li>Use the arrow keys to choose a photo. The keys for stars, flags, and labels work here.</li>
+<li>Press <strong>J</strong> to show the marks on the photos.</li>
+<li>Press <strong>Enter</strong> to open the photo in the loupe.</li>
+<li>Press <strong>Esc</strong>, <strong>G</strong>, or <strong>L</strong>, or click ×, to leave.</li>
+</ul>
+<h2 id="move-the-rejects">Move the rejects</h2>
+<ol>
+<li>Mark the photos with <strong>X</strong>.</li>
+<li>Click <strong>Move N rejects...</strong>. The button shows the number of them.</li>
+<li>Monocard asks <strong>Move the rejects?</strong> Click <strong>Move</strong>.</li>
+</ol>
+<p>The photos go to a folder named <code>rejects</code> in the folder of the shoot. The <code>.mcd</code> file, the XMP file, and the camera's JPEG go with each one. A file in <code>rejects</code> is never written over. Nothing is deleted.</p>
+<p>To undo the move, click <strong>Move back</strong>. The <strong>Rejects</strong> menu at the top of the grid shows how many rejects there are and has the same commands.</p>
+<h2 id="delete-photos">Delete photos</h2>
+<p>Press <strong>Delete</strong> (or <strong>⌫</strong> on a Mac), or click <strong>Delete selection...</strong> or <strong>Delete rejects folder...</strong>. Monocard asks first. <strong>Move to the trash</strong> is the default button.</p>
+<p><strong>Delete permanently</strong> is offered only when the trash refuses the files. A permanent delete cannot be undone.</p>
+<p>The <code>.mcd</code> and the XMP file are deleted with the photo, and all versions of the photo go with it. A <code>.gcd</code> file that Greycard wrote stays.</p>
+<h2 id="correct-the-time">Correct the time</h2>
+<p>If the camera's clock was wrong, select the photos and choose <strong>Shift capture time of…</strong> in the menu. Set <strong>Shift by</strong>, or use <strong>Set this frame to</strong> to give the correct time of one photo. The other selected photos shift by the same amount. Click <strong>Apply</strong>. <strong>Clear shift</strong> puts the camera's time back. The raw file is not changed.</p>
+    <nav class="guide-next" aria-label="Chapters"><a href="import.html" rel="prev">← Import</a><a href="develop.html" rel="next">Develop →</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>

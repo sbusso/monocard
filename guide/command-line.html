@@ -1,0 +1,430 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0f0f0f">
+<meta name="description" content="The monocard program does the work of Monocard from a terminal or a script. It reads the same edits, looks, presets, settings, and library as the window. Run monocard --help or monocard SUBCOMMAND --help for all the options.">
+<link rel="canonical" href="https://sbusso.github.io/monocard/guide/command-line.html">
+<title>Command line: Monocard user guide</title>
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../style.css">
+</head>
+<body class="page">
+<a class="skip" href="#main">Skip to the content</a>
+
+<header class="top">
+  <div class="wrap top-row">
+    <a class="brand" href="../">
+      <img src="../assets/icon.svg" width="28" height="28" alt="">
+      <span>Monocard</span>
+    </a>
+    <nav class="top-links" aria-label="Site">
+      <ul>
+        <li><a href="../#zones">Features</a></li>
+        <li><a href="./" aria-current="true">Guide</a></li>
+        <li><a href="../changelog.html">Changelog</a></li>
+        <li><a href="https://github.com/sbusso/monocard">GitHub</a></li>
+      </ul>
+      <a class="btn" href="../#downloads">Download</a>
+    </nav>
+  </div>
+</header>
+
+<div class="wrap guide">
+  <div class="guide-nav">
+    <nav aria-label="User guide">
+      <details>
+        <summary>User guide</summary>
+        <ul>
+          <li><a href="./">Start</a></li>
+          <li><a href="library.html">Library</a></li>
+          <li><a href="import.html">Import</a></li>
+          <li><a href="culling.html">Cull</a></li>
+          <li><a href="develop.html">Develop</a></li>
+          <li><a href="looks.html">Looks</a></li>
+          <li><a href="masks.html">Masks</a></li>
+          <li><a href="crop-and-retouch.html">Crop, lens, and retouch</a></li>
+          <li><a href="presets-and-history.html">Presets, history, and versions</a></li>
+          <li><a href="merge.html">Merge photos</a></li>
+          <li><a href="export.html">Export</a></li>
+          <li><a href="settings.html">Settings</a></li>
+          <li><a href="keys.html">Keys</a></li>
+          <li><a href="command-line.html" aria-current="page">Command line</a></li>
+        </ul>
+      </details>
+    </nav>
+    <nav class="toc" aria-labelledby="on-this-page">
+      <h2 id="on-this-page">On this page</h2>
+      <ul>
+        <li><a href="#where-the-program-is">Where the program is</a></li>
+        <li><a href="#look-at-files">Look at files</a></li>
+        <li><a href="#export">Export</a></li>
+        <li><a href="#looks-and-presets">Looks and presets</a></li>
+        <li><a href="#camera-profiles">Camera profiles</a></li>
+        <li><a href="#merge-and-stack">Merge and stack</a></li>
+        <li><a href="#library">Library</a></li>
+        <li><a href="#develop-a-raw">Develop a raw</a></li>
+        <li><a href="#downloads">Downloads</a></li>
+        <li><a href="#import-without-a-window">Import without a window</a></li>
+      </ul>
+    </nav>
+  </div>
+  <main id="main" class="guide-text">
+<h1 id="command-line">Command line</h1>
+<p>The <code>monocard</code> program does the work of Monocard from a terminal or a script. It reads the same edits, looks, presets, settings, and library as the window. Run <code>monocard --help</code> or <code>monocard SUBCOMMAND --help</code> for all the options.</p>
+<h2 id="where-the-program-is">Where the program is</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>System</th>
+<th>Path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>macOS</td>
+<td><code>/Applications/Monocard.app/Contents/MacOS/monocard</code></td>
+</tr>
+<tr>
+<td>Linux, archive</td>
+<td><code>bin/monocard</code> in the folder that you unpacked</td>
+</tr>
+<tr>
+<td>Linux, AppImage</td>
+<td>Run the AppImage with <code>--cli</code> before the subcommand</td>
+</tr>
+<tr>
+<td>Windows</td>
+<td><code>bin\monocard.exe</code></td>
+</tr>
+</tbody>
+</table></div>
+<p>Every subcommand takes <code>-h</code> for help and <code>-v</code> for more messages. <code>monocard -V</code> prints the version.</p>
+<p>Color photos are refused, with the message that Monocard opens monochrome photos only.</p>
+<h2 id="look-at-files">Look at files</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it prints</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>monocard info FILE</code></td>
+<td>What the file says about itself</td>
+</tr>
+<tr>
+<td><code>monocard route FILES...</code></td>
+<td><code>mono</code> or <code>color</code> for each file</td>
+</tr>
+<tr>
+<td><code>monocard mode FILE...</code></td>
+<td>The picture mode that a Ricoh GR recorded in each DNG or JPEG</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="export">Export</h2>
+<pre><code class="language-shell">monocard export IMG_0001.DNG IMG_0001.jpg
+monocard export --all ~/Photos/shoot ~/Photos/out/
+monocard export --look Street --long-edge 2048 IMG_0001.DNG street.jpg
+</code></pre>
+<p>Each photo is written with its own edit, as the <a href="export.html">export sheet</a> does it. The last path is the file to write, or a folder. A folder that is not there yet must end with a slash.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--all</code></td>
+<td>Every photo of the folders</td>
+</tr>
+<tr>
+<td><code>--also ROWS</code></td>
+<td>More rows of the folder, from 0, with commas</td>
+</tr>
+<tr>
+<td><code>--preset NAME</code></td>
+<td>Puts this preset on the edit first, as a step in its history</td>
+</tr>
+<tr>
+<td><code>--export-preset NAME</code></td>
+<td>Uses this export preset</td>
+</tr>
+<tr>
+<td><code>--long-edge PX</code></td>
+<td>The long edge, in pixels. It never enlarges</td>
+</tr>
+<tr>
+<td><code>--on-exists WHAT</code></td>
+<td><code>increment</code>, <code>overwrite</code>, or <code>skip</code>, for a file that is there already</td>
+</tr>
+<tr>
+<td><code>--version-name NAME</code></td>
+<td>Exports this <a href="presets-and-history.html#versions">version</a></td>
+</tr>
+<tr>
+<td><code>--exposure EV</code></td>
+<td>Exposure in stops, for this run only</td>
+</tr>
+<tr>
+<td><code>--look NAME</code></td>
+<td>This look, for this run only</td>
+</tr>
+<tr>
+<td><code>--author NAME</code>, <code>--copyright TEXT</code></td>
+<td>Text to write in the files</td>
+</tr>
+<tr>
+<td><code>--no-sidecars</code></td>
+<td>Does not read or write the <code>.mcd</code> files</td>
+</tr>
+<tr>
+<td><code>--sidecar-folder</code></td>
+<td>Writes the edits to the hidden <code>.monocard</code> folder</td>
+</tr>
+<tr>
+<td><code>--xmp-sidecars</code></td>
+<td>Also writes <code>.xmp</code> files</td>
+</tr>
+<tr>
+<td><code>--cpu</code></td>
+<td>Does not use the graphics card</td>
+</tr>
+</tbody>
+</table></div>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Exit status</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>All photos were written as their edits ask</td>
+</tr>
+<tr>
+<td>1</td>
+<td>A photo was not written</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Something that an edit names, such as a look, was missing, and the photo was written without it</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="looks-and-presets">Looks and presets</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>monocard looks list</code></td>
+<td>Lists the looks</td>
+</tr>
+<tr>
+<td><code>monocard looks import FILE...</code></td>
+<td>Imports looks (<code>.toml</code>) and Lightroom presets (<code>.xmp</code>). <code>--replace</code> writes over a look of the same name</td>
+</tr>
+<tr>
+<td><code>monocard looks export NAME FILE.toml</code></td>
+<td>Writes a look to a file</td>
+</tr>
+<tr>
+<td><code>monocard looks rename NAME NEW</code></td>
+<td>Renames one of your looks</td>
+</tr>
+<tr>
+<td><code>monocard looks delete NAME</code></td>
+<td>Deletes one of your looks</td>
+</tr>
+<tr>
+<td><code>monocard presets</code></td>
+<td>Lists the presets</td>
+</tr>
+<tr>
+<td><code>monocard presets --import FILE...</code></td>
+<td>Imports presets</td>
+</tr>
+<tr>
+<td><code>monocard presets --apply NAME FILES...</code></td>
+<td>Puts a preset on the edits of the files</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="camera-profiles">Camera profiles</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>monocard profile list</code></td>
+<td>Lists the camera's modes and their state</td>
+</tr>
+<tr>
+<td><code>monocard profile modes FOLDER...</code></td>
+<td>Fits the <a href="looks.html#fit-a-mode-from-your-photos">picture modes</a> as looks, from DNGs and the camera's JPEGs</td>
+</tr>
+<tr>
+<td><code>monocard profile build FOLDER</code></td>
+<td>Fits the noise profile of a camera from flat, dark, and test photos</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>profile modes</code> takes <code>--out DIR</code>, <code>--replace</code>, <code>--replace-adjusted</code> to write over looks that you changed by hand, and <code>--dry-run</code> to write nothing. <code>profile build</code> takes <code>--out FILE.toml</code> and <code>--replace</code>. The folders in a folder are not read.</p>
+<h2 id="merge-and-stack">Merge and stack</h2>
+<pre><code class="language-shell">monocard merge hdr IMG_0001.DNG IMG_0002.DNG IMG_0003.DNG
+monocard merge pano IMG_0011.DNG IMG_0012.DNG IMG_0013.DNG
+monocard stack IMG_0021.DNG IMG_0022.DNG IMG_0023.DNG
+</code></pre>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--reference</code></td>
+<td>All</td>
+<td>The photo that the others are aligned to, counted from 0. <code>stack</code> also takes <code>middle</code> and <code>sharpest</code></td>
+</tr>
+<tr>
+<td><code>-o</code></td>
+<td>All</td>
+<td>The file to write</td>
+</tr>
+<tr>
+<td><code>--on-exists WHAT</code></td>
+<td>All</td>
+<td>What to do if the file is there</td>
+</tr>
+<tr>
+<td><code>--deghost</code></td>
+<td><code>merge hdr</code></td>
+<td><code>on</code>, <code>off</code>, or <code>auto</code></td>
+</tr>
+<tr>
+<td><code>--selectivity</code>, <code>--max-residual</code></td>
+<td><code>stack</code></td>
+<td>How the sharpest parts are chosen, and how well the photos must fit</td>
+</tr>
+</tbody>
+</table></div>
+<p><code>monocard merge again FILE</code> makes a merge again from the recipe in the file. An HDR of two to five monochrome photos has no recipe. See <a href="merge.html">Merge photos</a>.</p>
+<h2 id="library">Library</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>monocard library index DIRS</code></td>
+<td>Indexes folders. <code>--tree</code> includes the folders in them. <code>--prune</code> forgets files that are gone</td>
+</tr>
+<tr>
+<td><code>monocard library list FILTER</code></td>
+<td>Lists photos, with the <a href="library.html#the-filter-bar">terms of the filter bar</a></td>
+</tr>
+<tr>
+<td><code>monocard library import-lightroom CATALOG</code></td>
+<td>Imports a Lightroom catalog. It writes nothing without <code>--write</code></td>
+</tr>
+<tr>
+<td><code>monocard rawtherapee PATHS</code></td>
+<td>Imports RawTherapee profiles that are beside the photos. It writes nothing without <code>--write</code></td>
+</tr>
+</tbody>
+</table></div>
+<p><code>library list</code> takes <code>--paths</code>, <code>--count</code>, <code>--stacks collapsed</code> or <code>expanded</code>, and <code>--sort</code> with <code>capture</code>, <code>name</code>, <code>rating</code>, <code>edited</code>, or <code>focus</code>. Add <code>-desc</code> to the order to reverse it.</p>
+<pre><code class="language-shell">monocard library list --paths &quot;rating&gt;=3&quot; &quot;flag:pick&quot;
+</code></pre>
+<h2 id="develop-a-raw">Develop a raw</h2>
+<p><code>monocard develop FILE</code> develops one raw without its edit.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Option</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--preview OUT.png</code></td>
+<td>Writes an 8-bit PNG</td>
+</tr>
+<tr>
+<td><code>-o OUT.tif</code></td>
+<td>Writes a 16-bit linear TIFF</td>
+</tr>
+<tr>
+<td><code>--dng OUT.dng</code></td>
+<td>Writes a linear DNG</td>
+</tr>
+<tr>
+<td><code>--exposure EV</code>, <code>--look NAME</code></td>
+<td>Exposure and look, for <code>--preview</code></td>
+</tr>
+<tr>
+<td><code>--denoise</code>, <code>--lens</code></td>
+<td>Denoise and lens correction</td>
+</tr>
+</tbody>
+</table></div>
+<p>The help also lists options for color photos, which Monocard does not use, and more options for the lens.</p>
+<h2 id="downloads">Downloads</h2>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>monocard lenses</code></td>
+<td>Shows the lens database. <code>--fetch</code> downloads it, about 450 KB. With a file, it shows the lens that it finds</td>
+</tr>
+<tr>
+<td><code>monocard models</code></td>
+<td>Lists the models. <code>--fetch ID</code> downloads one, and <code>--fetch all</code> downloads about 7 GB</td>
+</tr>
+</tbody>
+</table></div>
+<h2 id="import-without-a-window">Import without a window</h2>
+<p>The <code>monocard-ui</code> program is next to <code>monocard</code>.</p>
+<pre><code class="language-shell">monocard-ui --import /Volumes/CARD --to ~/Photos --subfolder &quot;{yyyy}/{date}&quot;
+</code></pre>
+<p>It also takes <code>--name</code>, <code>--backup</code>, <code>--preset</code>, and <code>--verify</code>. They are the rows of the <a href="import.html#import-from-a-card-or-folder">import sheet</a>.</p>
+    <nav class="guide-next" aria-label="Chapters"><a href="keys.html" rel="prev">← Keys</a></nav>
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <p>Parts of this guide are adapted from <a href="https://github.com/jessolmstead/greycard/blob/master/docs/user-guide.md">Greycard’s user guide</a> by Jess Olmstead, GPL-3.0.</p>
+    <p>Something is wrong or missing? <a href="https://github.com/sbusso/monocard/issues">Report it</a>.</p>
+  </div>
+</footer>
+</body>
+</html>
