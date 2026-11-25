@@ -18,10 +18,20 @@ export component CropSection inherits Section {
     // Draw in hand: the next drag on the picture, inside the crop
     // too, draws a fresh one (`Viewport.crop-draw-armed`).
     in-out property <bool> crop-draw-armed;
+    // The guide drawn inside the crop, a view's and no part of the
+    // edit (`Viewport.crop-overlay`); a choice is kept in the file.
+    in-out property <string> crop-overlay;
+    callback crop-overlay-chosen();
     callback crop-toggled();
     // The Crop button: the window's, which R shares.
     callback crop-clicked();
     callback geometry-changed();
+    /// A change of the geometry over, after which the engine may be
+    /// asked for a develop: a slider let go, an aspect typed and
+    /// accepted or left.
+    callback geometry-settled();
+    /// The Custom aspect being typed: no develop while it is.
+    in-out property <bool> aspect-typing;
     callback guide-dropped();
     // The keys to the window, so Escape puts a tool down wherever the
     // pointer is.
@@ -37,8 +47,21 @@ export component CropSection inherits Section {
             root.custom-focused = false;
             Typing.close-all();
         }
+        // The box gone, what was typed in it is over.
+        if (root.aspect-name != "Custom" && root.aspect-typing) {
+            root.aspect-typing = false;
+            root.geometry-settled();
+        }
         aspect-box.current-index = root.aspect-index(root.aspect-name);
     }
+    // The guides by their names, which the settings file keeps, in
+    // the order O steps through them (`panel::crop::overlay`).
+    property <[string]> overlays: ["Thirds", "Golden ratio", "Golden spiral", "Diagonals", "Triangles", "None"];
+    pure function overlay-index(name: string) -> int {
+        return name == "Thirds" ? 0 : name == "Golden ratio" ? 1 : name == "Golden spiral" ? 2
+            : name == "Diagonals" ? 3 : name == "Triangles" ? 4 : name == "None" ? 5 : -1;
+    }
+    changed crop-overlay => { overlay-box.current-index = root.overlay-index(root.crop-overlay); }
     // The aspects by their names, which the edit keeps and the Rust
     // side compares; the box shows each in words, at the same index.
     property <[string]> aspects: ["Free", "Original", "1:1", "3:2", "4:3", "5:4", "16:9", "65:24", "Custom"];
@@ -55,7 +78,7 @@ export component CropSection inherits Section {
         spacing: Theme.space-2;
         HorizontalLayout {
             spacing: Theme.space-2;
-            PanelButton {
+            crop-done-button := PanelButton {
                 // Crop section: the button that leaves the crop
                 text: root.crop-mode ? @tr("Done") : @tr("Crop");
                 icon: @image-url("../icons/crop.svg");
@@ -66,7 +89,7 @@ export component CropSection inherits Section {
             // start a drag, and a drag inside moves it: this one shot
             // makes the next drag draw wherever it starts. As the Level
             // does, it brings crop mode with it.
-            PanelButton {
+            draw-button := PanelButton {
                 // Crop section: the button that starts a new crop drawn by hand
                 text: @tr("Draw");
                 icon: @image-url("../icons/pencil.svg");
@@ -83,8 +106,9 @@ export component CropSection inherits Section {
         }
         HorizontalLayout {
             spacing: Theme.space-2;
-            Text { text: @tr("Aspect"); width: LabelColumn.width; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+            aspect-words := Text { accessible-role: none; text: @tr("Aspect"); width: LabelColumn.width; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
             aspect-box := ComboBox {
+                accessible-label: aspect-words.text;
                 // Crop aspect choices
                 model: [@tr("Free"), @tr("aspect" => "Original"), "1:1", "3:2", "4:3", "5:4", "16:9", "65:24", @tr("Custom")];
                 current-index: root.aspect-index(root.aspect-name);
@@ -97,13 +121,20 @@ export component CropSection inherits Section {
         if root.aspect-name == "Custom": HorizontalLayout {
             spacing: Theme.space-2;
             Text { text: @tr("Custom"); width: LabelColumn.width; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
-            LineEdit {
+            custom-aspect-field := LineEdit {
                 text <=> root.aspect-custom;
                 placeholder-text: "W:H";
                 accessible-label: @tr("Custom aspect");
                 // Enter or Escape gives the keys back to the window.
-                accepted(t) => { root.geometry-changed(); Typing.done += 1; }
-                edited(t) => { root.geometry-changed(); }
+                accepted(t) => {
+                    root.aspect-typing = false;
+                    root.geometry-changed();
+                    Typing.done += 1;
+                }
+                edited(t) => {
+                    root.aspect-typing = true;
+                    root.geometry-changed();
+                }
                 key-pressed(e) => {
                     if (e.text == Key.Escape) { Typing.done += 1; return accept; }
                     return reject;
@@ -111,6 +142,10 @@ export component CropSection inherits Section {
                 changed has-focus => {
                     root.custom-focused = self.has-focus;
                     Typing.box-focus(self.has-focus);
+                    if (!self.has-focus && root.aspect-typing) {
+                        root.aspect-typing = false;
+                        root.geometry-settled();
+                    }
                 }
             }
         }
@@ -119,7 +154,7 @@ export component CropSection inherits Section {
         // click flips the flag, and so what is shown, either way. Under
         // Free nothing reads the flag, so the switch is greyed and a
         // click is nothing.
-        Toggle {
+        portrait-toggle := Toggle {
             // Crop section: the toggle that stands the aspect upright
             label: @tr("Portrait");
             checked: root.portrait-shown;
@@ -129,6 +164,31 @@ export component CropSection inherits Section {
                 if (root.portrait-live) {
                     root.portrait = !root.portrait;
                     root.geometry-changed();
+                }
+            }
+        }
+        // The guide over the crop in crop mode: a view's, so the
+        // edit and its history never hear of it.
+        HorizontalLayout {
+            spacing: Theme.space-2;
+            overlay-words := Text {
+                accessible-role: none;
+                // Crop section: the list of composition guides over the crop
+                text: @tr("Guides");
+                width: LabelColumn.width;
+                color: Theme.text;
+                font-size: Theme.font-sm;
+                vertical-alignment: center;
+            }
+            overlay-box := ComboBox {
+                accessible-label: overlay-words.text;
+                // Crop section: composition guides drawn over the crop
+                model: [@tr("Thirds"), @tr("Golden ratio"), @tr("Golden spiral"), @tr("Diagonals"),
+                    @tr("Triangles"), @tr("crop guide" => "None")];
+                current-index: root.overlay-index(root.crop-overlay);
+                selected(v) => {
+                    root.crop-overlay = root.overlays[self.current-index];
+                    root.crop-overlay-chosen();
                 }
             }
         }
@@ -144,7 +204,8 @@ export component RotateSection inherits Section {
     in-out property <float> geo-angle;
     /// The Angle slider being set, by drag, wheel, or key: the
     /// viewport lays its grid on.
-    in-out property <bool> angle-dragging;
+    in-out property <bool> angle-moving;
+    callback geometry-settled();
     callback geometry-turned(int);
     callback geometry-flipped(bool);
     callback crop-toggled();
@@ -162,7 +223,7 @@ export component RotateSection inherits Section {
         // leveled as if it had been drawn.
         HorizontalLayout {
             spacing: Theme.space-2;
-            PanelButton {
+            level-button := PanelButton {
                 // Rotate section: the button that takes the level tool in hand
                 text: @tr("Level");
                 icon: @image-url("../icons/ruler.svg");
@@ -199,7 +260,7 @@ export component RotateSection inherits Section {
                 accessible-label: @tr("Rotate right");
                 clicked => { root.geometry-turned(-1); }
             }
-            PanelButton {
+            flip-button := PanelButton {
                 text: "";
                 icon: @image-url("../icons/flip-horizontal.svg");
                 // Rotate section: flip the frame left to right
@@ -218,7 +279,7 @@ export component RotateSection inherits Section {
                 clicked => { root.geometry-flipped(true); }
             }
         }
-        EditSlider {
+        angle := EditSlider {
             label: @tr("Angle");
             minimum: -45;
             maximum: 45;
@@ -227,8 +288,16 @@ export component RotateSection inherits Section {
             steps: Steps.tenths;
             value <=> root.geo-angle;
             text: (root.geo-angle >= 0 ? "+" : "") + round(root.geo-angle * 10) / 10 + "°";
-            changed(v) => { root.geometry-changed(); }
-            changed moving => { root.angle-dragging = self.moving; }
+            // Said before the change, not after it as `changed moving`
+            // would: the change's develop waits while the slider moves.
+            changed(v) => {
+                root.angle-moving = self.moving;
+                root.geometry-changed();
+            }
+            changed moving => {
+                root.angle-moving = self.moving;
+                if (!self.moving) { root.geometry-settled(); }
+            }
         }
         // The frame's own turn, under the edit's.
         // The four above are a step in developing
@@ -266,6 +335,10 @@ export component PerspectiveSection inherits Section {
     in-out property <bool> collapsed-perspective;
     in-out property <float> geo-vertical;
     in-out property <float> geo-horizontal;
+    /// The Vertical or the Horizontal slider being set, as the Angle
+    /// slider's `angle-moving`: the viewport lays its grid on.
+    in-out property <bool> perspective-moving;
+    callback geometry-settled();
     callback crop-toggled();
     callback geometry-changed();
     callback geometry-reset();
@@ -281,7 +354,7 @@ export component PerspectiveSection inherits Section {
         // turn and that way's keystone at once.
         HorizontalLayout {
             spacing: Theme.space-2;
-            PanelButton {
+            verticals-button := PanelButton {
                 // Perspective section: the slider
                 text: @tr("Verticals");
                 icon: @image-url("../icons/ruler.svg");
@@ -294,7 +367,7 @@ export component PerspectiveSection inherits Section {
                     root.focus-keys();
                 }
             }
-            PanelButton {
+            horizontals-button := PanelButton {
                 // Perspective section: the slider
                 text: @tr("Horizontals");
                 icon: @image-url("../icons/ruler.svg");
@@ -309,7 +382,7 @@ export component PerspectiveSection inherits Section {
             }
         }
         VerticalLayout {
-            EditSlider {
+            vertical := EditSlider {
                 // Perspective section: the slider
                 label: @tr("Vertical");
                 minimum: -40;
@@ -319,9 +392,16 @@ export component PerspectiveSection inherits Section {
                 steps: Steps.tenths;
                 value <=> root.geo-vertical;
                 text: (root.geo-vertical >= 0 ? "+" : "") + round(root.geo-vertical * 10) / 10 + "°";
-                changed(v) => { root.geometry-changed(); }
+                changed(v) => {
+                    root.perspective-moving = self.moving || horizontal.moving;
+                    root.geometry-changed();
+                }
+                changed moving => {
+                    root.perspective-moving = self.moving || horizontal.moving;
+                    if (!root.perspective-moving) { root.geometry-settled(); }
+                }
             }
-            EditSlider {
+            horizontal := EditSlider {
                 // Perspective section: the slider
                 label: @tr("Horizontal");
                 minimum: -40;
@@ -331,14 +411,21 @@ export component PerspectiveSection inherits Section {
                 steps: Steps.tenths;
                 value <=> root.geo-horizontal;
                 text: (root.geo-horizontal >= 0 ? "+" : "") + round(root.geo-horizontal * 10) / 10 + "°";
-                changed(v) => { root.geometry-changed(); }
+                changed(v) => {
+                    root.perspective-moving = self.moving || vertical.moving;
+                    root.geometry-changed();
+                }
+                changed moving => {
+                    root.perspective-moving = self.moving || vertical.moving;
+                    if (!root.perspective-moving) { root.geometry-settled(); }
+                }
             }
         }
         // The whole of the Crop tab goes back at
         // once, from the end of it: the three
         // sections are one edit, and a Reset inside
         // any one of them would read as that one's.
-        PanelButton {
+        reset-all-button := PanelButton {
             text: @tr("Reset all");
             icon: @image-url("../icons/undo-2.svg");
             clicked => { root.geometry-reset(); }

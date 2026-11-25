@@ -56,7 +56,7 @@ pub(crate) fn original_of(st: &State, c: usize) -> Option<Edit> {
 /// true for a cell with no line, which has nothing to reset.
 pub(crate) fn at_original(st: &State, c: usize) -> bool {
     match (st.line(c), original_of(st, c)) {
-        (Some(line), Some(original)) => line.current == original,
+        (Some(line), Some(original)) => *line.current() == original,
         _ => true,
     }
 }
@@ -89,7 +89,7 @@ pub(crate) fn reset_line(st: &mut State, c: usize) -> bool {
         return false;
     };
     st.line_mut(c)
-        .is_some_and(|line| line.record_as(original, Some(LABEL.to_string())))
+        .is_some_and(|mut line| line.record_as(original, Some(LABEL.to_string())))
 }
 
 /// Reset every one of `chosen` to its Original: the frame on screen,
@@ -118,7 +118,7 @@ pub(crate) fn reset_onto(
         .copied()
         .filter(|&f| Some(f) != panel_frame)
         .collect();
-    let rest = crate::rows::load_frames(st, app, &rest);
+    let rest = crate::rows::writable_frames(st, app, &rest);
     for &f in &rest {
         migrate_frame(st, f);
     }
@@ -281,16 +281,60 @@ mod tests {
         assert_eq!(history_rows(&app), want);
         {
             let st = state.borrow();
-            assert_eq!(st.sidecars[0].current, Edit::default());
-            assert_eq!(st.sidecars[0].current_label.as_deref(), Some(LABEL));
+            assert_eq!(*st.sidecars[0].current(), Edit::default());
+            assert_eq!(st.sidecars[0].current_label(), Some(LABEL));
         }
 
         app.invoke_undo();
         assert_eq!(app.get_exposure(), 0.7);
-        assert_eq!(state.borrow().sidecars[0].current.light.exposure, 0.7);
+        assert_eq!(state.borrow().sidecars[0].current().light.exposure, 0.7);
         assert!(app.get_history_resettable());
         // The other frame was never touched.
         assert_eq!(state.borrow().sidecars[1], Sidecar::default());
+    }
+
+    /// The highlight fill is the Demosaic section's: the panel's read
+    /// keeps it, a save records it, every header reset but Demosaic's
+    /// leaves it, and Reset to Original takes it off with the rest. A
+    /// step that moves it alone is named as its switch.
+    #[test]
+    fn the_highlight_fill_stays_through_the_panel_and_goes_with_reset_to_original() {
+        let mut filled = exposed(0.7);
+        filled.highlight_fill = Some("hl-1".into());
+        let app = window(2);
+        let (state, _worker) = state_for(&app, folder(2));
+        state.borrow_mut().sidecars[0].record(filled.clone());
+        app.invoke_select(0);
+        {
+            let st = state.borrow();
+            assert_eq!(read_edit(&app, &st.develop.edit, st.develop.target), filled);
+        }
+        app.set_exposure(0.2);
+        save(&app, &state);
+        let now = state.borrow().sidecars[0].current().clone();
+        assert_eq!(now.light.exposure, 0.2);
+        assert_eq!(now.highlight_fill.as_deref(), Some("hl-1"));
+        for name in crate::panel::section_reset::SECTIONS {
+            let mut e = now.clone();
+            crate::panel::section_reset::reset_section(&mut e, &Edit::default(), None, name);
+            let kept = (*name != "demosaic").then_some("hl-1");
+            assert_eq!(e.highlight_fill.as_deref(), kept, "{name}");
+        }
+
+        app.invoke_history_reset();
+        assert_eq!(*state.borrow().sidecars[0].current(), Edit::default());
+
+        let only = Edit {
+            highlight_fill: Some("hl-1".into()),
+            ..Edit::default()
+        };
+        state.borrow_mut().sidecars[1].record(only);
+        app.invoke_select(1);
+        assert!(
+            app.get_history_resettable(),
+            "the fill alone is not the Original"
+        );
+        assert_eq!(history_rows(&app)[0], "Highlight fill on");
     }
 
     #[test]
@@ -323,10 +367,10 @@ mod tests {
             let st = state.borrow();
             for f in [1, 2] {
                 let s = &st.sidecars[f];
-                assert_eq!(s.current, Edit::default(), "{f}");
-                assert_eq!(s.current_label.as_deref(), Some(LABEL), "{f}");
-                let back = Sidecar::load(&files[f]).unwrap().expect("written");
-                assert_eq!(back.current, s.current, "{f}");
+                assert_eq!(*s.current(), Edit::default(), "{f}");
+                assert_eq!(s.current_label(), Some(LABEL), "{f}");
+                let back = Sidecar::load_as_file(&files[f]).unwrap().expect("written");
+                assert_eq!(back.current(), s.current(), "{f}");
             }
             // One step each, undoable.
             assert_eq!(st.sidecars[1].history.len(), 2);
@@ -334,7 +378,7 @@ mod tests {
             // The frame at Original: its history and its file alone.
             assert_eq!(st.sidecars[0], untouched);
             assert!(st.sidecars[0].history.is_empty());
-            assert!(Sidecar::load(&files[0]).unwrap().is_none());
+            assert!(Sidecar::load_as_file(&files[0]).unwrap().is_none());
         }
         // The open frame's panel and history follow.
         assert_eq!(app.get_exposure(), 0.0);

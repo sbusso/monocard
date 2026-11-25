@@ -5,3 +5,14 @@ scripts/*.sh text eol=lf
 about.toml text eol=lf
 packaging/notices/* text eol=lf
 crates/greycard-slint/ui/icons/LICENSE text eol=lf
+# The learned highlight fill's fixtures: raw arrays never touched, and the
+# manifests the tests read the same bytes on every platform.
+crates/greycard-core/tests/fixtures/highlight_fill/**/*.bin binary
+crates/greycard-core/tests/fixtures/highlight_fill/**/*.txt text eol=lf
+# The learned highlight fill's built-in weights and the arrays their
+# test compares against.
+crates/greycard-ai/src/highlight/**/*.bin binary
+crates/greycard-ai/src/highlight/**/*.txt text eol=lf
+# Schema 10's golden files: the tests hold what a state writes to these
+# bytes, so they are the same bytes on every platform.
+crates/greycard-edit/fixtures/* text eol=lf

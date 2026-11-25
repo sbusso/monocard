@@ -62,9 +62,14 @@ export component CameraSection inherits Section {
                         // A heading's fold, as the look list's; a
                         // profile by the label it shows.
                         accessible-role: button;
+                        // Its key, for automation: the profile's name
+                        // as the edit stores it, or the heading's
+                        // group key.
+                        accessible-id: row.name;
                         accessible-label: !row.heading ? row.label
                             : row.folded ? @tr("Unfold {}", row.label) : @tr("Fold {}", row.label);
-                        clicked => {
+                        accessible-action-default => { self.choose(); }
+                        function choose() {
                             if (row.heading) {
                                 root.camera-profile-group-toggled(row.name);
                             } else {
@@ -72,6 +77,7 @@ export component CameraSection inherits Section {
                                 root.camera-profile-picked();
                             }
                         }
+                        clicked => { self.choose(); }
                     }
                     // A heading: the fold's triangle, the camera, a mark
                     // for the open frame's own, and the count.
@@ -92,6 +98,8 @@ export component CameraSection inherits Section {
                             }
                         }
                         Text {
+                            // Said by the row's fold, which it names.
+                            accessible-role: none;
                             text: row.label;
                             color: profile-row.has-hover ? Theme.text : Theme.text-secondary;
                             font-size: Theme.font-xs;
@@ -120,6 +128,8 @@ export component CameraSection inherits Section {
                         padding-left: row.indented ? 2px + 14px + Theme.space-1 : Theme.space-2;
                         padding-right: Theme.space-2 + (profile-box.long ? Theme.scrollbar-band : 0);
                         Text {
+                            // Said by the row, which it names.
+                            accessible-role: none;
                             text: row.label;
                             color: on ? Theme.text : (profile-row.has-hover ? Theme.text : Theme.text-secondary);
                             font-size: Theme.font-xs;
@@ -143,7 +153,7 @@ export component CameraSection inherits Section {
     }
     // At the foot of the list: every camera's profiles, a view of the
     // list kept in the window's settings, not in the edit.
-    if root.raw-input && root.camera-profiles-any: Toggle {
+    if root.raw-input && root.camera-profiles-any: all-cameras-toggle := Toggle {
         label: @tr("Show all cameras");
         checked <=> root.camera-profiles-all;
         toggled => { root.camera-profiles-all-changed(); }
@@ -224,6 +234,9 @@ export component LookSection inherits Section {
                 look-row := TouchArea {
                     mouse-cursor: MouseCursor.pointer;
                     accessible-role: button;
+                    // Its key, for automation: the look's name as the
+                    // edit stores it, or the heading's group key.
+                    accessible-id: row.name;
                     // Never a bare name: a look may be called anything,
                     // "Fit" included, and the panel's tests find the
                     // footer's Fit by its label.
@@ -232,7 +245,8 @@ export component LookSection inherits Section {
                         ? (row.folded ? @tr("Unfold {}", row.label) : @tr("Fold {}", row.label))
                         // Spoken by a screen reader: a look's row; {} is its name
                         : @tr("Look {}", row.label);
-                    clicked => {
+                    accessible-action-default => { self.choose(); }
+                    function choose() {
                         if (row.heading) {
                             root.look-group-toggled(row.name);
                         } else {
@@ -240,6 +254,7 @@ export component LookSection inherits Section {
                             root.look-picked();
                         }
                     }
+                    clicked => { self.choose(); }
                     changed has-hover => {
                         if (!row.heading) {
                             root.look-hovered(row.name, self.has-hover);
@@ -265,6 +280,8 @@ export component LookSection inherits Section {
                         }
                     }
                     Text {
+                        // Said by the row's fold, which it names.
+                        accessible-role: none;
                         text: row.label;
                         color: look-row.has-hover ? Theme.text : Theme.text-secondary;
                         font-size: Theme.font-xs;
@@ -317,7 +334,7 @@ export component LookSection inherits Section {
             }
         }
     }
-    EditSlider {
+    strength-slider := EditSlider {
         // Look section: the slider
         label: @tr("Strength");
         enabled: root.look-name != "none";
@@ -370,12 +387,12 @@ export component LookSection inherits Section {
     if root.look-removable || root.look-renamable: HorizontalLayout {
         spacing: Theme.space-2;
         alignment: end;
-        if root.look-renamable: PanelButton {
+        if root.look-renamable: rename-look-button := PanelButton {
             text: @tr("Rename...");
             icon: @image-url("../icons/pencil.svg");
             clicked => { root.look-rename-asked(); }
         }
-        if root.look-removable: PanelButton {
+        if root.look-removable: remove-look-button := PanelButton {
             text: @tr("Remove this look...");
             icon: @image-url("../icons/trash-2.svg");
             clicked => { root.look-remove-asked(); }

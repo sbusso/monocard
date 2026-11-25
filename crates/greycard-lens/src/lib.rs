@@ -26,6 +26,21 @@ pub use db::{Camera, Database, Lens};
 pub use lcp::Lcp;
 pub use store::{Progress, Store};
 
+/// How [`Database::lens`] matches, for the keys of pictures kept from
+/// an edit corrected by the file's profile: raise it when the same
+/// database comes to give a file another lens or none, and those
+/// pictures are made again.
+///
+/// 2: a name of another line of its maker's, or another maker's lens
+/// for a first-party line, is not taken; codes are no focal lengths,
+/// and a match leaving one out needs most of the name; calibrations of
+/// one name tie to the one covering the body, 2026-11-19.
+///
+/// 3: a body is found under any of its maker's names (lensfun's Pentax
+/// bodies filed under Ricoh), and a Pentax DNG's lens is read from its
+/// maker note, 2026-11-22.
+pub const MATCHING: u32 = 3;
+
 use db::{DistortionModel, Lens as DbLens};
 use greycard_core::develop::lens::{
     ChromaticAberration, Distortion, LensCorrection, Scale, Vignetting,
@@ -515,6 +530,7 @@ mod tests {
                 black: LevelPattern::uniform(0.0, 1),
                 white: LevelPattern::uniform(1000.0, 1),
                 black_deltas: None,
+                saturation: None,
             },
             as_shot_coefficients: None,
             calibrations: Vec::new(),

@@ -18,6 +18,14 @@ global Halo {
     out property <length> width: 3px;
 }
 
+// The crop's guides: their ink, the thirds' as they always were, and
+// the golden ratio's two fractions, 1/φ² and 1/φ.
+global Guides {
+    out property <color> ink: #ffffff40;
+    out property <float> minor: 0.381966;
+    out property <float> major: 0.618034;
+}
+
 // An ellipse's outline, in the view's own pixels, turned by `angle`
 // degrees about its center: the brush's ring and the repair's are
 // circles of it, the radial shape's edge an ellipse. `halo` draws the
@@ -221,9 +229,17 @@ export component Viewport inherits Rectangle {
     in property <length> crop-top;
     in property <length> crop-width;
     in property <length> crop-height;
-    /// The Angle slider in a drag: the grid is laid on, over the crop
-    /// when the crop is in hand, else over the whole view.
-    in property <bool> angle-dragging;
+    /// The guide drawn inside the crop, by its name ("Thirds" to
+    /// "None"), and how far the spiral (modulo four) or the triangles
+    /// (modulo two) are turned.
+    in property <string> crop-overlay: "Thirds";
+    in property <int> crop-overlay-turn;
+    /// The spiral's path at a turn, on a tall crop or not.
+    pure callback crop-spiral(int, bool) -> string;
+    /// The Angle, Vertical, or Horizontal slider being set: the grid
+    /// is laid on, over the crop when the crop is in hand, else over
+    /// the whole view.
+    in property <bool> geo-moving;
     callback crop-pressed(int);
     callback crop-dragged(int, length, length);
     callback crop-released();
@@ -837,7 +853,7 @@ export component Viewport inherits Rectangle {
     // The soft proof, named, in the top left corner: a stray S looks
     // like a broken render without it. The pill is the only part of
     // it that takes the pointer, and a click on it is the way out.
-    if root.proof-badge != "": Rectangle {
+    if root.proof-badge != "": proof-pill := Rectangle {
         x: Theme.space-3;
         y: Theme.space-3;
         width: proof-word.preferred-width + 2 * Theme.space-2;
@@ -846,7 +862,10 @@ export component Viewport inherits Rectangle {
         background: root.plate-ground;
         accessible-role: button;
         accessible-label: root.proof-badge;
+        accessible-action-default => { root.proof-off(); }
         proof-word := Text {
+            // Said by the badge, which it names.
+            accessible-role: none;
             text: root.proof-badge;
             color: Theme.over-text;
             font-size: Theme.font-xs;
@@ -1064,7 +1083,20 @@ export component Viewport inherits Rectangle {
     property <bool> crop-alt-drawing;
     property <length> crop-alt-x;
     property <length> crop-alt-y;
+    // A crop handle (or the crop's body) held, from its grab to its
+    // drop. The handles live under `crop-shown`, so a frame stepped to
+    // under the camera's JPEG, the Original key, or crop mode left
+    // mid-drag takes the held one away with no release ever heard:
+    // the drag is ended here then, as a release would end it, so
+    // nothing that waits on the drop (the edit's drag in Rust, the
+    // window's hold on the edge arrows) is left holding.
+    property <bool> crop-handle-down;
+    property <bool> crop-shown: root.crop-mode && !root.bare;
+    changed crop-shown => {
+        if (!root.crop-shown && root.crop-handle-down) { root.crop-dropped(); }
+    }
     function crop-grabbed(i: int, alt: bool, x: length, y: length) {
+        root.crop-handle-down = true;
         root.crop-alt-down = alt;
         root.crop-alt-drawing = false;
         if (alt) {
@@ -1096,10 +1128,11 @@ export component Viewport inherits Rectangle {
         }
         root.crop-alt-down = false;
         root.crop-alt-drawing = false;
+        root.crop-handle-down = false;
     }
-    // The crop: shade outside, a rule of thirds inside, eight
-    // handles and the whole to move.
-    if root.crop-mode && !root.bare: Rectangle {
+    // The crop: shade outside, a guide inside, eight handles and the
+    // whole to move.
+    if root.crop-shown: Rectangle {
         property <length> cl: root.crop-left;
         property <length> ct: root.crop-top;
         property <length> cw: root.crop-width;
@@ -1123,10 +1156,86 @@ export component Viewport inherits Rectangle {
             double-clicked => { root.crop-done(); }
         }
         Rectangle { x: cl; y: ct; width: cw; height: ch; border-width: 1px; border-color: #ffffffcc; }
-        Rectangle { x: cl + cw / 3; y: ct; width: 1px; height: ch; background: #ffffff40; }
-        Rectangle { x: cl + 2 * cw / 3; y: ct; width: 1px; height: ch; background: #ffffff40; }
-        Rectangle { x: cl; y: ct + ch / 3; width: cw; height: 1px; background: #ffffff40; }
-        Rectangle { x: cl; y: ct + 2 * ch / 3; width: cw; height: 1px; background: #ffffff40; }
+        // The guide chosen (`panel::crop::overlay`), each in the thirds'
+        // ink, laid on the crop's rectangle as it moves.
+        if root.crop-overlay == "Thirds": thirds := Rectangle {
+            Rectangle { x: cl + cw / 3; y: ct; width: 1px; height: ch; background: Guides.ink; }
+            Rectangle { x: cl + 2 * cw / 3; y: ct; width: 1px; height: ch; background: Guides.ink; }
+            Rectangle { x: cl; y: ct + ch / 3; width: cw; height: 1px; background: Guides.ink; }
+            Rectangle { x: cl; y: ct + 2 * ch / 3; width: cw; height: 1px; background: Guides.ink; }
+        }
+        // The golden ratio's: lines at 1/φ² and 1/φ each way.
+        if root.crop-overlay == "Golden ratio": golden-ratio := Rectangle {
+            Rectangle { x: cl + cw * Guides.minor; y: ct; width: 1px; height: ch; background: Guides.ink; }
+            Rectangle { x: cl + cw * Guides.major; y: ct; width: 1px; height: ch; background: Guides.ink; }
+            Rectangle { x: cl; y: ct + ch * Guides.minor; width: cw; height: 1px; background: Guides.ink; }
+            Rectangle { x: cl; y: ct + ch * Guides.major; width: cw; height: 1px; background: Guides.ink; }
+        }
+        // The spiral, made in Rust in fractions of the crop and
+        // stretched to it; along the long side of a tall one.
+        if root.crop-overlay == "Golden spiral": golden-spiral := Path {
+            x: cl;
+            y: ct;
+            width: cw;
+            height: ch;
+            viewbox-x: 0;
+            viewbox-y: 0;
+            viewbox-width: 1;
+            viewbox-height: 1;
+            fit: fill;
+            stroke: Guides.ink;
+            stroke-width: 1px;
+            commands: root.crop-spiral(mod(root.crop-overlay-turn, 4), ch > cw);
+        }
+        if root.crop-overlay == "Diagonals": diagonals := Rectangle {
+            x: cl;
+            y: ct;
+            width: cw;
+            height: ch;
+            Rule { stroke: Guides.ink; x0: 0; y0: 0; x1: cw / 1px; y1: ch / 1px; }
+            Rule { stroke: Guides.ink; x0: cw / 1px; y0: 0; x1: 0; y1: ch / 1px; }
+        }
+        // One diagonal, and from each of the other two corners the
+        // line square to it on screen; the second way, the other
+        // diagonal, is the first mirrored left to right.
+        if root.crop-overlay == "Triangles": triangles := Rectangle {
+            x: cl;
+            y: ct;
+            width: cw;
+            height: ch;
+            property <float> w: cw / 1px;
+            property <float> h: ch / 1px;
+            property <bool> mirrored: mod(root.crop-overlay-turn, 2) == 1;
+            // Where the corner at the top right meets the diagonal
+            // from the top left, as a fraction along it; and the
+            // bottom left's.
+            property <float> near: self.w * self.w / max(self.w * self.w + self.h * self.h, 1);
+            property <float> far: self.h * self.h / max(self.w * self.w + self.h * self.h, 1);
+            pure function across(x: float) -> float {
+                return triangles.mirrored ? triangles.w - x : x;
+            }
+            Rule {
+                stroke: Guides.ink;
+                x0: triangles.across(0);
+                y0: 0;
+                x1: triangles.across(triangles.w);
+                y1: triangles.h;
+            }
+            Rule {
+                stroke: Guides.ink;
+                x0: triangles.across(triangles.w);
+                y0: 0;
+                x1: triangles.across(triangles.w * triangles.near);
+                y1: triangles.h * triangles.near;
+            }
+            Rule {
+                stroke: Guides.ink;
+                x0: triangles.across(0);
+                y0: triangles.h;
+                x1: triangles.across(triangles.w * triangles.far);
+                y1: triangles.h * triangles.far;
+            }
+        }
         for h in [
             { id: 0, fx: 0.0, fy: 0.0, cursor: MouseCursor.nwse-resize },
             { id: 1, fx: 0.5, fy: 0.0, cursor: MouseCursor.ns-resize },
@@ -1160,9 +1269,10 @@ export component Viewport inherits Rectangle {
             middle(e, x, y) => { root.middle-at(e, x, y); }
         }
     }
-    // The grid while the angle is set: over the crop in crop mode,
-    // where the thirds already are, over the whole view otherwise.
-    if root.angle-dragging && !root.bare: AlignGrid {
+    // The grid while the angle or the keystone is set: over the crop
+    // in crop mode, where the thirds already are, over the whole view
+    // otherwise.
+    if root.geo-moving && !root.bare: align-grid := AlignGrid {
         x: root.crop-mode ? root.crop-left : 0;
         y: root.crop-mode ? root.crop-top : 0;
         width: root.crop-mode ? root.crop-width : parent.width;
@@ -1320,7 +1430,6 @@ export component Viewport inherits Rectangle {
                 if (self.pressed) { leveler.x1 = self.mouse-x; leveler.y1 = self.mouse-y; }
             }
         }
-        if leveler.dragging: AlignGrid { width: 100%; height: 100%; }
         if leveler.dragging: Path {
             width: 100%;
             height: 100%;
@@ -1500,6 +1609,10 @@ export component Viewport inherits Rectangle {
             height: 100%;
         }
         sync-text := Text {
+            // A click tries the sync again: a button to a screen
+            // reader, named by its words.
+            accessible-role: button;
+            accessible-action-default => { root.sync-retry(); }
             visible: root.sync-note != "";
             text: root.sync-note;
             color: Theme.over-text-secondary;

@@ -242,18 +242,54 @@ fn find_text(app: &App, label: &str) -> Option<ElementHandle> {
     app.window().dispatch_event(WindowEvent::PointerMoved {
         position: LogicalPosition::new(0.0, 0.0),
     });
-    // A section with an owner (a mask's name) titles itself "·  MASK".
-    let after_owner = format!("\u{00b7}  {label}");
-    ElementHandle::find_by_element_type_name(app, "Text").find(|e| {
-        e.size().height > 0.0
-            && e.accessible_label()
-                .is_some_and(|l| l == label || l == after_owner.as_str())
-    })
+    // A section's title is said by its header's fold, not by its words:
+    // the words inside the fold named `label`.
+    let fold = ElementHandle::find_by_element_id(app, "Section::row")
+        .find(|e| e.size().height > 0.0 && e.accessible_label().is_some_and(|l| l == label));
+    if let Some(fold) = fold {
+        let (at, size) = (fold.absolute_position(), fold.size());
+        return ElementHandle::find_by_element_id(app, "Section::title-words").find(|t| {
+            let (p, s) = (t.absolute_position(), t.size());
+            let (x, y) = (p.x + s.width / 2.0, p.y + s.height / 2.0);
+            x >= at.x && x <= at.x + size.width && y >= at.y && y <= at.y + size.height
+        });
+    }
+    ElementHandle::find_by_element_type_name(app, "Text")
+        .find(|e| e.size().height > 0.0 && e.accessible_label().is_some_and(|l| l == label))
 }
 
-/// A header's middle, in the window.
-fn header(app: &App, label: &str) -> (f32, f32) {
+/// The middle of the element `id`, in the window.
+fn id_middle(app: &App, id: &str) -> (f32, f32) {
+    let (at, size) = crate::testing::by_id(app, id);
+    (at.x + size.width / 2.0, at.y + size.height / 2.0)
+}
+
+/// The middle of the words `label`, in the window.
+fn words_middle(app: &App, label: &str) -> (f32, f32) {
     let e = find_text(app, label).unwrap_or_else(|| panic!("no {label:?}"));
+    let (at, size) = (e.absolute_position(), e.size());
+    (at.x + size.width / 2.0, at.y + size.height / 2.0)
+}
+
+/// The title drawn in the header of the section of the type
+/// `section` (as `LightSection`), one in sight.
+fn title_text(app: &App, section: &str) -> Option<ElementHandle> {
+    app.window().dispatch_event(WindowEvent::PointerMoved {
+        position: LogicalPosition::new(0.0, 0.0),
+    });
+    ElementHandle::find_by_element_id(app, &format!("{section}::root"))
+        .filter_map(|e| {
+            e.query_descendants()
+                .match_id("Section::title-words")
+                .find_first()
+        })
+        .find(|e| e.size().height > 0.0)
+}
+
+/// The middle of the title in the header of the section of the type
+/// `section`, in the window.
+fn header(app: &App, section: &str) -> (f32, f32) {
+    let e = title_text(app, section).unwrap_or_else(|| panic!("no {section:?}"));
     let (at, size) = (e.absolute_position(), e.size());
     (at.x + size.width / 2.0, at.y + size.height / 2.0)
 }
@@ -302,9 +338,9 @@ fn develop(height: f32) -> App {
 fn a_header_dragged_down_or_up_moves_its_section() {
     let _scratch = Scratch::new("drag");
     let app = develop(1400.0);
-    let look = header(&app, "LOOK");
-    let camera = header(&app, "CAMERA PROFILE");
-    let light = header(&app, "LIGHT");
+    let look = header(&app, "LookSection");
+    let camera = header(&app, "CameraSection");
+    let light = header(&app, "LightSection");
     // Between CAMERA and LIGHT.
     let between = (look.0, (camera.1 + light.1) / 2.0);
     drag_through(&app, look, &[(look.0, look.1 + 12.0), between]);
@@ -318,15 +354,15 @@ fn a_header_dragged_down_or_up_moves_its_section() {
     assert_eq!(saved().get("develop"), Some(&want));
     // On screen too: LOOK now between CAMERA and LIGHT.
     let (look, camera, light) = (
-        header(&app, "LOOK"),
-        header(&app, "CAMERA PROFILE"),
-        header(&app, "LIGHT"),
+        header(&app, "LookSection"),
+        header(&app, "CameraSection"),
+        header(&app, "LightSection"),
     );
     assert!(camera.1 < look.1 && look.1 < light.1);
 
     // LIGHT up above the first section shown.
-    let wb = header(&app, "WHITE BALANCE");
-    let light = header(&app, "LIGHT");
+    let wb = header(&app, "WhiteBalanceSection");
+    let light = header(&app, "LightSection");
     drag_through(
         &app,
         light,
@@ -348,11 +384,11 @@ fn a_header_dragged_down_or_up_moves_its_section() {
 fn a_wobbling_click_still_folds() {
     let _scratch = Scratch::new("wobble");
     let app = develop(1400.0);
-    let look = header(&app, "LOOK");
+    let look = header(&app, "LookSection");
     drag_through(&app, look, &[(look.0 + 5.0, look.1 + 3.0)]);
     assert!(!app.get_collapsed_look(), "a small wobble opens it");
     settle(&app);
-    let look = header(&app, "LOOK");
+    let look = header(&app, "LookSection");
     drag_through(
         &app,
         look,
@@ -366,9 +402,9 @@ fn a_wobbling_click_still_folds() {
     assert!(saved().is_empty());
     // A drag that moved does not fold: released over the header it
     // came from, now in its new place.
-    let look = header(&app, "LOOK");
-    let wb = header(&app, "WHITE BALANCE");
-    let camera = header(&app, "CAMERA PROFILE");
+    let look = header(&app, "LookSection");
+    let wb = header(&app, "WhiteBalanceSection");
+    let camera = header(&app, "CameraSection");
     drag_through(
         &app,
         look,
@@ -384,8 +420,8 @@ fn a_wobbling_click_still_folds() {
 fn esc_cancels_a_drag() {
     let _scratch = Scratch::new("esc");
     let app = develop(1400.0);
-    let look = header(&app, "LOOK");
-    let light = header(&app, "LIGHT");
+    let look = header(&app, "LookSection");
+    let light = header(&app, "LightSection");
     pointer(&app, "move", look);
     pointer(&app, "down", look);
     pointer(&app, "move", (look.0, look.1 + 12.0));
@@ -415,8 +451,8 @@ fn a_drag_past_the_panes_ends_scrolls_it_and_off_its_side_drops_nothing() {
         .next()
         .unwrap();
     let (at, size) = (view.absolute_position(), view.size());
-    let look = header(&app, "LOOK");
-    let light = header(&app, "LIGHT");
+    let look = header(&app, "LookSection");
+    let light = header(&app, "LightSection");
     drag_through(
         &app,
         look,
@@ -426,7 +462,7 @@ fn a_drag_past_the_panes_ends_scrolls_it_and_off_its_side_drops_nothing() {
     assert!(app.get_collapsed_look());
 
     // Past the foot, held there.
-    let look = header(&app, "LOOK");
+    let look = header(&app, "LookSection");
     let foot = at.y + size.height + 40.0;
     pointer(&app, "move", look);
     pointer(&app, "down", look);
@@ -445,7 +481,7 @@ fn a_drag_past_the_panes_ends_scrolls_it_and_off_its_side_drops_nothing() {
     assert_eq!(order_of(&app, "develop").last().unwrap(), "look");
 
     // Past the top: back up to the first place.
-    let look = header(&app, "LOOK");
+    let look = header(&app, "LookSection");
     pointer(&app, "move", look);
     pointer(&app, "down", look);
     pointer(&app, "move", (look.0, look.1 - 12.0));
@@ -470,8 +506,8 @@ fn a_drag_past_the_panes_ends_scrolls_it_and_off_its_side_drops_nothing() {
 fn a_stack_taken_away_mid_drag_commits_nothing() {
     let _scratch = Scratch::new("torn");
     let app = develop(1400.0);
-    let look = header(&app, "LOOK");
-    let light = header(&app, "LIGHT");
+    let look = header(&app, "LookSection");
+    let light = header(&app, "LightSection");
     pointer(&app, "move", look);
     pointer(&app, "down", look);
     pointer(&app, "move", (look.0, look.1 + 12.0));
@@ -712,10 +748,10 @@ fn the_export_queue_header_stands_where_its_order_puts_it() {
         .set_size(slint::LogicalSize::new(1500.0, 1000.0));
     install(&app);
     let titles = [
-        ("roots", "ROOTS"),
-        ("folders", "FOLDERS"),
-        ("collections", "COLLECTIONS"),
-        ("metadata", "METADATA"),
+        ("roots", "RootsSection"),
+        ("folders", "FoldersSection"),
+        ("collections", "CollectionsSection"),
+        ("metadata", "MetaSection"),
     ];
     let queue_y = |app: &App, said: &str| {
         let queue: Vec<_> = ElementHandle::find_by_element_type_name(app, "QueueHeader")
@@ -788,7 +824,7 @@ fn the_export_queue_header_is_dragged_as_a_section() {
         (p.x + s.width / 2.0, p.y + s.height / 2.0)
     };
     let from = queue();
-    let folders = header(&app, "FOLDERS");
+    let folders = header(&app, "FoldersSection");
     drag_through(
         &app,
         from,
@@ -797,7 +833,10 @@ fn the_export_queue_header_is_dragged_as_a_section() {
     let want = names_of(&["roots", "queue", "folders", "collections", "metadata"]);
     assert_eq!(order_of(&app, "library"), want, "the queue above FOLDERS");
     assert_eq!(saved().get("library"), Some(&want));
-    assert!(queue().1 < header(&app, "FOLDERS").1, "on screen too");
+    assert!(
+        queue().1 < header(&app, "FoldersSection").1,
+        "on screen too"
+    );
     assert!(!app.get_queue_view_on(), "a drag opens nothing");
     // COLLECTIONS to the top: the queue stays where it was put.
     let len = want.len() as i32;
@@ -820,7 +859,7 @@ fn a_hidden_list_takes_no_room() {
         .set_size(slint::LogicalSize::new(1500.0, 1000.0));
     install(&app);
     let at = |app: &App| -> Vec<f32> {
-        ["ROOTS", "COLLECTIONS", "METADATA"]
+        ["RootsSection", "CollectionsSection", "MetaSection"]
             .iter()
             .map(|t| header(app, t).1)
             .collect()
@@ -846,7 +885,7 @@ fn a_hidden_list_takes_no_room() {
     app.set_culling(true);
     show(&app, &BTreeMap::new());
     settle(&app);
-    let first = header(&app, "FOLDERS").1;
+    let first = header(&app, "FoldersSection").1;
     show(
         &app,
         &[(
@@ -856,7 +895,7 @@ fn a_hidden_list_takes_no_room() {
         .into(),
     );
     settle(&app);
-    assert_eq!(header(&app, "FOLDERS").1, first);
+    assert_eq!(header(&app, "FoldersSection").1, first);
 }
 
 /// New mask brings the MASK section into view wherever the order has
@@ -875,7 +914,7 @@ fn new_mask_brings_its_section_into_view() {
         set(&app, false);
     }
     settle(&app);
-    let new_mask = header(&app, "New mask");
+    let new_mask = id_middle(&app, "AdjustmentsList::new-mask-button");
     click(&app, new_mask.0, new_mask.1);
     settle(&app);
     assert_eq!(app.get_target(), 1);
@@ -887,7 +926,7 @@ fn new_mask_brings_its_section_into_view() {
         view.absolute_position().y,
         view.absolute_position().y + view.size().height,
     );
-    let mask = header(&app, "MASK");
+    let mask = header(&app, "AdjustmentsSection");
     assert!(
         top <= mask.1 && mask.1 <= bottom,
         "MASK at {} in {top}..{bottom}",
@@ -899,7 +938,7 @@ fn new_mask_brings_its_section_into_view() {
     reset(&app);
     app.set_panel_scroll(-200.0);
     settle(&app);
-    let new_mask = header(&app, "New mask");
+    let new_mask = id_middle(&app, "AdjustmentsList::new-mask-button");
     click(&app, new_mask.0, new_mask.1);
     settle(&app);
     assert_eq!(app.get_panel_scroll(), 0.0);
@@ -921,15 +960,8 @@ fn reset_section_order_in_the_settings() {
         app.window().dispatch_event(WindowEvent::PointerMoved {
             position: LogicalPosition::new(0.0, 0.0),
         });
-        ElementHandle::find_by_element_type_name(&app, "PanelButton")
-            .find(|b| {
-                b.query_descendants()
-                    .match_predicate(|e| {
-                        e.accessible_label().as_deref() == Some("Reset section order")
-                    })
-                    .find_first()
-                    .is_some()
-            })
+        ElementHandle::find_by_element_id(&app, "SettingsSheet::reset-order-button")
+            .next()
             .expect("the button")
     };
     assert_eq!(button().accessible_enabled(), Some(false));
@@ -957,12 +989,13 @@ fn element(app: &App, kind: &str) -> Option<ElementHandle> {
 /// The folder tree's first row in sight, and where it is under the
 /// FOLDERS header.
 fn first_row(app: &App) -> (String, f32) {
-    let top = header(app, "FOLDERS").1;
+    let top = header(app, "FoldersSection").1;
     (0..60)
         .map(|i| format!("r{i:02}"))
         .find_map(|name| {
-            let y = ElementHandle::find_by_accessible_label(app, &name)
-                .find(|e| e.size().height > 0.0 && e.absolute_position().y > top)
+            // The row keyed by its folder's path, "/r00" and on.
+            let y = crate::testing::keyed(app, "FoldersSection::folder-line", format!("/{name}"))
+                .filter(|e| e.size().height > 0.0 && e.absolute_position().y > top)
                 .map(|e| e.absolute_position().y - top);
             y.map(|y| (name, y))
         })
@@ -1061,7 +1094,7 @@ fn another_button_mid_drag_ends_it() {
         .next()
         .unwrap();
     let foot = view.absolute_position().y + view.size().height + 20.0;
-    let look = header(&app, "LOOK");
+    let look = header(&app, "LookSection");
     pointer(&app, "move", look);
     pointer(&app, "down", look);
     pointer(&app, "move", (look.0, look.1 + 12.0));
@@ -1087,7 +1120,7 @@ fn another_button_mid_drag_ends_it() {
     // Back over the header and let go.
     app.set_panel_scroll(0.0);
     settle(&app);
-    let look = header(&app, "LOOK");
+    let look = header(&app, "LookSection");
     pointer(&app, "move", look);
     pointer(&app, "up", look);
     settle(&app);
@@ -1098,7 +1131,7 @@ fn another_button_mid_drag_ends_it() {
     press(&app, slint::platform::Key::Escape);
     assert_eq!(app.get_wheel_hand(), -1, "Esc the window's again");
     // The next click is a click.
-    let look = header(&app, "LOOK");
+    let look = header(&app, "LookSection");
     click(&app, look.0, look.1);
     settle(&app);
     assert!(!app.get_collapsed_look());
@@ -1116,8 +1149,8 @@ fn a_view_change_under_a_drag_cancels_it() {
     install(&app);
     app.set_grid_open(true);
     settle(&app);
-    let roots = header(&app, "ROOTS");
-    let metadata = header(&app, "METADATA");
+    let roots = header(&app, "RootsSection");
+    let metadata = header(&app, "MetaSection");
     pointer(&app, "move", roots);
     pointer(&app, "down", roots);
     pointer(&app, "move", (roots.0, roots.1 + 12.0));
@@ -1306,8 +1339,8 @@ fn a_drop_just_under_itself_past_hidden_slots_moves_nothing() {
 
     app.set_grid_open(true);
     settle(&app);
-    let wobble = |app: &App, title: &str| {
-        let at = header(app, title);
+    let wobble = |app: &App, section: &str| {
+        let at = header(app, section);
         pointer(app, "move", at);
         pointer(app, "down", at);
         pointer(app, "move", (at.0, at.1 + 12.0));
@@ -1320,7 +1353,7 @@ fn a_drop_just_under_itself_past_hidden_slots_moves_nothing() {
         settle(app);
     };
     let folded = app.get_collapsed_roots();
-    wobble(&app, "ROOTS");
+    wobble(&app, "RootsSection");
     assert_eq!(order_of(&app, "library"), names_of(first_of("library")));
     assert!(saved().is_empty(), "nothing written");
     assert!(!app.get_section_order_moved());
@@ -1336,7 +1369,7 @@ fn a_drop_just_under_itself_past_hidden_slots_moves_nothing() {
     }
     settle(&app);
     let folded = app.get_collapsed_wb();
-    wobble(&app, "WHITE BALANCE");
+    wobble(&app, "WhiteBalanceSection");
     assert_eq!(order_of(&app, "develop"), names_of(first_of("develop")));
     assert!(saved().is_empty(), "nothing written");
     assert_ne!(app.get_collapsed_wb(), folded, "the click folds");
@@ -1349,8 +1382,8 @@ fn a_drop_just_under_itself_past_hidden_slots_moves_nothing() {
 fn a_cancel_lets_the_drag_go_without_a_release() {
     let _scratch = Scratch::new("cancelheld");
     let app = develop(1400.0);
-    let look = header(&app, "LOOK");
-    let light = header(&app, "LIGHT");
+    let look = header(&app, "LookSection");
+    let light = header(&app, "LightSection");
     pointer(&app, "move", look);
     pointer(&app, "down", look);
     pointer(&app, "move", (look.0, look.1 + 12.0));
@@ -1361,9 +1394,9 @@ fn a_cancel_lets_the_drag_go_without_a_release() {
     // Released elsewhere, then another section dragged.
     pointer(&app, "up", (look.0, light.1 + 10.0));
     settle(&app);
-    let wb = header(&app, "WHITE BALANCE");
-    let camera = header(&app, "CAMERA PROFILE");
-    let light = header(&app, "LIGHT");
+    let wb = header(&app, "WhiteBalanceSection");
+    let camera = header(&app, "CameraSection");
+    let light = header(&app, "LightSection");
     drag_through(
         &app,
         wb,
@@ -1424,8 +1457,8 @@ fn hook_release(app: &App) {
 
 /// LOOK in hand, dragged under LIGHT.
 fn hold_look(app: &App) -> (f32, f32) {
-    let look = header(app, "LOOK");
-    let light = header(app, "LIGHT");
+    let look = header(app, "LookSection");
+    let light = header(app, "LightSection");
     pointer(app, "move", look);
     pointer(app, "down", look);
     pointer(app, "move", (look.0, look.1 + 12.0));
@@ -1484,8 +1517,8 @@ fn a_mask_deleted_under_its_drag_leaves_esc_the_windows() {
         set(&app, true);
     }
     settle(&app);
-    let mask = header(&app, "MASK");
-    let light = header(&app, "LIGHT");
+    let mask = header(&app, "AdjustmentsSection");
+    let light = header(&app, "LightSection");
     pointer(&app, "move", mask);
     pointer(&app, "down", mask);
     pointer(&app, "move", (mask.0, mask.1 + 12.0));
@@ -1852,19 +1885,20 @@ fn capture_the_section_headers() {
                     continue;
                 }
                 // A header of each pane under the pointer, then folded.
-                let labels: &[&str] = if view == "library" {
-                    &["FOLDERS"]
+                let sections: &[&str] = if view == "library" {
+                    &["FoldersSection"]
                 } else {
-                    &["HISTORY", "LIGHT"]
+                    &["HistorySection", "LightSection"]
                 };
-                for &label in labels {
-                    let at = header(&app, label);
-                    let e = find_text(&app, label).unwrap();
+                for &section in sections {
+                    let at = header(&app, section);
+                    let e = title_text(&app, section).unwrap();
                     let (p, s) = (e.absolute_position(), e.size());
                     pointer(&app, "move", at);
                     run();
                     let img = shot(&app);
-                    let tag = label.to_lowercase();
+                    let tag = section.trim_end_matches("Section").to_lowercase();
+                    let label = tag.to_uppercase();
                     img.save(dir.join(format!("{stem}-hover-{tag}.png")))
                         .unwrap();
                     let (ink, ground) = read(&img, 1.0, p.x, p.y, s.width, s.height).unwrap();
@@ -1883,13 +1917,13 @@ fn capture_the_section_headers() {
                         describe(&app, Some(&img), 1.0),
                     )
                     .unwrap();
-                    let at = header(&app, label);
+                    let at = header(&app, section);
                     click(&app, at.0, at.1);
                     settle(&app);
                 }
                 // A folder row under the pointer: its fill's reach in
                 // the box.
-                pointer(&app, "move", header(&app, "2025"));
+                pointer(&app, "move", words_middle(&app, "2025"));
                 run();
                 shot(&app)
                     .save(dir.join(format!("{stem}-hover-folder-row.png")))

@@ -1080,6 +1080,12 @@ fn escape(text: &str, attribute: bool) -> String {
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
             '"' if attribute => out.push_str("&quot;"),
+            // A parser turns a carriage return written as itself into a
+            // line feed, and in an attribute a line feed or a tab into a
+            // space: as references they read back as they were.
+            '\r' => out.push_str("&#13;"),
+            '\n' if attribute => out.push_str("&#10;"),
+            '\t' if attribute => out.push_str("&#9;"),
             _ => out.push(c),
         }
     }
@@ -1087,6 +1093,24 @@ fn escape(text: &str, attribute: bool) -> String {
 }
 
 // -- the files beside a frame ----------------------------------------
+
+/// The most of an XMP beside a frame read: one with many brush strokes
+/// or masks runs to some megabytes, and this is read on every open of
+/// a folder, from files anyone may have put there (§705).
+pub const BESIDE_MOST: usize = 64 << 20;
+
+/// The bytes of the XMP at `path`, the one place an XMP beside a frame
+/// is read: no further than a byte past [`BESIDE_MOST`], and a larger
+/// one is an error of kind `FileTooLarge`, whatever its size says, so
+/// a caller treats it as it treats a file it cannot read.
+pub fn bytes_of(path: &Path) -> std::io::Result<Vec<u8>> {
+    crate::preset::bytes_at_most(path, BESIDE_MOST)?.ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::FileTooLarge,
+            format!("larger than {} MB, not read", BESIDE_MOST >> 20),
+        )
+    })
+}
 
 /// Lightroom's and Bridge's name: `IMG.CR3` keeps its XMP in
 /// `IMG.xmp`.
@@ -1263,7 +1287,7 @@ fn culled_for(frame: &Path, short: PathBuf, others: &[PathBuf]) -> Option<Shared
     if !greycard_core::decode::is_raw_path(frame) || !others.iter().all(jpeg) {
         return None;
     }
-    let bytes = std::fs::read(&short).ok()?;
+    let bytes = bytes_of(&short).ok()?;
     let text = String::from_utf8_lossy(&bytes);
     let doc = roxmltree::Document::parse(&text).ok()?;
     let extension = frame.extension().and_then(|x| x.to_str()).unwrap_or("");
@@ -1403,13 +1427,14 @@ pub struct Adoption {
     /// The meta moved.
     pub meta: bool,
     /// The quarter turns clockwise `tiff:Orientation` asked for on
-    /// top of what the sidecar already had, when it asked for any.
+    /// top of what the sidecar already had, when it asked for any and
+    /// the frame was turned.
     pub turned: Option<i32>,
-    /// There was work placed on the picture itself — a mask, a
-    /// repair patch — that the turn could not carry round, because
-    /// nothing here knows what shape the picture is. The caller is
-    /// the one that can say so.
-    pub left_placed: bool,
+    /// `tiff:Orientation` asked for a turn and nothing could measure the
+    /// frame (the sidecar's shape, its file's header), so it was not
+    /// turned ([`greycard_edit::Sidecar::turn_by`]), and is owed
+    /// ([`greycard_edit::Sidecar::turn_owed`]).
+    pub unmeasured: bool,
 }
 
 impl Adoption {
@@ -1434,24 +1459,33 @@ impl Adoption {
 /// A packet that will not parse is passed over with a warning, and
 /// is not marked, so the complaint comes back if it is never fixed.
 /// The XMP is what a malformed file costs, never the `.gcd`.
+///
+/// A turn the packet says, or one owed, is made by the frame's shape:
+/// the sidecar's, or failing it the frame's header's
+/// ([`crate::on_disk::frame_shape`]), read only for a frame with work
+/// placed on it (§724).
 pub fn adopt(
     frame: &Path,
     sidecar: &mut greycard_edit::Sidecar,
     camera: impl FnOnce() -> Option<Orientation>,
 ) -> Adoption {
-    adopt_said(frame, sidecar, camera, true)
+    let shape = |turn| crate::on_disk::frame_shape(frame, turn);
+    adopt_said(frame, sidecar, camera, shape, true)
 }
 
 /// [`adopt`], with `say` whether an XMP that will not read or parse is
 /// said in the log: not for a reader that only looks ahead
-/// (`on_disk::peek_sidecar`), whose frame's own read says it.
+/// (`on_disk::peek_sidecar`), whose frame's own read says it. The
+/// frame's shape is said by `shape`, the reader's (see
+/// `on_disk::FrameShape`).
 pub fn adopt_said(
     frame: &Path,
     sidecar: &mut greycard_edit::Sidecar,
     camera: impl FnOnce() -> Option<Orientation>,
+    shape: impl FnMut(u8) -> Option<f32>,
     say: bool,
 ) -> Adoption {
-    adopt_beside_said(&beside(frame), sidecar, camera, say)
+    adopt_beside_said(&beside(frame), sidecar, camera, shape, say)
 }
 
 /// [`adopt`] from what [`beside`] found, for a caller that has it.
@@ -1476,8 +1510,9 @@ pub fn adopt_beside(
     found: &Beside,
     sidecar: &mut greycard_edit::Sidecar,
     camera: impl FnOnce() -> Option<Orientation>,
+    shape: impl FnMut(u8) -> Option<f32>,
 ) -> Adoption {
-    adopt_beside_said(found, sidecar, camera, true)
+    adopt_beside_said(found, sidecar, camera, shape, true)
 }
 
 /// [`adopt_beside`], with `say` as [`adopt_said`] has it.
@@ -1485,9 +1520,10 @@ fn adopt_beside_said(
     found: &Beside,
     sidecar: &mut greycard_edit::Sidecar,
     camera: impl FnOnce() -> Option<Orientation>,
+    shape: impl FnMut(u8) -> Option<f32>,
     say: bool,
 ) -> Adoption {
-    let mut took = adopt_own(found.own.as_deref(), sidecar, camera, say);
+    let mut took = adopt_own(found.own.as_deref(), sidecar, camera, shape, say);
     if let Some(shared) = &found.shared {
         let now = shared.culled();
         let was = sidecar.xmp_shared.take();
@@ -1552,15 +1588,24 @@ fn adopt_own(
     path: Option<&Path>,
     sidecar: &mut greycard_edit::Sidecar,
     camera: impl FnOnce() -> Option<Orientation>,
+    mut shape: impl FnMut(u8) -> Option<f32>,
     say: bool,
 ) -> Adoption {
     let mut took = Adoption::default();
+    // A turn an earlier packet asked for that nothing could measure the
+    // frame to make (§724): made now if it can be, whatever the packet
+    // says since, or the file is gone.
+    if let Some(by) = sidecar.make_owed_turn(&mut shape)
+        && by != 0
+    {
+        took.turned = Some(by);
+    }
     let Some(path) = path else {
         // Nothing there to have a mark about.
         sidecar.xmp = None;
         return took;
     };
-    let bytes = match std::fs::read(path) {
+    let bytes = match bytes_of(path) {
         Ok(b) => b,
         Err(e) => {
             crate::on_disk::said(
@@ -1588,7 +1633,6 @@ fn adopt_own(
             return took;
         }
     };
-    sidecar.xmp = Some(mark);
     // The orientation is the one field here that is not the meta's:
     // the camera's tag is wanted to take the turn back out of it, and
     // it is only asked for when the packet said something about the
@@ -1596,18 +1640,34 @@ fn adopt_own(
     // nothing to open.
     if packet.has(Prop::Orientation)
         && let Some(turn) = camera().and_then(|c| packet.turn_over(c))
-        && turn != sidecar.turn
     {
         let by = i32::from(turn) - i32::from(sidecar.turn);
-        // No aspect to give: a folder is opened before a frame of it
-        // is decoded, and reading a raw to find its shape would
-        // charge every open for a field almost no packet carries a
-        // surprise in. The geometry turns, anything placed on the
-        // picture does not, and the caller is told both.
-        took.left_placed = sidecar.placed();
-        sidecar.turn_by(by, None);
-        took.turned = Some(by);
+        // The turn alone (§724): every state is shown under it from
+        // the turn it was placed under, by the frame's shape, which the
+        // sidecar knows or `shape` says. A frame nothing can
+        // measure is not turned yet: the turn is owed, apart from the
+        // mark, and made at a read that can measure it.
+        if by == 0 {
+            sidecar.turn_owed = None;
+        } else if sidecar.turn_by_asking(by, &mut shape).is_some() {
+            sidecar.turn_owed = None;
+            took.turned = Some(took.turned.unwrap_or(0) + by);
+        } else {
+            sidecar.turn_owed = Some(turn % 4);
+            took.unmeasured = true;
+            crate::on_disk::said(
+                say,
+                module_path!(),
+                log::Level::Warn,
+                format!(
+                    "{}: says the frame is turned, and nothing can measure the frame; \
+                     not turned yet",
+                    path.display()
+                ),
+            );
+        }
     }
+    sidecar.xmp = Some(mark);
     let merged = packet.over(&sidecar.meta);
     if merged != sidecar.meta {
         sidecar.meta = merged;
@@ -1724,6 +1784,22 @@ mod tests {
 
     fn meta_of(xml: &str) -> Meta {
         read(xml).unwrap().meta
+    }
+
+    /// Found by fuzzing: a carriage return read from a reference was
+    /// written as itself, which a parser reads as a line feed, so a
+    /// keyword or a caption with one read back changed.
+    #[test]
+    fn fuzz_a_carriage_return_reads_back_as_written() {
+        let xml = r#"<x:xmpmeta xmlns:x=""><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:subject><rdf:Seq><rdf:li>{&#13;/</rdf:li></rdf:Seq></dc:subject><dc:description><rdf:Alt><rdf:li xml:lang="x-default">one&#13;&#10;two</rdf:li></rdf:Alt></dc:description></rdf:Description></rdf:RDF></x:xmpmeta>"#;
+        let meta = meta_of(xml);
+        assert_eq!(meta.keywords, ["{\r/"]);
+        assert_eq!(meta.caption, "one\r\ntwo");
+        let fresh = fresh(&meta, None);
+        assert_eq!(meta_of(&fresh), meta, "{fresh}");
+        let written = write(xml, &meta, None).unwrap();
+        assert_eq!(meta_of(&written), meta, "{written}");
+        assert_eq!(escape("a\tb\nc\rd", true), "a&#9;b&#10;c&#13;d");
     }
 
     /// Found by fuzzing: a description nested in a property's value
@@ -1964,6 +2040,154 @@ mod tests {
         }
     }
 
+    /// An XMP's turn changes the sidecar's turn and no state (§724),
+    /// its masks shown turned with the frame by the shape the sidecar
+    /// knows; with no shape known and a frame whose file will not say
+    /// one, the frame is not turned at all, and the caller is told.
+    #[test]
+    fn an_xmp_turn_writes_no_state_and_is_made_by_the_frame_s_shape() {
+        use greycard_edit::mask::{Component, Mask, Shape, Turned};
+        let dir = std::env::temp_dir().join(format!("greycard-xmp-placed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let frame = dir.join("IMG_7001.CR3");
+        std::fs::write(&frame, b"raw").unwrap();
+        std::fs::write(
+            long_path(&frame),
+            fresh(&Meta::default(), Some(Turn::new(Orientation::Rotate90, 0))),
+        )
+        .unwrap();
+        let mut placed = greycard_edit::Edit::default();
+        placed.geometry.crop = Some(greycard_edit::geometry::Crop::of([0.1, 0.2, 0.5, 0.6]));
+        placed.adjustments.push(greycard_edit::Adjustment {
+            id: 1,
+            mask: Mask {
+                components: vec![Component {
+                    shape: Shape::Radial {
+                        center: [0.3, 0.4],
+                        radius: [0.1, 0.05],
+                        angle: 10.0,
+                        feather: 0.5,
+                    },
+                    ..Component::default()
+                }],
+                ..Mask::default()
+            },
+            ..Default::default()
+        });
+        // The frame's file says nothing of its shape, and nothing else
+        // has: not turned.
+        let mut unknown = greycard_edit::Sidecar::default();
+        unknown.record(placed.clone());
+        let before = unknown.clone();
+        let took = adopt(&frame, &mut unknown, || Some(Orientation::Normal));
+        assert_eq!(took.turned, None);
+        assert!(took.unmeasured);
+        assert_eq!(unknown.turn, 0);
+        assert_eq!(unknown.line, before.line);
+        // Owed, the packet marked as taken: once the frame can be
+        // measured, the next read turns it, and the one after has
+        // nothing new.
+        assert_eq!(unknown.turn_owed, Some(1));
+        assert!(unknown.xmp.is_some());
+        unknown.frame_known(1.5);
+        let took = adopt(&frame, &mut unknown, || Some(Orientation::Normal));
+        assert_eq!(took.turned, Some(1));
+        assert!(!took.unmeasured);
+        assert_eq!(unknown.turn, 1);
+        assert_eq!(unknown.turn_owed, None);
+        let took = adopt(&frame, &mut unknown, || Some(Orientation::Normal));
+        assert!(!took.moved());
+        // Known: turned, the state as written where it was.
+        let mut sidecar = greycard_edit::Sidecar::default();
+        sidecar.record(placed.clone());
+        sidecar.frame_known(1.5);
+        let took = adopt(&frame, &mut sidecar, || Some(Orientation::Normal));
+        assert_eq!(took.turned, Some(1));
+        assert!(!took.unmeasured);
+        assert_eq!(sidecar.turn, 1);
+        assert_eq!(*sidecar.current_written(), placed);
+        let mut turned = placed.clone();
+        turned.turn(1, Some(Turned::new(1, 1.5)));
+        assert_eq!(*sidecar.current(), turned);
+        greycard_core::testing::remove_dir_retry(&dir);
+    }
+
+    /// An XMP turn nothing can measure is owed apart from the packet's
+    /// mark: the packet's meta is taken once, so a rating changed here
+    /// afterwards stands at every read, and the turn is made at the
+    /// first read that can measure the frame, even after this build has
+    /// written the packet again with the sidecar's own turn.
+    #[test]
+    fn an_unmeasured_xmp_turn_is_owed_and_the_meta_is_taken_once() {
+        use greycard_edit::mask::{Component, Mask, Shape};
+        let dir = std::env::temp_dir().join(format!("greycard-xmp-owed-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let frame = dir.join("IMG_7002.CR3");
+        std::fs::write(&frame, b"raw").unwrap();
+        let said = Meta {
+            rating: 3,
+            ..Meta::default()
+        };
+        std::fs::write(
+            long_path(&frame),
+            fresh(&said, Some(Turn::new(Orientation::Rotate90, 0))),
+        )
+        .unwrap();
+        let mut placed = greycard_edit::Edit::default();
+        placed.adjustments.push(greycard_edit::Adjustment {
+            id: 1,
+            mask: Mask {
+                components: vec![Component {
+                    shape: Shape::Subject {},
+                    ..Component::default()
+                }],
+                ..Mask::default()
+            },
+            ..Default::default()
+        });
+        let mut s = greycard_edit::Sidecar::default();
+        s.record(placed);
+        let took = adopt(&frame, &mut s, || Some(Orientation::Normal));
+        assert!(took.unmeasured);
+        assert_eq!((s.turn, s.turn_owed), (0, Some(1)));
+        assert_eq!(s.meta.rating, 3);
+        assert!(s.xmp.is_some(), "the packet's meta taken");
+        // A rating changed here stands at the next read.
+        s.meta.rating = 5;
+        let took = adopt(&frame, &mut s, || Some(Orientation::Normal));
+        assert!(!took.moved());
+        assert_eq!((s.meta.rating, s.turn_owed), (5, Some(1)));
+        // This build writes the packet with the turn the sidecar says
+        // for it: the owed one, so the other program's rotation stays in
+        // the packet. The turn is owed still, through the sidecar's file.
+        s.xmp = save(
+            &frame,
+            &s.meta,
+            Some(Turn::new(Orientation::Normal, s.xmp_turn())),
+        )
+        .unwrap();
+        let packet = read(&std::fs::read_to_string(long_path(&frame)).unwrap()).unwrap();
+        assert_eq!(packet.turn_over(Orientation::Normal), Some(1));
+        let mut back =
+            greycard_edit::Sidecar::from_json(&s.to_json(), &greycard_edit::Edit::default())
+                .unwrap();
+        assert_eq!(back.turn_owed, Some(1));
+        let mut by_hand = back.clone();
+        // Measured: the next read makes it.
+        back.frame_known(1.5);
+        let took = adopt(&frame, &mut back, || Some(Orientation::Normal));
+        assert_eq!(took.turned, Some(1));
+        assert_eq!((back.turn, back.turn_owed), (1, None));
+        assert_eq!(back.meta.rating, 5);
+        // Turned by hand to 3 instead: the next read leaves it there.
+        by_hand.frame_known(1.5);
+        assert!(by_hand.turn_by(3, None).is_some());
+        let took = adopt(&frame, &mut by_hand, || Some(Orientation::Normal));
+        assert_eq!(took.turned, None);
+        assert_eq!((by_hand.turn, by_hand.turn_owed), (3, None));
+        greycard_core::testing::remove_dir_retry(&dir);
+    }
+
     #[test]
     fn an_xmp_turn_is_adopted_against_the_frames_own_tag() {
         let dir = std::env::temp_dir().join(format!("greycard-xmp-turn-{}", std::process::id()));
@@ -1978,6 +2202,7 @@ mod tests {
         )
         .unwrap();
         let mut sidecar = greycard_edit::Sidecar::default();
+        sidecar.frame_known(1.5);
         assert!(adopt(&frame, &mut sidecar, || Some(Orientation::Rotate90)).moved());
         assert_eq!(sidecar.turn, 2);
         // Taken once; the same file says nothing new.
@@ -1996,6 +2221,33 @@ mod tests {
         .unwrap();
         adopt(&frame, &mut mirrored, || Some(Orientation::Rotate90));
         assert_eq!(mirrored.turn, 1);
+        greycard_core::testing::remove_dir_retry(&dir);
+    }
+
+    /// An XMP past the most read is not read by the open's adoption:
+    /// the sidecar's meta stands, nothing is marked, no panic. One
+    /// exactly at the most still reads. Sparse files, so no 64 MB is
+    /// written.
+    #[test]
+    fn an_xmp_past_the_most_is_not_adopted() {
+        let dir = tempdir("most");
+        let frame = dir.join("IMG_0001.CR3");
+        std::fs::write(&frame, b"raw").unwrap();
+        let sized = |len: usize| {
+            let file = std::fs::File::create(short_path(&frame)).unwrap();
+            file.set_len(len as u64).unwrap();
+        };
+        sized(BESIDE_MOST + 1);
+        let err = bytes_of(&short_path(&frame)).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::FileTooLarge);
+        let mut sidecar = greycard_edit::Sidecar::default();
+        sidecar.meta.rating = 2;
+        assert!(!adopt(&frame, &mut sidecar, || None).moved());
+        assert_eq!(sidecar.meta.rating, 2);
+        assert!(sidecar.xmp.is_none());
+
+        sized(BESIDE_MOST);
+        assert_eq!(bytes_of(&short_path(&frame)).unwrap().len(), BESIDE_MOST);
         greycard_core::testing::remove_dir_retry(&dir);
     }
 
@@ -2614,7 +2866,7 @@ mod tests {
 
         // The mark rides in the `.gcd` and back.
         sidecar.save(&raw).unwrap();
-        let mut back = greycard_edit::Sidecar::load(&raw)
+        let mut back = greycard_edit::Sidecar::load_as_file(&raw)
             .unwrap()
             .expect("a sidecar");
         assert_eq!(back.xmp_shared, sidecar.xmp_shared);
@@ -2742,7 +2994,9 @@ mod tests {
         // taken, so the three do not come back.
         sidecar.meta.set_rating(0);
         sidecar.save(&frame).unwrap();
-        let mut reopened = greycard_edit::Sidecar::load(&frame).unwrap().unwrap();
+        let mut reopened = greycard_edit::Sidecar::load_as_file(&frame)
+            .unwrap()
+            .unwrap();
         assert_eq!(reopened.meta.rating, 0);
         assert!(!adopt(&frame, &mut reopened, || None).moved());
         assert_eq!(reopened.meta.rating, 0, "the mark held");

@@ -10,35 +10,47 @@ use slint::{LogicalPosition, LogicalSize};
 
 use crate::testing::{Bounds, ToggleParts, click, press};
 
-slint::slint! {
-    import { Toggle } from "../../greycard-slint/ui/controls.slint";
-    export component Bench inherits Window {
-        width: 400px;
-        height: 60px;
-        in property <string> label;
-        in property <length> row-width: 300px;
-        in property <bool> at-end;
-        in-out property <bool> on;
-        out property <length> label-x: t.label-x;
-        out property <length> label-width: t.label-width;
-        out property <length> switch-x: t.switch-x;
-        out property <length> target-x: t.target-x;
-        out property <length> target-width: t.target-width;
-        // What holds the keys behind the row, as the window's own scope
-        // does: focused at the start, and whether it still is.
-        out property <bool> behind-focused: behind.has-focus;
-        forward-focus: behind;
-        behind := FocusScope { }
-        t := Toggle {
-            x: 20px;
-            y: 10px;
-            width: root.row-width;
-            label: root.label;
-            switch-at-end: root.at-end;
-            checked <=> root.on;
+// No edition, as the editor's own build sets none: the bench compiles
+// `controls.slint` under the same language behavior as the editor.
+#[allow(deprecated)]
+mod bench_ui {
+    slint::slint! {
+        import { Toggle, Tips } from "../../greycard-slint/ui/controls.slint";
+        export component Bench inherits Window {
+            width: 400px;
+            height: 60px;
+            in property <string> label;
+            in property <length> row-width: 300px;
+            in property <bool> at-end;
+            in-out property <bool> on;
+            in property <bool> enabled: true;
+            in property <string> tip;
+            // The hover text up, from the controls' own global.
+            out property <string> tip-up: Tips.text;
+            out property <length> label-x: t.label-x;
+            out property <length> label-width: t.label-width;
+            out property <length> switch-x: t.switch-x;
+            out property <length> target-x: t.target-x;
+            out property <length> target-width: t.target-width;
+            // What holds the keys behind the row, as the window's own scope
+            // does: focused at the start, and whether it still is.
+            out property <bool> behind-focused: behind.has-focus;
+            forward-focus: behind;
+            behind := FocusScope { }
+            t := Toggle {
+                x: 20px;
+                y: 10px;
+                width: root.row-width;
+                label: root.label;
+                switch-at-end: root.at-end;
+                enabled: root.enabled;
+                tip: root.tip;
+                checked <=> root.on;
+            }
         }
     }
 }
+use bench_ui::Bench;
 
 /// The switch's width, the gap after a label (`Theme.space-2`), and
 /// the row's place and height on the bench.
@@ -226,7 +238,7 @@ fn the_editors_switches_sit_where_their_rows_ask() {
     let app = crate::testing::window(1);
     app.set_panel_tab("Develop".into());
     app.set_collapsed_wb(false);
-    let shot = crate::testing::toggle(&app, "As shot");
+    let shot = crate::testing::toggle_by_id(&app, "WhiteBalanceSection::as-shot-toggle");
     assert_eq!(right(shot.switch), right(shot.row), "{shot:?}");
     assert_eq!(right(shot.label) + GAP, left(shot.switch), "{shot:?}");
     let was = app.get_as_shot();
@@ -236,7 +248,7 @@ fn the_editors_switches_sit_where_their_rows_ask() {
     assert_eq!(app.get_as_shot(), was, "Space after the row's empty left");
 
     app.set_folder_tree_shown(true);
-    let sub = crate::testing::toggle(&app, "With subfolders");
+    let sub = crate::testing::toggle_by_id(&app, "FoldersSection::subfolders-toggle");
     assert_eq!(left(sub.switch), right(sub.label) + GAP, "{sub:?}");
     assert!(right(sub.switch) < right(sub.row) - 40.0, "{sub:?}");
     let was_sub = app.get_folder_tree_subfolders();
@@ -253,10 +265,104 @@ fn the_editors_switches_sit_where_their_rows_ask() {
         "Space after the row's empty right"
     );
 
-    crate::testing::click_switch(&app, "As shot");
+    crate::testing::click_switch_by_id(&app, "WhiteBalanceSection::as-shot-toggle");
     assert_eq!(app.get_as_shot(), !was);
-    let sub = crate::testing::toggle(&app, "With subfolders");
+    let sub = crate::testing::toggle_by_id(&app, "FoldersSection::subfolders-toggle");
     let was = was_sub;
     click(&app, left(sub.label) + 4.0, middle_y(sub.row));
     assert_eq!(app.get_folder_tree_subfolders(), !was, "the words");
+}
+
+/// The pointer moved onto `x` on the row and left to rest there.
+fn rest_at(b: &Bench, x: f32) {
+    use slint::platform::WindowEvent;
+    let position = LogicalPosition::new(x, ROW_Y + ROW_H / 2.0);
+    b.window()
+        .dispatch_event(WindowEvent::PointerMoved { position });
+    slint::platform::update_timers_and_animations();
+    i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(800));
+    slint::platform::update_timers_and_animations();
+}
+
+/// A greyed switch with a tip says it at the pointer after a rest, on
+/// the label and on the switch, and a click there still flips nothing
+/// and takes no keys; one with no tip says nothing; and a tip goes
+/// when the pointer leaves.
+#[test]
+fn a_greyed_switch_says_its_tip_and_still_flips_nothing() {
+    const WHY: &str = "Not in the lens profile.";
+    let b = bench("Vignetting", false);
+    b.set_enabled(false);
+    let p = parts(&b);
+    rest_at(&b, left(p.label) + 4.0);
+    assert_eq!(b.get_tip_up(), "", "no tip, nothing said");
+    rest_at(&b, right(p.row) - 4.0);
+
+    b.set_tip(WHY.into());
+    rest_at(&b, left(p.switch) + 4.0);
+    assert_eq!(b.get_tip_up(), WHY);
+    rest_at(&b, right(p.row) - 4.0);
+    assert_eq!(b.get_tip_up(), "", "gone on leaving");
+    rest_at(&b, left(p.label) + 4.0);
+    assert_eq!(b.get_tip_up(), WHY);
+    click_at(&b, left(p.label) + 4.0);
+    click_at(&b, left(p.switch) + 4.0);
+    assert!(!b.get_on(), "greyed, it flips nothing");
+    assert!(b.get_behind_focused(), "nor takes the keys");
+
+    // Back in hand, the tip taken away: a click flips it again.
+    b.set_tip("".into());
+    b.set_enabled(true);
+    click_at(&b, left(p.switch) + 4.0);
+    assert!(b.get_on());
+}
+
+/// A screen reader's press on a section's header switch is a click:
+/// LENS's flips and asks for a develop, and says on or off as it
+/// comes to; the picture's COLOR MIXER, taken over by a black and
+/// white, is greyed and flips nothing and asks nothing.
+#[test]
+fn a_screen_reader_presses_a_section_switch_as_a_click_does() {
+    use i_slint_backend_testing::AccessibleRole;
+    use std::cell::Cell;
+    use std::rc::Rc;
+    let app = crate::testing::window(1);
+    app.set_panel_tab("Develop".into());
+    let asked = Rc::new(Cell::new(0));
+    app.on_develop_changed({
+        let asked = asked.clone();
+        move || asked.set(asked.get() + 1)
+    });
+    app.on_view_changed({
+        let asked = asked.clone();
+        move || asked.set(asked.get() + 1)
+    });
+    let switch = |section: &str| {
+        crate::testing::section_bounds(&app, section, "Section::header-switch");
+        let e = crate::testing::section_part(&app, section, "Section::header-switch")
+            .unwrap_or_else(|| panic!("no switch in {section}"));
+        assert_eq!(e.accessible_role(), Some(AccessibleRole::Switch));
+        assert_eq!(e.accessible_checkable(), Some(true));
+        e
+    };
+
+    app.set_lens_enabled(true);
+    let lens = switch("LensSection");
+    assert_eq!(lens.accessible_checked(), Some(true));
+    lens.invoke_accessible_default_action();
+    assert!(!app.get_lens_enabled(), "the press flips it");
+    assert_eq!(asked.get(), 1, "and asks for a develop");
+    assert_eq!(lens.accessible_checked(), Some(false), "and says so");
+    // The press took the keys, as a click does: Space flips it back.
+    press(&app, " ");
+    assert!(app.get_lens_enabled(), "Space after the press");
+    assert_eq!(asked.get(), 2);
+
+    app.set_mixer_enabled(true);
+    app.set_bw_enabled(true);
+    let mixer = switch("MixerSection");
+    assert_eq!(mixer.accessible_enabled(), Some(false));
+    mixer.invoke_accessible_default_action();
+    assert!(app.get_mixer_enabled(), "greyed: no flip");
+    assert_eq!(asked.get(), 2, "greyed: no ask");
 }

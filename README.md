@@ -33,7 +33,9 @@ complete, battle-tested editor.
   raw. The library index makes finding and filtering fast without
   owning your photos.
 - **Works across machines.** Cull a shoot on a NAS from local
-  previews, and keep an archive drive in step with your edits.
+  previews, and edit it on a laptop and a desktop: each save goes to
+  the NAS's copy, and edits made on both are joined, neither lost
+  ([how](docs/guide/archives.md#working-on-two-computers)).
 - **Local AI masks** for subjects, objects, skies and people, down to
   eyes, lips, hair and clothing. All on your machine, and nothing
   phones home: the network is used to fetch a model or the lens
@@ -129,6 +131,11 @@ Bugs, feature requests, things you love or hate: please tell me. Use
 [open an issue](https://github.com/jessolmstead/greycard/issues/new/choose).
 A raw that renders wrong, with the camera model, is the most useful
 thing you can send.
+
+## Support
+
+greycard is free and stays free. Donations are helpful but never
+expected: [ko-fi.com/jessolmstead](https://ko-fi.com/jessolmstead).
 
 ## More
 

@@ -140,7 +140,7 @@ pub(super) fn thumbs(
                 mono: Some(Box::new(mono)),
                 ..Edit::default()
             };
-            let made = greycard_render::mono::render(&small, &edit, &settings, &with);
+            let made = greycard_render::mono::render(&small, &edit, &settings, &with).ok()?;
             let img = greycard_engine::mono::preview(made).ok()?;
             let px = SharedPixelBuffer::clone_from_slice(img.as_raw(), img.width(), img.height());
             Some((name, px))

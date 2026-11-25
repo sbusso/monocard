@@ -123,7 +123,13 @@ winresource.workspace = true
 # A headless backend so the window's key handling can be tested; its
 # software renderer draws the window for a capture of a state only a
 # test can set (`testing::drawing_backend`).
-i-slint-backend-testing = { version = "1.18", features = ["renderer-software"] }
+i-slint-backend-testing = { version = "1.19", features = ["renderer-software"] }
+# Slint's core, for where an open menu stands in the window, which
+# the testing backend's element places (the menu's own) leave out.
+i-slint-core = { version = "1.19", default-features = false }
+# Slint's own list of the generic families its text asks for, which
+# `i18n::face` mirrors and a test holds it to.
+i-slint-common = { version = "1.19", features = ["shared-fontique"] }
 # The render crate's test helpers, which these tests share (a camera
 # profile, a scratch folder's removal, a watermark picture).
 greycard-render = { path = "../greycard-render", features = ["testing"] }

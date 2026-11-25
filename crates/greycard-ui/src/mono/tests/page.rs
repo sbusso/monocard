@@ -71,7 +71,7 @@ fn choose(app: &App, label: &str) -> slint::SharedString {
 }
 
 fn click(app: &App, label: &str) {
-    let (at, size) = crate::testing::labeled(app, label);
+    let (at, size) = labeled(app, label);
     crate::testing::click(app, at.x + size.width / 2.0, at.y + size.height / 2.0);
     settle(app);
 }
@@ -385,7 +385,7 @@ fn the_chart_is_over_the_whole_window_until_escape() {
     for close in ["the key", "a click"] {
         click(&app, "Show the test chart");
         assert!(mono.get_chart_open() && app.window().is_fullscreen());
-        let (at, size) = crate::testing::labeled(&app, "Gray step chart");
+        let (at, size) = labeled(&app, "Gray step chart");
         let window = app.window().size().to_logical(app.window().scale_factor());
         assert_eq!((at.x, at.y, size), (0.0, 0.0, window), "{close}");
         press(&app, "g");

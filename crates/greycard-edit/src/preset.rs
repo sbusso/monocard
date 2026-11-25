@@ -43,6 +43,8 @@ pub enum Section {
     Lens,
     Vignette,
     Grain,
+    /// The demosaic and the learned highlight fill: the raw's own
+    /// reconstruction, both in camera space before the look.
     Demosaic,
     /// The camera profile the develop starts from.
     Camera,
@@ -199,7 +201,10 @@ impl Section {
             Section::Lens => onto.lens = from.lens.clone(),
             Section::Vignette => onto.vignette = from.vignette,
             Section::Grain => onto.grain = from.grain,
-            Section::Demosaic => onto.demosaic = from.demosaic,
+            Section::Demosaic => {
+                onto.demosaic = from.demosaic;
+                onto.highlight_fill = from.highlight_fill.clone();
+            }
             // A DCP lands with its look table (`Camera::take`).
             Section::Camera => onto.camera.take(&from.camera),
             Section::Adjustments => {
@@ -252,7 +257,7 @@ impl Section {
             Section::Lens => a.lens == b.lens,
             Section::Vignette => a.vignette == b.vignette,
             Section::Grain => a.grain == b.grain,
-            Section::Demosaic => a.demosaic == b.demosaic,
+            Section::Demosaic => a.demosaic == b.demosaic && a.highlight_fill == b.highlight_fill,
             // As `copy` would lay it (`Camera::take`).
             Section::Camera => b.camera.has(&a.camera),
             Section::Adjustments => a.adjustments == b.adjustments,
@@ -324,6 +329,7 @@ pub enum Part {
     DetailClarity,
     DetailStructure,
     DetailDehaze,
+    /// The amount, and where it acts, which gives the amount its look.
     VignetteAmount,
     VignetteMidpoint,
     VignetteFeather,
@@ -747,7 +753,13 @@ impl Part {
             DetailClarity => o.detail.clarity = f.detail.clarity,
             DetailStructure => o.detail.structure = f.detail.structure,
             DetailDehaze => o.detail.dehaze = f.detail.dehaze,
-            VignetteAmount => o.vignette.amount = f.vignette.amount,
+            // Where it acts goes with it, as the exposure's zero goes with
+            // the exposure: the same amount on the display and in the
+            // scene is not the same vignette.
+            VignetteAmount => {
+                o.vignette.amount = f.vignette.amount;
+                o.vignette.place = f.vignette.place;
+            }
             VignetteMidpoint => o.vignette.midpoint = f.vignette.midpoint,
             VignetteFeather => o.vignette.feather = f.vignette.feather,
             VignetteRoundness => o.vignette.roundness = f.vignette.roundness,
@@ -1732,6 +1744,93 @@ mod tests {
     use super::*;
     use crate::{Learned, WhiteBalance};
 
+    /// The highlight fill goes with the Demosaic section and with no
+    /// other section or part: a preset, a copy sheet, a paste, or a
+    /// sync carries it only where Demosaic is chosen, and then on or
+    /// off, a version this build lacks as it is. A preset saved without
+    /// a say leaves Demosaic, and so the fill, behind.
+    #[test]
+    fn the_highlight_fill_goes_with_the_demosaic_alone() {
+        let mut from = Edit::default();
+        from.light.exposure = 0.5;
+        from.highlight_fill = Some("hl-1".into());
+        from.adjustments.push(crate::Adjustment {
+            id: 1,
+            ..Default::default()
+        });
+        let others: Vec<Section> = Section::ALL
+            .iter()
+            .copied()
+            .filter(|s| *s != Section::Demosaic)
+            .collect();
+        let without = Choice {
+            sections: others.clone(),
+            parts: Part::ALL.to_vec(),
+            masks: None,
+            masks_land: Masks::Replace,
+        };
+        let kept = Edit {
+            highlight_fill: Some("hl-9".into()),
+            ..Edit::default()
+        };
+        let defaults: Vec<Section> = Section::ALL
+            .iter()
+            .copied()
+            .filter(|s| s.by_default())
+            .collect();
+        let behind = [
+            Preset::from_edit("Default", &from, &defaults),
+            Preset::from_choice("Others", &from, &without),
+            Preset::between_frames(&from, &without),
+            Preset::of_mask(&from, 1),
+        ];
+        for p in &behind {
+            assert_eq!(p.edit.highlight_fill, None, "{:?}", p.sections);
+            assert!(!p.to_json().contains("highlight_fill"));
+            assert_eq!(p.applied(&Edit::default()).highlight_fill, None);
+            assert_eq!(p.applied(&kept).highlight_fill.as_deref(), Some("hl-9"));
+        }
+        let all = Choice {
+            sections: Section::ALL.to_vec(),
+            ..without.clone()
+        };
+        let carried = [
+            Preset::from_edit("All", &from, Section::ALL),
+            Preset::from_choice("All", &from, &all),
+            Preset::between_frames(&from, &all),
+            Preset::between_frames(&from, &Choice::whole(&[Section::Demosaic])),
+        ];
+        for p in &carried {
+            assert_eq!(p.edit.highlight_fill.as_deref(), Some("hl-1"));
+            let read = Preset::from_json(&p.to_json()).unwrap();
+            assert_eq!(read.edit.highlight_fill.as_deref(), Some("hl-1"));
+            assert_eq!(
+                p.applied(&Edit::default()).highlight_fill.as_deref(),
+                Some("hl-1")
+            );
+            assert_eq!(p.applied(&kept).highlight_fill.as_deref(), Some("hl-1"));
+            assert!(p.is_applied(&p.applied(&kept)));
+            assert!(!p.is_applied(&kept));
+        }
+        // Off is carried as off: it turns the fill off where it lands.
+        let off = Preset::between_frames(&Edit::default(), &Choice::whole(&[Section::Demosaic]));
+        assert_eq!(off.applied(&kept).highlight_fill, None);
+        for s in Section::ALL {
+            let mut onto = from.clone();
+            onto.highlight_fill = None;
+            assert_eq!(
+                s.same(&from, &onto),
+                *s != Section::Demosaic,
+                "{s:?} reads the fill"
+            );
+        }
+        for p in Part::ALL {
+            let mut onto = Edit::default();
+            p.copy(&from, &mut onto);
+            assert_eq!(onto.highlight_fill, None, "{p:?}");
+        }
+    }
+
     /// A DCP named with the tone curve's switch on, laid where the
     /// profile has no curve (stripped of it, or not in the directory):
     /// the switch is dropped, so the frame's edit, its develop key, and
@@ -1797,9 +1896,9 @@ mod tests {
                     laid.develop_key_with(&[], None),
                     frame.develop_key_with(&[], None)
                 );
-                let mut line = Line::of(frame.clone());
+                let mut line = Line::of(frame.clone(), 0).unwrap();
                 assert!(
-                    !line.record_as(laid, Some("Preset Curve".into())),
+                    !line.record_as(laid, Some("Preset Curve".into()), 0),
                     "no history step"
                 );
             }
@@ -1875,9 +1974,9 @@ mod tests {
             current: old_frame.clone(),
             ..Line::default()
         };
-        assert!(line.record(old_preset.applied(&edit_on(named("Vivid", false)))));
-        assert!(line.record(edit_on(named("Vivid", false))));
-        assert!(line.record(old_preset.applied(&line.current.clone())));
+        assert!(line.record(old_preset.applied(&edit_on(named("Vivid", false))), 0));
+        assert!(line.record(edit_on(named("Vivid", false)), 0));
+        assert!(line.record(old_preset.applied(&line.current.clone()), 0));
         assert!(line.current.camera.look_table);
         assert!(line.undo());
         assert_eq!(line.current.camera, named("Vivid", false));
@@ -2162,6 +2261,7 @@ mod tests {
         let mut edit = Edit::default();
         edit.light.exposure = 1.5;
         edit.vignette.amount = -1.0;
+        edit.vignette.place = crate::vignette::Place::Display;
         edit.white_balance = WhiteBalance::Custom {
             temperature: 3200.0,
             tint: 0.0,
@@ -2196,6 +2296,7 @@ mod tests {
         let out = preset.applied(&other);
         assert_eq!(out.light.exposure, 1.5);
         assert_eq!(out.vignette.amount, -1.0);
+        assert_eq!(out.vignette.place, crate::vignette::Place::Display);
         assert_eq!(out.grain.amount, 0.3);
         assert!(
             matches!(out.white_balance, WhiteBalance::Custom { temperature, .. } if temperature == 6500.0)
@@ -2635,6 +2736,7 @@ mod tests {
         from.vignette.midpoint = 0.3;
         from.vignette.feather = 0.2;
         from.vignette.roundness = 0.6;
+        from.vignette.place = crate::vignette::Place::Display;
         from.grain.amount = 0.4;
         from.grain.size = 40.0;
         from.grain.kind = crate::grain::Kind::Tabular;
@@ -2653,6 +2755,10 @@ mod tests {
             m.toning.overall.amount = 0.2;
         }
         let plain = Edit::default();
+        // The vignette's amount takes where it acts with it.
+        let mut laid = plain.clone();
+        Part::VignetteAmount.copy(&from, &mut laid);
+        assert_eq!(laid.vignette.place, crate::vignette::Place::Display);
         for &p in Part::ALL {
             assert!(!p.same(&from, &plain), "{p:?} moves nothing");
             assert_eq!(Part::from_name(p.name()), Some(p));
@@ -2821,7 +2927,7 @@ mod tests {
         .unwrap();
         assert_eq!(p.to_json(), golden);
         assert!(p.to_json().starts_with(
-            "{\n  \"version\": 9,\n  \"name\": \"Warm\",\n  \"sections\": [\n    \"look\",\n    \"light\"\n  ],\n  \"edit\": {"
+            "{\n  \"version\": 10,\n  \"name\": \"Warm\",\n  \"sections\": [\n    \"look\",\n    \"light\"\n  ],\n  \"edit\": {"
         ));
     }
 

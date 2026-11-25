@@ -339,6 +339,7 @@ You can also type tests, with no spaces inside them:
 | `name:`, `folder:` | Part of the file name, or of the folder's path |
 | `keyword:` | Part of a keyword |
 | `iso`, `focal`, `aperture`, `shutter` | A number: `iso>=3200`, `focal<=35`, `aperture:1.8`, `shutter<1/60` |
+| `mm` | The focal length, as `focal`: `mm<=35` |
 | `rating` | 0 to 5 stars: `rating>=3` |
 | `focus` | The [focus score](#sort-order), 0 to 1: `focus>0.6`; a frame on a network drive has one only if it is a CR3 or a RAF |
 | `date` | A year, month or day: `date:2026-09`, `date<=2026-09-21` |
@@ -514,6 +515,9 @@ at the time, so it fills itself as you rate and label.
 
 Each collection is a small file in a `collections` folder beside the
 library index (see [Settings](settings.md#where-greycard-keeps-its-files)).
+A copy also goes into the shoot folders it touches, which is how it
+reaches another computer through an archive
+([Working on two computers](archives.md#working-on-two-computers)).
 
 ## Where your edits live
 
@@ -528,10 +532,11 @@ A frame's versions live in the same `.gcd` (see
 [Versions of a frame](presets-and-history.md#versions-of-a-frame)).
 
 A newer greycard may write its `.gcd` files in a form an older one
-can't read: 0.12's are refused by 0.11, as 0.11's were by 0.10. An
-older version leaves such a frame's edit alone rather than
-write over it: it shows the camera's picture, and its
-log says why. Once a version has saved a frame, open it with that
+can't read: 0.13's are refused by 0.12, as 0.12's were by 0.11. An
+older version leaves such a frame alone rather than write over it:
+it won't open it or change its rating, its status line says why, and
+an export of it comes out unedited. From 0.13 on, a later version's file opens read-only
+where it can be shown at all. Once a version has saved a frame, open it with that
 version or a later one. A damaged `.gcd` is left alone the same way;
 move it aside or delete it, then open the folder again, to start the
 frame over.
@@ -596,8 +601,14 @@ A profile named after the raw with its extension replaced
 (`IMG_0001.pp3`) belongs to the raw: the camera's JPEG beside it
 doesn't take it.
 
+ART's `.arp` profiles are found and read the same way, and imported as
+"Imported from ART". ART's own tools, and the settings it keeps
+differently (its black level, its saturation, and a white balance set
+as multipliers), are listed as having no place here. When a frame has
+both, the `.arp` is read and the report names the `.pp3` beside it.
+
 **Import...** opens a sheet with what the import would do, a few lines
-a frame: the profile and the RawTherapee version that wrote it, what
+a frame: the profile and the RawTherapee or ART version that wrote it, what
 comes across exactly (the stars, the color label, the trash mark as a
 reject, the lens profile's switches, the angle and turns), what comes
 across as a likeness (the exposure, the white balance, the crop, the

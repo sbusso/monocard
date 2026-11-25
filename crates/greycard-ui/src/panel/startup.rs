@@ -9,6 +9,7 @@ use greycard_edit::{Demosaic, Edit, Learned, meta, preset};
 use slint::wgpu_30::{WGPUConfiguration, WGPUSettings, wgpu};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
+use crate::capture::{schedule_snapshot, write_screenshot};
 use crate::filter::SavedBar;
 use crate::panel::assets::show_presets;
 use crate::panel::browser::{
@@ -22,9 +23,9 @@ use crate::panel::edit::{read_edit, read_folds, save_edit, show_folds, time_move
 use crate::panel::mask::{ask_for, bake_locals, chosen_shape, show_shape};
 use crate::panel::retouch::{patch_handles, pending_outlines, shown_outlines};
 use crate::panel::viewport::{
-    display_key, drawn_kind, effective_zoom, picture_up, proof_settings, schedule_snapshot,
-    settle_source_size, show_crop_on_view, show_hover, show_source_shape, source_known,
-    source_to_view, sync_display, write_screenshot, zoom_label,
+    display_key, drawn_kind, effective_zoom, picture_up, proof_settings, settle_source_size,
+    show_crop_on_view, show_hover, show_source_shape, source_known, source_to_view, sync_display,
+    zoom_label,
 };
 use crate::render::{Renderer, View};
 use crate::worker::{Job, WhiteBase, Worker};
@@ -41,6 +42,9 @@ pub(crate) use crate::preset_fit::preset_at_start;
 pub(crate) use greycard_engine::headless::Overrides;
 
 pub(crate) fn main() -> Result<std::process::ExitCode> {
+    // A start again after a lost device waits for the run before it to
+    // end, first of all: before any thread, the claim, or the log.
+    let waited = crate::gpu_lost::wait_for_the_last_run();
     // By the program, not the feature: the mono build's tests also run the
     // one named greycard, on color files.
     greycard_library::monochrome::only(env!("CARGO_BIN_NAME").starts_with("monocard"));
@@ -71,10 +75,25 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
         }
         return Ok(std::process::ExitCode::SUCCESS);
     }
+    // The off-card record keys on the build, its commit too
+    // (`greycard_ai::runtime::set_build_label`).
+    greycard_ai::runtime::set_build_label(greycard_version::KEY);
     // Before anything is said. The line is for the person at the
     // terminal, not the log, which knows where it is.
     if let Some(log) = log::start(cli.verbose, greycard_version::LABEL) {
         eprintln!("log: {}", log.display());
+    }
+    match waited {
+        Some((took, true)) => tracing::info!(
+            "started again after a lost device; the last run ended {:.1} s into its wait",
+            took.as_secs_f64()
+        ),
+        Some((took, false)) => tracing::warn!(
+            "started again after a lost device; the last run had not ended after {:.0} s, \
+             going on",
+            took.as_secs_f64()
+        ),
+        None => {}
     }
     // Whether the models can run here, asked of the processor and the
     // disk and said once; nothing of ONNX Runtime is loaded to find
@@ -87,32 +106,32 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     // `--match-compare` measures the camera match and writes a report;
     // no window, no device.
     if let Some(out) = cli.match_compare.as_deref() {
-        return crate::runners::match_compare(&cli, out);
+        return ended(crate::runners::match_compare(&cli, out));
     }
     // `--measure-baseline` likewise: the default develop against the
     // camera's JPEG, per body.
     if let Some(out) = cli.measure_baseline.as_deref() {
-        return crate::runners::measure_baseline(&cli, out);
+        return ended(crate::runners::measure_baseline(&cli, out));
     }
     // `--fit-lightroom` likewise: the mapper fitted to the blocks the
     // measurement kept.
     if !cli.fit_lightroom.is_empty() {
-        return crate::runners::fit_lightroom(&cli, &cli.fit_lightroom);
+        return ended(crate::runners::fit_lightroom(&cli, &cli.fit_lightroom));
     }
     // `--measure-lightroom` likewise: a catalog against its exports.
     if let Some(catalog) = cli.measure_lightroom.as_deref() {
         if cli.crops {
-            return crate::runners::measure_crop(&cli, catalog);
+            return ended(crate::runners::measure_crop(&cli, catalog));
         }
-        return crate::runners::measure_lightroom(&cli, catalog);
+        return ended(crate::runners::measure_lightroom(&cli, catalog));
     }
     // `--import` with no sheet asked for is a run with no window.
     let import_sheet = matches!(
         cli.sheet,
         Some(
-            crate::panel::viewport::Shown::Import
-                | crate::panel::viewport::Shown::Imported
-                | crate::panel::viewport::Shown::ImportInPlace
+            crate::capture::Shown::Import
+                | crate::capture::Shown::Imported
+                | crate::capture::Shown::ImportInPlace
         )
     );
     if let Some(source) = cli.import.as_deref().filter(|_| !import_sheet) {
@@ -155,13 +174,15 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     // anything this run writes one.
     let first_run = settings::path().is_some_and(|p| !p.exists());
     let (remembered, set_aside) = settings::Settings::load_at_start();
+    // This install's opaque id, for what a sidecar says moved it (§724).
+    if let Some(id) = settings::install_id() {
+        greycard_edit::sync::set_install(&id);
+    }
     match settings::path() {
         Some(p) => tracing::info!("settings: {}", p.display()),
         None => tracing::warn!("settings: no configuration directory; nothing is remembered"),
     }
-    let last_file = (!remembered.shared.last_file.is_empty())
-        .then(|| PathBuf::from(&remembered.shared.last_file))
-        .filter(|p| p.is_file());
+    let last_file = last_file(&remembered);
 
     // The library index, on a thread of its own once the window is up:
     // the folder open is indexed there, so the first frame never waits
@@ -322,6 +343,11 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
         settings = wgpu_settings();
         selected = select_backend(settings.clone());
     }
+    // The default backends' select an error on their try from a DX12
+    // pin: the pin is kept, whatever draws next.
+    if selected.is_err() {
+        crate::gpu_marker::default_select_failed();
+    }
     let (fit_slot, drawing) = match selected {
         Ok(slot) => (
             slot,
@@ -383,6 +409,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     // The language, now that a component exists and before the window
     // shows.
     crate::panel::prefs::start_language(&app, &remembered.language);
+    show_unopened(&app);
     // A size asked for on the command line, for a capture, in place of
     // the layout's preferred one; the screen's fit still applies.
     if let Some((w, h)) = cli.window {
@@ -396,8 +423,9 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
         crate::panel::handed::serve(&app, instance);
     }
     // A mouse's back and forward buttons, heard before Slint routes
-    // them, so they step Cull's frames wherever the pointer is.
-    crate::panel::side_buttons::install(&app);
+    // them, so they step Cull's frames wherever the pointer is; and no
+    // frame drawn while the window is minimized.
+    crate::panel::window_events::install(&app);
     // A slider turns the wheel back under natural scrolling: a
     // wheel's way here, a touchpad's set per event where they differ.
     // Read on a thread nothing waits for: on GNOME it is two
@@ -441,6 +469,12 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     if let Ok(name) = std::env::var("GREYCARD_UI_CURVE_CHANNEL") {
         app.set_curve_channel(name.into());
     }
+    // The learned highlight fill's switch in Light, read once: drawn only
+    // with `GREYCARD_HIGHLIGHT_FILL=1` while the model is not yet good
+    // enough to offer. An edit carrying the fill develops with it either
+    // way; only the control is hidden.
+    let fill_shown = std::env::var("GREYCARD_HIGHLIGHT_FILL").is_ok_and(|v| v == "1");
+    app.set_highlight_fill_shown(fill_shown);
     if let Some(tab) = &cli.tab {
         app.set_panel_tab(tab.as_str().into());
     }
@@ -542,6 +576,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
         monitors
     };
     app.set_canvas_choice(render::canvas_choice(&remembered.canvas_color));
+    crate::panel::crop::overlay::show(&app, &remembered);
     app.set_one_section(remembered.one_section);
     app.set_filter_bar(remembered.filter_bar);
     app.set_camera_profiles_all(remembered.profiles_all_cameras);
@@ -631,7 +666,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
         Box::new(move |st: &mut State, i: usize| {
             if let Some(preset) = preset {
                 // Written only where a save would be (`writable`).
-                let placement = placement.filter(|_| crate::panel::edit::file_writable(st, i));
+                let placement = placement.filter(|_| crate::sidecars::file_writable(st, i));
                 let st = &mut *st;
                 let saved =
                     preset_at_start(&mut st.sidecars[i], None, &st.files[i], &preset, placement);
@@ -648,7 +683,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     });
 
     if let Some(keys) = cli.keys.clone() {
-        let _ = crate::panel::viewport::SNAPSHOT_KEYS.set(keys);
+        let _ = crate::capture::SNAPSHOT_KEYS.set(keys);
     }
     let state = Rc::new(Shared::new({
         let write_sidecars = !cli.no_sidecars;
@@ -671,8 +706,8 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
             .sheet
             .or(cli.tool)
             .or(cli.part)
-            .or(cli.menu.map(crate::panel::viewport::Shown::Menu))
-            .or(cli.press.map(crate::panel::viewport::Shown::Key));
+            .or(cli.menu.map(crate::capture::Shown::Menu))
+            .or(cli.press.map(crate::capture::Shown::Key));
         let export_presets = remembered.shared.export_presets.clone();
         let export_last_folder = remembered_folder(&remembered);
         let settings_file = if cli.snapshot.is_some() || cli.screenshot.is_some() {
@@ -918,6 +953,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
         if let Some(path) = &library_path {
             st.views.collections =
                 crate::collections::Store::load(crate::collections::Store::dir_beside(path));
+            st.views.collections.recent = remembered.recent_collections.clone();
             crate::panel::collections::show(&st, &app);
             // The stacks, in their folder among the collections.
             st.views.stacks = crate::stacks::Store::load(greycard_library::stacks::dir_in(
@@ -1190,6 +1226,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
                     }
                 }
                 slint::RenderingState::BeforeRendering => {
+                    crate::panel::stall::frame_drawn(std::time::Instant::now());
                     frames.1 += 1;
                     if frames.0.elapsed() >= FRAMES_COUNTED_OVER {
                         let (since, n, drawn, for_scopes) =
@@ -1598,6 +1635,8 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
                     } = View::with_look(&edit);
                     let view = View {
                         zoom,
+                        // The view is in the develop's own pixels.
+                        pixel: 1.0,
                         center: st.develop.center,
                         light,
                         mixer,
@@ -1681,8 +1720,9 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
                     // shown). Hidden, or over another frame's picture,
                     // the one on its way is let go and the editor's last
                     // with it; taken at another tap than the curve
-                    // shown reads, it is let go by the rule every draw
-                    // of the editor keeps (`curve::backdrop`).
+                    // shown reads, or under another weighing, it is let
+                    // go by the rule every draw of the editor keeps
+                    // (`curve::backdrop`).
                     let mut fresh = None;
                     if crate::panel::curve::curves_shown(&app) && own {
                         let tap = crate::panel::curve::histogram_tap(&app, st.develop.target);
@@ -1694,7 +1734,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
                         }
                         let renderer = st.develop.renderer.as_mut().expect("drawn above");
                         let (bins, out) = renderer.histogram_at(&view, tap, weigh_by);
-                        fresh = bins.map(|b| (tap, b.to_vec()));
+                        fresh = bins.map(|b| (tap, weigh_by, b.to_vec()));
                         in_flight |= out;
                     } else {
                         st.develop
@@ -1775,8 +1815,8 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
                         // A picture put up since the last frame is drawn.
                         crate::open_note::drawn();
                     }
-                    if let Some((tap, b)) = fresh {
-                        bins_read(st, &app, tap, b);
+                    if let Some((tap, weigh_by, b)) = fresh {
+                        bins_read(st, &app, tap, weigh_by, b);
                     }
                     // A new analysis picture under a resting pointer:
                     // the color there has changed, or the scope has.
@@ -1987,9 +2027,10 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     // inside the GPU driver, waiting on a fence in `Device::poll`.
     // Returning from here runs the C library's exit handlers, which
     // tear NVIDIA's driver down under it, and the process dies with
-    // SIGSEGV on the worker's thread. So it ends by `_exit` instead,
-    // which runs none of them: the kernel ends every thread where it
-    // is. What this quit saves is written above (the import's file
+    // SIGSEGV on the worker's thread. So it ends by `_exit` instead
+    // (`TerminateProcess` on Windows, `headless::leave`), which runs
+    // none of them: the kernel ends every thread where it is. What
+    // this quit saves is written above (the import's file
     // in hand, the index closed, the settings, the open frame's
     // sidecar), each by a write that has returned. The archive writes
     // are made or noted: a followed frame's write to its copy that
@@ -2002,8 +2043,10 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     // that has ended by now, the usual case, leaves the process to end
     // as it always has, unless a model was opened: then ONNX Runtime's
     // own exit handler would tear Dawn's Vulkan instance down after
-    // the driver, the crash `greycard_ai::runtime::leave` is about, and
-    // the quit ends by `_exit` too.
+    // the driver (on Windows its TLS callback at process detach, Dawn,
+    // D3D12 and the shader compiler with it), the crash
+    // `greycard_ai::runtime::leave` is about, and the quit ends by
+    // `_exit` too.
     if !worker.finished() || greycard_ai::runtime::loaded() {
         if let Err(e) = &ran {
             eprintln!("Error: {e:?}");
@@ -2012,7 +2055,7 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
         if let Some(index) = index {
             fold_library_log(&index, LOG_FOLD_WAIT);
         }
-        return crate::headless::leave(u8::from(failed));
+        crate::headless::leave(u8::from(failed));
     }
     ran?;
     Ok(if failed {
@@ -2108,29 +2151,47 @@ pub(crate) fn clipping_read(app: &App, bins: &[u32]) {
 /// backdrop, whichever look it edits, moved on to the curve shown as
 /// it is drawn. A mask's raster landing, or a new weighing, changes
 /// the analysis's key, so it comes this way with no touch of the
-/// panel; a curve moved changes nothing it reads. Taken at `tap`, it
-/// is drawn by the editor's one rule (`curve::backdrop`).
+/// panel; a curve moved changes nothing it reads. Taken at `tap` and
+/// weighed by `weigh_by`, it is drawn by the editor's one rule
+/// (`curve::backdrop`). One read while the Original shows is of the
+/// Original's picture, not of what the edit's curves take in: the
+/// editor keeps the edit's.
 pub(crate) fn bins_read(
     st: &mut State,
     app: &App,
     tap: greycard_viewport::render::Tap,
+    weigh_by: Option<usize>,
     bins: Vec<u32>,
 ) {
-    st.develop.bins = Some((tap, bins));
+    if crate::panel::original::shown(st).is_some() {
+        return;
+    }
+    st.develop.bins = Some((tap, weigh_by, bins));
     app.set_curve_image(draw_curve(
         app,
         crate::panel::curve::backdrop(app, &st.develop),
     ));
 }
 
-/// The quit's saves, the window's index reader closed: the open
-/// frame's edit as left; a frame followed onto its archive copy, its
-/// own root away, has no file here for that save, so its write goes
-/// now, waited for at most `wait` and noted waiting in the index if it
-/// has not ended; and every other frame's archive write that never
-/// went out, this save's among them, is noted waiting for the next
-/// window, since no job sent now would land.
-/// What the followed frames' writes came to, for a test.
+/// A run with no window that develops frames (the measurements), ended
+/// as the export ends (`headless::leave`) when a develop opened a
+/// model; returned as it would be otherwise. Each says its error as
+/// `main` returning it would, and every one succeeds with 0.
+fn ended(run: Result<std::process::ExitCode>) -> Result<std::process::ExitCode> {
+    if !greycard_ai::runtime::loaded() {
+        return run;
+    }
+    let code = match run {
+        Ok(code) if code == std::process::ExitCode::SUCCESS => 0,
+        Ok(_) => 1,
+        Err(e) => {
+            eprintln!("Error: {e:?}");
+            1
+        }
+    };
+    crate::headless::leave(code)
+}
+
 /// How long a quit that ends by `_exit` waits for the library's last
 /// other connection to close, so that its own close folds the log in.
 const LOG_FOLD_WAIT: std::time::Duration = std::time::Duration::from_secs(1);
@@ -2181,16 +2242,47 @@ fn fold_library_log(index: &Path, within: std::time::Duration) {
     }
 }
 
+/// The quit's saves, the window's index reader closed: the open
+/// frame's edit as left; a frame followed onto its archive copy, its
+/// own root away, has no file here for that save, so its write goes
+/// now, waited for at most `wait` and noted waiting in the index if it
+/// has not ended; and every other frame's archive write that never
+/// went out, this save's among them, is noted waiting for the next
+/// window, since no job sent now would land.
+///
+/// What the followed frames' writes came to, for a test.
 pub(crate) fn save_at_quit(
     st: &mut State,
     edit: greycard_edit::Edit,
     wait: std::time::Duration,
 ) -> crate::sync::QuitWrites {
     save_edit(st, edit);
+    // The edits whose save failed earlier are tried once more: the
+    // folder may take them now, and they are lost with the window.
     // A batch of sidecars out is waited for while it moves; one that
     // has stopped (a share that stopped answering) is left, its files
     // not yet renamed keeping their old sidecars.
     crate::panel::saves::finish(st, Some(wait));
+    crate::sidecars::retry_leaving(st, wait);
+    for p in &st.work.unsaved.edits {
+        tracing::warn!(
+            "{}: its edit was never saved, and is lost at the quit",
+            crate::panel::browser::file_name(p)
+        );
+    }
+    // A merge's edit whose own save failed, its file never listed (in a
+    // session that writes no sidecars, none is ever saved).
+    for p in st
+        .work
+        .merge_edits
+        .keys()
+        .filter(|_| st.window.write_sidecars)
+    {
+        tracing::warn!(
+            "{}: the merge's edit was never saved, and is lost at the quit",
+            crate::panel::browser::file_name(p)
+        );
+    }
     let followed = crate::sync::write_followed_at_quit(st, wait);
     crate::sync::note_unsent_at_quit(st);
     followed
@@ -2415,7 +2507,7 @@ thread_local! {
     static AT_EXIT: RefCell<Option<Box<dyn FnOnce()>>> = const { RefCell::new(None) };
 }
 
-/// The choices' last write, and a resting edit's and Cull's frame's,
+/// The choices' last write, a resting edit, and the frame chosen,
 /// as winit's loop exits (`exiting`).
 pub(crate) fn at_exit(app: &App, state: &Rc<Shared>, choices: &Choices) {
     let (app_weak, held, at_exit) = (app.as_weak(), state.clone(), choices.clone());
@@ -2432,9 +2524,9 @@ pub(crate) fn at_exit(app: &App, state: &Rc<Shared>, choices: &Choices) {
                 save_edit(&mut st, edit);
             }
             at_exit.write(&app, &st, true);
-            // The frame Cull rests on, should the timer not have
+            // The frame chosen, should the timer not have
             // kept it yet.
-            keep_last_file(&mut st);
+            keep_last_file(&mut st, &app);
             // The collections' and stacks' copies asked for, a
             // moment's wait: one held up goes at the next launch.
             if let Some(c) = &st.views.collections.carrier {
@@ -2445,12 +2537,12 @@ pub(crate) fn at_exit(app: &App, state: &Rc<Shared>, choices: &Choices) {
 }
 
 /// The writes after the loop returns: the choices once more, and
-/// Cull's frame, for a loop whose exit hook did not run (a panic on a
+/// the frame chosen, for a loop whose exit hook did not run (a panic on a
 /// lost device, `gpu_lost::survive`): the start again opens on the
 /// frame last open. Spent by the hook if it ran.
 pub(crate) fn after_loop(app: &App, state: &Rc<Shared>, choices: &Choices) {
     choices.write(app, &state.borrow(), true);
-    keep_last_file(&mut state.borrow_mut());
+    keep_last_file(&mut state.borrow_mut(), app);
 }
 
 /// The loop is exiting: the choices are written while the window is
@@ -2503,6 +2595,7 @@ fn merged(
                 export_preset: _,
             },
         recent_folders,
+        recent_collections,
         start_folder,
         start_view,
         filter_bar,
@@ -2539,6 +2632,8 @@ fn merged(
         match_unchecked,
         crop_start,
         crop_last,
+        crop_overlay,
+        crop_overlay_turn,
         fill_choice,
         ui_scale,
         keys,
@@ -2580,6 +2675,7 @@ fn merged(
     } = kept;
     settings.shared.last_file = last_file;
     settings.recent_folders = recent_folders;
+    settings.recent_collections = recent_collections;
     settings.start_folder = start_folder;
     settings.start_view = start_view;
     settings.filter_bar = filter_bar;
@@ -2625,6 +2721,8 @@ fn merged(
     settings.match_unchecked = match_unchecked;
     settings.crop_start = crop_start;
     settings.crop_last = crop_last;
+    settings.crop_overlay = crop_overlay;
+    settings.crop_overlay_turn = crop_overlay_turn;
     settings.fill_choice = fill_choice;
     settings.ui_scale = ui_scale;
     settings.keys = keys;
@@ -2704,13 +2802,26 @@ pub(crate) fn keep_choices(app: &App, state: &Rc<Shared>, choices: &Choices) -> 
     let (app_weak, state, choices) = (app.as_weak(), state.clone(), choices.clone());
     let timer = slint::Timer::default();
     timer.start(slint::TimerMode::Repeated, CHOICES_EVERY, move || {
+        // The stall watch's look, whoever holds the state.
+        if let Some(app) = app_weak.upgrade() {
+            crate::panel::stall::tick(&app);
+        }
         let (Some(app), Ok(mut st)) = (app_weak.upgrade(), state.try_borrow_mut()) else {
             return;
         };
         choices.write(&app, &st, false);
-        keep_last_file(&mut st);
+        keep_last_file(&mut st, &app);
     });
     timer
+}
+
+/// The words the panel shows before any frame is open, in the window's
+/// language: the adjustments' list with Global alone, and the lens
+/// picker with its first row. The window holds none of its own, so
+/// nothing shows English under another language.
+pub(crate) fn show_unopened(app: &App) {
+    crate::panel::edit::show_names(&Edit::default(), app);
+    crate::panel::assets::show_lens_rows(&[], &greycard_edit::LensChoice::FromFile, app);
 }
 
 /// What the last run painted over the picture, the clipping warnings
@@ -2842,6 +2953,7 @@ pub(crate) fn remember(app: &App) -> settings::Settings {
         preset_folds: Vec::new(),
         // Written as each folder opens.
         recent_folders: Vec::new(),
+        recent_collections: Vec::new(),
         // Written as the Settings sheet's rows are chosen.
         start_folder: String::new(),
         start_view: settings::START_VIEWS[0].into(),
@@ -2873,6 +2985,10 @@ pub(crate) fn remember(app: &App) -> settings::Settings {
         // aspect is picked from the crop's list.
         crop_start: String::new(),
         crop_last: String::new(),
+        // Written as a guide is chosen or turned, in the crop's list
+        // or by its keys.
+        crop_overlay: String::new(),
+        crop_overlay_turn: 0,
         // Written as the Fill's choice is made, in the panel or the
         // Settings sheet.
         fill_choice: String::new(),
@@ -2941,11 +3057,9 @@ pub(crate) fn remember_last_file(st: &mut State) {
     let Ok(path) = std::fs::canonicalize(path) else {
         return;
     };
-    // The develop's file is the last one now: a frame the loupe drew
-    // before it is owed no more, and the loupe drawing it again owes
-    // it again.
-    st.culling.drawn = None;
-    st.culling.drawn_owed = false;
+    // The develop's file is the last one now: a frame chosen before it
+    // is owed no more.
+    st.culling.owed = None;
     // Every develop lands here; the file only writes when the file
     // open has changed.
     // Noted before its picture goes up, should putting it up be what
@@ -2964,59 +3078,87 @@ fn leaves_settings_alone(st: &State) -> bool {
     st.window.batch || st.launch.screenshot.is_some() || st.launch.snapshot.is_some()
 }
 
+/// The frame a launch restores: the settings' last file while it is
+/// still a file. One moved or deleted since is none, and the launch
+/// falls back as with no last file.
+pub(crate) fn last_file(remembered: &settings::Settings) -> Option<PathBuf> {
+    let last = &remembered.shared.last_file;
+    (!last.is_empty())
+        .then(|| PathBuf::from(last))
+        .filter(|p| p.is_file())
+}
+
+/// The current frame changed to `file` (or went): owed to the last file
+/// for the next run, written once it settles (`keep_last_file`). Every
+/// way of choosing a frame passes here (`browser::current_moved`): the
+/// grid, the lightbox's sheet, the strip, Cull's loupe, Home and End,
+/// an open. With a set chosen it is the current frame, the one the
+/// loupe shows. A draw of another frame no longer counts: the loupe's
+/// draw settles the frame only once it is of this choice
+/// (`loupe_drew`).
+pub(crate) fn chosen(st: &mut State, file: Option<PathBuf>) {
+    if st.culling.drawn != file {
+        st.culling.drawn = None;
+    }
+    st.culling.owed = file;
+}
+
 /// A loupe drew the open frame's picture. In Cull (its own view, or
-/// the Loupe under the lightbox in Cull) that is the frame to keep as
-/// the last file, Cull landing no develop: owed, and written once it
-/// settles (`keep_last_file`). Not in Develop, where the camera's
+/// the Loupe under the lightbox in Cull) the frame's picture is then up
+/// and drawn, past what the open note guards, and the frame owed may be
+/// written (`keep_last_file`). Not in Develop, where the camera's
 /// picture stands in for a develop not landed yet: the last file moves
 /// there as the develop lands (`remember_last_file`), noted as it does.
-/// Not noted as opening (`open_note`) in Cull either: its picture is up
-/// and drawn already, and the next launch that restores it notes it as
-/// it opens.
+/// Not noted as opening (`open_note`) in Cull either: the next launch
+/// that restores it notes it as it opens.
 pub(crate) fn loupe_drew(st: &mut State) {
     if st.culling.cull.is_none() {
         return;
     }
-    let Some(path) = st.current.and_then(|i| st.path_at(i)) else {
-        return;
-    };
-    if st.culling.drawn.as_ref() != Some(path) {
-        st.culling.drawn = Some(path.clone());
-        st.culling.drawn_owed = true;
-    }
+    st.culling.drawn = st.current.and_then(|i| st.path_at(i)).cloned();
 }
 
-/// The frame Cull last drew, written as the last file if it is owed:
-/// from the timer that keeps the panel's choices (so a run of arrow
-/// keys writes once a tick at most, and the frame it rests on is in the
-/// file a second after at most), at the loop's exit, and after the loop
+/// The frame chosen, written as the last file if it is owed: from the
+/// timer that keeps the panel's choices (so a run of arrow keys writes
+/// once a tick at most, and the frame it rests on is in the file a
+/// second after at most), at the loop's exit, and after the loop
 /// returns (a lost device's way out, which may skip the exit's hook):
 /// the owe is spent by the first, so the file is written once. Only
 /// while it is still the open frame: one left since (another folder,
 /// Develop on another frame) is no longer what the user sees, and the
-/// owe goes; Cull drawing it again owes it again.
-pub(crate) fn keep_last_file(st: &mut State) {
-    if !std::mem::take(&mut st.culling.drawn_owed) {
+/// owe goes. And only where nothing the open note guards (`open_note`)
+/// is still to come for it: in Cull, from a sheet of tiles (the
+/// Library's grid, the lightbox's) at once, since Cull develops nothing
+/// and a sheet puts up no full picture, and in the loupe once it has
+/// drawn the frame since it was chosen. A frame chosen on a sheet in
+/// Cull is so written before its camera picture is fetched, which runs
+/// on threads that catch a panic. In Develop, the grid or not, a
+/// develop of the frame is running, and the last file waits for it to
+/// land (`remember_last_file`), noted as it does. Until then the owe
+/// waits.
+pub(crate) fn keep_last_file(st: &mut State, app: &App) {
+    let Some(owed) = st.culling.owed.clone() else {
+        return;
+    };
+    if st.current.and_then(|i| st.path_at(i)) != Some(&owed) {
+        st.culling.owed = None;
         return;
     }
-    let open = st.current.and_then(|i| st.path_at(i));
-    if open.is_none() || open != st.culling.drawn.as_ref() {
-        st.culling.drawn = None;
-        return;
-    }
-    // A run the command line owns writes no Cull frame (`Launch::owned`);
-    // Develop's own path keeps its narrower guard.
+    // A run the command line owns writes no frame chosen
+    // (`Launch::owned`); Develop's own path keeps its narrower guard.
     if leaves_settings_alone(st) || st.launch.owned {
+        st.culling.owed = None;
         return;
     }
-    // Gone since it was drawn (moved, deleted): the file keeps the
+    let settled = st.culling.cull.is_some()
+        && (app.get_grid_open() || st.culling.drawn.as_ref() == Some(&owed));
+    if !settled {
+        return;
+    }
+    st.culling.owed = None;
+    // Gone since it was chosen (moved, deleted): the file keeps the
     // last it had, and a launch falls back from a file gone.
-    let Some(path) = st
-        .culling
-        .drawn
-        .as_ref()
-        .and_then(|p| std::fs::canonicalize(p).ok())
-    else {
+    let Ok(path) = std::fs::canonicalize(&owed) else {
         return;
     };
     let path = path.to_string_lossy().into_owned();
@@ -3062,6 +3204,10 @@ pub(crate) fn land_pending(st: &mut State, app: &App) -> Landing {
         st.develop.source_size = (w, h);
         // A turn pressed since its delivery stands it on end again.
         settle_source_size(st);
+        // A panel over a copy that waited on the frame's shape (§724):
+        // this develop measures the frame, or something did meanwhile,
+        // and the panel takes its state as measured.
+        crate::panel::browser::panel_settled(st, app);
         crate::panel::crop::start_landed(st, app);
         app.set_shot_size(size_text(w, h).into());
         st.develop.base_white = Some(landed.white);
@@ -3364,19 +3510,21 @@ mod tests {
 
         let mut sidecar = Sidecar::default();
         preset_at_start(&mut sidecar, None, &file, &preset, None);
-        assert_eq!(sidecar.current.light.exposure, 0.5);
+        assert_eq!(sidecar.current().light.exposure, 0.5);
         assert!(Sidecar::find(&file).is_none(), "no sidecars: none written");
 
         let mut sidecar = Sidecar::default();
         let placement = Some(greycard_edit::Placement::Folder);
         preset_at_start(&mut sidecar, None, &file, &preset, placement);
-        let back = Sidecar::load(&file).unwrap().expect("the step was written");
+        let back = Sidecar::load_as_file(&file)
+            .unwrap()
+            .expect("the step was written");
         assert_eq!(
             Sidecar::find(&file),
             Some(Sidecar::path_in(&file, greycard_edit::Placement::Folder))
         );
-        assert_eq!(back.current.light.exposure, 0.5);
-        assert_eq!(back.current_label.as_deref(), Some("Preset: Faded film"));
+        assert_eq!(back.current().light.exposure, 0.5);
+        assert_eq!(back.current_label(), Some("Preset: Faded film"));
         assert_eq!(back.describe(1).as_deref(), Some("Preset: Faded film"));
 
         // Again: on already, so no step and no write.
@@ -3384,14 +3532,14 @@ mod tests {
         let mut again = back;
         preset_at_start(&mut again, None, &file, &preset, placement);
         assert_eq!(again.history.len(), 1);
-        assert_eq!(Sidecar::load(&file).unwrap().unwrap().saved, saved);
+        assert_eq!(Sidecar::load_as_file(&file).unwrap().unwrap().saved, saved);
 
         // A file that will not say its ISO keeps waiting for its
         // blend rather than being given one made up.
         let mut fresh = Sidecar::default();
         preset_at_start(&mut fresh, None, &dir.join("IMG_0002.CR3"), &preset, None);
         assert_eq!(
-            fresh.current.noise.learned_strength,
+            fresh.current().noise.learned_strength,
             Edit::default().noise.learned_strength
         );
         // On a version: its line takes the step, the file's own stays.
@@ -3405,10 +3553,10 @@ mod tests {
             None
         ));
         preset_at_start(&mut with, Some(&id), &file, &preset, None);
-        assert_eq!(with.current.light.exposure, 0.0);
-        assert_eq!(with.line(Some(&id)).unwrap().current.light.exposure, 0.5);
+        assert_eq!(with.current().light.exposure, 0.0);
+        assert_eq!(with.line(Some(&id)).unwrap().current().light.exposure, 0.5);
         assert_eq!(
-            with.line(Some(&id)).unwrap().current_label.as_deref(),
+            with.line(Some(&id)).unwrap().current_label(),
             Some("Preset: Faded film")
         );
         crate::testing::remove_dir_retry(&dir);
@@ -3494,5 +3642,30 @@ mod tests {
         // Gone: the last folder.
         assert_eq!(open(&text(&dir.join("gone")), true), (in_last, None));
         crate::testing::remove_dir_retry(&dir);
+    }
+
+    /// The window holds no words of its own for the adjustments' list
+    /// or the lens picker; the start puts them there, through `tr!`,
+    /// before any frame is open.
+    #[test]
+    fn the_start_shows_the_lists_words_before_a_frame_is_open() {
+        use super::show_unopened;
+        use crate::App;
+        use slint::{Model, ModelRc};
+        crate::testing::backend();
+        let app = App::new().expect("the window builds");
+        let words = |m: ModelRc<slint::SharedString>| -> Vec<String> {
+            m.iter().map(|s| s.to_string()).collect()
+        };
+        assert!(words(app.get_adjustment_names()).is_empty());
+        assert!(words(app.get_lens_choice_labels()).is_empty());
+        show_unopened(&app);
+        assert_eq!(words(app.get_adjustment_names()), ["Global"]);
+        assert_eq!(
+            words(app.get_lens_choice_labels()),
+            [crate::panel::assets::FROM_THE_FILE]
+        );
+        assert_eq!(words(app.get_lens_choice_keys()), [""]);
+        assert_eq!(app.get_lens_choice_index(), 0);
     }
 }

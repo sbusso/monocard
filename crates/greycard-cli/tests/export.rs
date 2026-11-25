@@ -39,6 +39,7 @@ fn dng(path: &Path, width: usize, height: usize) {
             black: LevelPattern::uniform(0.0, 1),
             white: LevelPattern::uniform(65535.0, 1),
             black_deltas: None,
+            saturation: None,
         },
         as_shot_coefficients: Some([2.0, 1.0, 1.6]),
         calibrations: vec![Calibration {
@@ -140,18 +141,24 @@ fn an_export_s_exit_code_says_how_it_went() {
     let masked = home.0.join("masked.dng");
     std::fs::copy(&source, &masked).unwrap();
     let mut sidecar = greycard_edit::Sidecar::default();
-    sidecar.current.adjustments.push(greycard_edit::Adjustment {
-        name: "Person".into(),
-        mask: greycard_edit::mask::Mask {
-            components: vec![greycard_edit::mask::Component {
-                shape: greycard_edit::mask::Shape::Subject {},
+    {
+        let mut e = sidecar.current().clone();
+        {
+            e.adjustments.push(greycard_edit::Adjustment {
+                name: "Person".into(),
+                mask: greycard_edit::mask::Mask {
+                    components: vec![greycard_edit::mask::Component {
+                        shape: greycard_edit::mask::Shape::Subject {},
+                        ..Default::default()
+                    }],
+                    invert: false,
+                    ..Default::default()
+                },
                 ..Default::default()
-            }],
-            invert: false,
-            ..Default::default()
-        },
-        ..Default::default()
-    });
+            })
+        }
+        sidecar.record(e);
+    }
     sidecar
         .save_in(&masked, greycard_edit::Placement::Beside)
         .unwrap();
@@ -168,6 +175,32 @@ fn an_export_s_exit_code_says_how_it_went() {
         "{said}"
     );
     assert!(without.is_file());
+
+    // An edit that names a camera profile in the run's profile folder
+    // that will not read (a few bytes of garbage): written under the
+    // file's own, the profile named on stderr, and exit 2.
+    let profiles = home.0.join("data").join("greycard").join("profiles");
+    std::fs::create_dir_all(&profiles).unwrap();
+    std::fs::write(profiles.join("Garbage.dcp"), b"not a profile").unwrap();
+    let profiled = home.0.join("profiled.dng");
+    std::fs::copy(&source, &profiled).unwrap();
+    let mut sidecar = greycard_edit::Sidecar::default();
+    let mut e = sidecar.current().clone();
+    e.camera.profile = greycard_edit::camera::ProfileChoice::Named("Garbage".into());
+    sidecar.record(e);
+    sidecar
+        .save_in(&profiled, greycard_edit::Placement::Beside)
+        .unwrap();
+    let unread = home.0.join("unread.jpg");
+    let ran = export(&home.0, &[profiled.as_os_str(), unread.as_os_str()]);
+    let said = String::from_utf8_lossy(&ran.stderr);
+    assert_eq!(ran.status.code(), Some(2), "{said}");
+    assert!(
+        said.contains("profiled.dng")
+            && said.contains("the camera profile Garbage: it would not read; written without it"),
+        "{said}"
+    );
+    assert!(unread.is_file());
 
     // A frame that will not decode: exit 1, and why on stderr.
     let broken = home.0.join("broken.CR3");
@@ -254,18 +287,24 @@ fn without_onnx_runtime_an_export_runs_and_says_why() {
     let masked = home.0.join("masked.dng");
     std::fs::copy(&source, &masked).unwrap();
     let mut sidecar = greycard_edit::Sidecar::default();
-    sidecar.current.adjustments.push(greycard_edit::Adjustment {
-        name: "Sky".into(),
-        mask: greycard_edit::mask::Mask {
-            components: vec![greycard_edit::mask::Component {
-                shape: greycard_edit::mask::Shape::Subject {},
+    {
+        let mut e = sidecar.current().clone();
+        {
+            e.adjustments.push(greycard_edit::Adjustment {
+                name: "Sky".into(),
+                mask: greycard_edit::mask::Mask {
+                    components: vec![greycard_edit::mask::Component {
+                        shape: greycard_edit::mask::Shape::Subject {},
+                        ..Default::default()
+                    }],
+                    invert: false,
+                    ..Default::default()
+                },
                 ..Default::default()
-            }],
-            invert: false,
-            ..Default::default()
-        },
-        ..Default::default()
-    });
+            })
+        }
+        sidecar.record(e);
+    }
     sidecar
         .save_in(&masked, greycard_edit::Placement::Beside)
         .unwrap();

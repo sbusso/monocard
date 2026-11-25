@@ -48,6 +48,7 @@ pub fn linear_dng(path: &std::path::Path, width: usize, height: usize, make: &st
             black: LevelPattern::uniform(0.0, 1),
             white: LevelPattern::uniform(65535.0, 1),
             black_deltas: None,
+            saturation: None,
         },
         as_shot_coefficients: Some([2.0, 1.0, 1.6]),
         calibrations: vec![Calibration {
@@ -101,6 +102,7 @@ pub fn monochrome_dng(path: &std::path::Path, width: usize, height: usize) {
             black: LevelPattern::uniform(0.0, 1),
             white: LevelPattern::uniform(65535.0, 1),
             black_deltas: None,
+            saturation: None,
         },
         as_shot_coefficients: Some([1.0; 3]),
         calibrations: Vec::new(),
@@ -194,6 +196,8 @@ pub mod edited {
     pub enum Heard {
         Developed,
         Kept(PathBuf),
+        /// The masks' picture answered.
+        MaskPicture,
         Thumb {
             size: u32,
             w: u32,
@@ -256,6 +260,7 @@ pub mod edited {
             let said = match o {
                 Outcome::Developed { .. } => Heard::Developed,
                 Outcome::EditedKept { frame } => Heard::Kept(frame.path),
+                Outcome::MaskPicture { .. } => Heard::MaskPicture,
                 Outcome::Thumbnail {
                     size,
                     width,
@@ -346,7 +351,7 @@ pub mod edited {
                         assert_eq!(path, self.png);
                         return;
                     }
-                    Heard::Thumb { .. } | Heard::Developed => {}
+                    Heard::Thumb { .. } | Heard::Developed | Heard::MaskPicture => {}
                 }
             }
         }

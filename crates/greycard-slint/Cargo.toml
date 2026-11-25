@@ -31,7 +31,7 @@ doctest = false
 slint.workspace = true
 
 [build-dependencies]
-slint-build = "1.18"
+slint-build = "1.19"
 
 [features]
 # Monocard, the monochrome build (docs/monocard).

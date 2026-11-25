@@ -154,7 +154,10 @@ Working with your photos:
   a Lightroom Classic catalog
 - [Culling and rating](guide/culling.md): ratings, flags, labels,
   the lightbox, stacks, rejects and deleting
-- [Archives and backup](guide/archives.md)
+- [Archives and backup](guide/archives.md): a NAS or a big drive as
+  the long-term copy, back up and bring back, and
+  [working on two computers](guide/archives.md#working-on-two-computers),
+  such as a laptop and a desktop, with edits synced through it
 
 Editing:
 
@@ -276,7 +279,8 @@ with a drag moves the picture; a tap of **Space** still zooms.
 | [ ] | Brush size, smaller and bigger |
 | Shift+[ Shift+] | Brush feather, less and more |
 | Ctrl+[ Ctrl+] | Brush opacity, less and more |
-| O | Show the mask |
+| O | Show the mask; in the crop, the next guide over it |
+| Shift+O | In the crop, turn the golden spiral or the triangles |
 | ↑ ↓ ← →, + − | Nudge the focused slider, or its typed value with ↑ ↓; Shift on an arrow for more, Ctrl on the slider for less, and Shift on a drag for finer |
 | Wheel | Nudge the focused slider, any slider with Shift; Ctrl for finer steps |
 | , . | The previous or the next slider |

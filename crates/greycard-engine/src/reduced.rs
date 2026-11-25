@@ -15,7 +15,10 @@
 //! the 2048 picture is never brought up from fewer pixels. An X-Trans
 //! mosaic is binned 3x3 to a third, under the same rule at three times
 //! 2048. Then the
-//! pipeline as it is on that picture: the lens, the defringe, the retouch, the local
+//! pipeline as it is on that picture: the learned highlight fill where
+//! the edit names one, look-scaled to the bin and on the full mosaic's
+//! cells, each binned pixel one Bayer cell (notes §719 §3), and not a
+//! skip, so such a picture stands for the edit's; the lens, the defringe, the retouch, the local
 //! contrast, the dehaze, the guide plane; then the finish exactly as the
 //! open frame's pictures are finished (`edited_pictures::make`: the geometry, a
 //! resize to 2048, `export::render_framed` with no output sharpening,
@@ -191,7 +194,10 @@ impl Developed {
     }
 
     /// The edit's pictures of it.
-    fn made(&self, finish: &crate::edited_pictures::Finish) -> crate::edited_pictures::Made {
+    fn made(
+        &self,
+        finish: &crate::edited_pictures::Finish,
+    ) -> Result<crate::edited_pictures::Made, greycard_render::geometry::TooLarge> {
         #[cfg(feature = "mono")]
         if let Some(frame) = &self.mono {
             return crate::edited_pictures::make_mono(frame, finish);
@@ -287,8 +293,10 @@ impl Models for ReadFills<'_> {
         picture: &WorkingImage,
         factor: usize,
         full: (usize, usize),
+        shown: Option<&crate::shown::Shown>,
     ) -> Option<Vec<f32>> {
-        self.0?.fill_read_only(patch, region, picture, factor, full)
+        self.0?
+            .fill_read_only(patch, region, picture, factor, full, shown)
     }
 
     fn could_fill_more(
@@ -371,6 +379,7 @@ fn walk_reduced(
                     | Stage::Bin(_)
                     | Stage::Demosaic(..)
                     | Stage::Denoise(_)
+                    | Stage::HighlightFill(_)
                     | Stage::Warp(_)
                     | Stage::IntoWorking { .. }
                     | Stage::White { .. }
@@ -853,21 +862,27 @@ impl Reducer {
         // The frame's own line: a version gone from the sidecar since
         // the frame was listed (deleted, or taken out by a join) has no
         // edit to make pictures of.
-        let Some(line) = sidecar.line_mut(frame.version()) else {
+        let Some(mut line) = sidecar.line_mut(frame.version()) else {
             edited.reset(frame, Some(&hash));
             return Err(Why::Failed("no such version in its sidecar".into()));
         };
-        let line = std::mem::take(line);
+        let line = std::mem::take(&mut *line);
+        // A state whose masks wait where they were placed under another
+        // turn is not the picture (§724): nothing is made of it.
+        if line.ready().is_none() {
+            edited.reset(frame, Some(&hash));
+            return Err(Why::Failed("its masks wait on the frame's shape".into()));
+        }
         // The sidecar read now has the last word on the key: the one the
         // frame was held under may be its row's, made by the index under
         // a look, a lens database or a recipe since moved, or a save may
         // have come between. The frame is settled on the sidecar's, and
         // that is what is made.
         let iso = edited.iso_of(frame);
-        let key = edited.key_of(path, &line.current);
+        let key = edited.key_of(path, line.current());
         let mut moved = false;
         if key != held {
-            if !crate::edited_pictures::is_edited(path, &line.current, iso) {
+            if !crate::edited_pictures::is_edited(path, line.current(), iso) {
                 tracing::info!("the edit's pictures of {name}: its edit was reset; the camera's");
                 edited.reset(frame, Some(&hash));
                 return Ok(true);
@@ -883,12 +898,12 @@ impl Reducer {
         if edited.all_kept(&hash, key) {
             return if moved { Ok(true) } else { Err(Why::NotWanted) };
         }
-        let edit = line.current;
+        let edit = line.current();
         let turn = sidecar.turn;
         // What would keep the picture from being kept, asked before the
         // decode: the look, and the learned masks' rasters or models.
-        look_ready(&edit)?;
-        masks_ready(&mut self.ai.lock().expect("reduced ai"), path, &edit, turn)?;
+        look_ready(edit)?;
+        masks_ready(&mut self.ai.lock().expect("reduced ai"), path, edit, turn)?;
         let Some(marked) = edited.mark(&hash, key, crate::edited_pictures::REDUCED_RECIPE) else {
             // Being made by another of these threads (another link to
             // the same content).
@@ -900,11 +915,11 @@ impl Reducer {
         self.develops.fetch_add(1, Ordering::SeqCst);
         let developed = self
             .pool()
-            .install(|| develop_reading(path, &edit, turn, lenses.as_deref(), fills.as_ref()))?;
+            .install(|| develop_reading(path, edit, turn, lenses.as_deref(), fills.as_ref()))?;
         let rasters = rasters(
             &mut self.ai.lock().expect("reduced ai"),
             path,
-            &edit,
+            edit,
             turn,
             developed.full,
         )?;
@@ -928,7 +943,10 @@ impl Reducer {
             detail: developed.detail.clone(),
             camera: developed.camera,
         };
-        let made = self.pool().install(|| developed.made(&finish));
+        let made = self
+            .pool()
+            .install(|| developed.made(&finish))
+            .map_err(|e| Why::Failed(e.to_string()))?;
         let making =
             started.elapsed().as_secs_f64() - developed.decode - developed.develop - developed.rest;
         let kept = edited
@@ -1212,7 +1230,9 @@ mod tests {
     fn a_version_s_line_is_developed_by_its_own_frame() {
         let dir = scratch("version");
         let (file, edited) = frame(&dir, "pair.png", &Edit::for_picture(), None);
-        let mut sidecar = greycard_edit::Sidecar::load(&file.path).unwrap().unwrap();
+        let mut sidecar = greycard_edit::Sidecar::load_as_file(&file.path)
+            .unwrap()
+            .unwrap();
         let mut warm = Edit::for_picture();
         warm.light.exposure = 1.0;
         let id = sidecar.new_version(None, Some("Warm")).unwrap();
@@ -1281,7 +1301,7 @@ mod tests {
             let path = raws.join(name);
             greycard_library::fixture::write_mosaic_dng(&path, "RGGB");
             greycard_edit::Sidecar {
-                line: greycard_edit::Line::of(edit.clone()),
+                line: greycard_edit::Line::of(edit.clone(), 0).unwrap(),
                 ..Default::default()
             }
             .save(&path)
@@ -1319,7 +1339,7 @@ mod tests {
         .save(&path)
         .unwrap();
         greycard_edit::Sidecar {
-            line: greycard_edit::Line::of(edit.clone()),
+            line: greycard_edit::Line::of(edit.clone(), 0).unwrap(),
             ..Default::default()
         }
         .save(&path)
@@ -1475,7 +1495,7 @@ mod tests {
         let mut refit = edit.clone();
         refit.light.exposure = 1.5;
         greycard_edit::Sidecar {
-            line: greycard_edit::Line::of(refit.clone()),
+            line: greycard_edit::Line::of(refit.clone(), 0).unwrap(),
             ..Default::default()
         }
         .save(&frame.path)

@@ -9,8 +9,8 @@ use std::time::SystemTime;
 
 use greycard_edit::camera::ProfileChoice;
 use greycard_edit::key::{
-    ASPECT_FRAME, DEVELOP_RECIPE, LANDSCAPE_PIPELINE, MIDTONES_SHAPE, PART_PIPELINE, PERSON_EDGE,
-    Read, SHARPEN_GUIDE, SKY_PIPELINE, WHITES_SHAPE,
+    ASPECT_FRAME, DEVELOP_RECIPE, HIGHLIGHT_FILL, LANDSCAPE_PIPELINE, LINEAR_RAMP, MIDTONES_SHAPE,
+    OUTPUT_SHARPEN, PART_PIPELINE, PERSON_EDGE, Read, SHARPEN_GUIDE, SKY_PIPELINE, WHITES_SHAPE,
 };
 use greycard_edit::look::LutChoice;
 use greycard_edit::{Edit, LensChoice};
@@ -64,14 +64,14 @@ fn files_read(edit: &Edit, looks: Option<&Path>, profiles: Option<&Path>) -> Vec
         files.push(path);
     }
     // An Adobe lens profile picked by hand, beside the camera
-    // profiles: read by its file name, so only a plain name counts.
+    // profiles: read by its name, its folders joined by `/`, so only a
+    // plain path under the directory counts.
     if let (LensChoice::Lcp(file), Some(dir)) = (&edit.lens.chosen, profiles)
         && edit.lens.enabled
         && edit.lens.profile
-        && !file.contains(['/', '\\'])
-        && !file.contains("..")
+        && let Some(path) = greycard_core::profile_folder::join(dir, file)
     {
-        files.push(dir.join(file));
+        files.push(path);
     }
     files
 }
@@ -109,9 +109,14 @@ fn contents(path: &Path) -> Option<[u8; 32]> {
 /// What every develop key made now is made under, beside each edit's
 /// own: [`DEVELOP_RECIPE`], the learned masks' stages, the sharpen's
 /// guide ([`SHARPEN_GUIDE`]), the Midtones bell's shape
-/// ([`MIDTONES_SHAPE`]), the whites' shape ([`WHITES_SHAPE`]), an
-/// aspect's framing with no crop stored
-/// ([`ASPECT_FRAME`]), the lens database's name as the caller gives
+/// ([`MIDTONES_SHAPE`]), the whites' shape ([`WHITES_SHAPE`]), the
+/// linear gradient's ramp ([`LINEAR_RAMP`]), an aspect's framing with
+/// no crop stored ([`ASPECT_FRAME`]), the output sharpen's radius
+/// ([`OUTPUT_SHARPEN`]), the highlight fill's
+/// implementation ([`HIGHLIGHT_FILL`]), the saturation table's version
+/// ([`greycard_core::decode::HEADROOM`]), how a DNG's linearization
+/// table is read ([`greycard_core::decode::LINEARIZATION`]), the lens
+/// database's name as the caller gives
 /// it, and the look and profile directories as they stand (each file's
 /// name, length and modification time; not their contents, which only
 /// the files an edit names are read for). A store of keys made under
@@ -167,7 +172,11 @@ pub fn keys_made_under_in(
     let files = hasher.finalize();
     format!(
         "recipe {DEVELOP_RECIPE}; masks {SKY_PIPELINE} {LANDSCAPE_PIPELINE} {PART_PIPELINE} \
-         {PERSON_EDGE}; {SHARPEN_GUIDE}; {MIDTONES_SHAPE}; {WHITES_SHAPE}; {ASPECT_FRAME}; lenses {lenses:?}; files {}",
+         {PERSON_EDGE}; {SHARPEN_GUIDE}; {MIDTONES_SHAPE}; {WHITES_SHAPE}; {LINEAR_RAMP}; \
+         {ASPECT_FRAME}; {OUTPUT_SHARPEN}; {HIGHLIGHT_FILL}; {}; {}; \
+         lenses {lenses:?}; files {}",
+        greycard_core::decode::HEADROOM,
+        greycard_core::decode::LINEARIZATION,
         &files.to_hex()[..16]
     )
 }
@@ -247,6 +256,20 @@ mod tests {
             develop_key_in(&edit, Some(&looks), Some(&profiles), None),
             with
         );
+        // One in a maker's folder, as Adobe's tree keeps them: read by
+        // its path under the directory, so it moves the key too.
+        edit.lens.chosen = LensChoice::Lcp("Canon/Lens.lcp".into());
+        let without = develop_key_in(&edit, Some(&looks), Some(&profiles), None);
+        std::fs::create_dir_all(profiles.join("Canon")).unwrap();
+        std::fs::write(profiles.join("Canon").join("Lens.lcp"), b"one").unwrap();
+        let with = develop_key_in(&edit, Some(&looks), Some(&profiles), None);
+        assert_ne!(with, without, "the file appearing is another picture");
+        std::fs::write(profiles.join("Canon").join("Lens.lcp"), b"two").unwrap();
+        assert_ne!(
+            develop_key_in(&edit, Some(&looks), Some(&profiles), None),
+            with,
+            "the file changing is another picture"
+        );
         greycard_core::testing::remove_dir_retry(&dir);
     }
 
@@ -271,7 +294,17 @@ mod tests {
         );
         // Each part some edits alone take into their key: raised, the
         // index's keys are settled again (`settle_develop_keys`).
-        for part in [SHARPEN_GUIDE, MIDTONES_SHAPE, WHITES_SHAPE, ASPECT_FRAME] {
+        for part in [
+            SHARPEN_GUIDE,
+            MIDTONES_SHAPE,
+            WHITES_SHAPE,
+            LINEAR_RAMP,
+            ASPECT_FRAME,
+            OUTPUT_SHARPEN,
+            HIGHLIGHT_FILL,
+            greycard_core::decode::HEADROOM,
+            greycard_core::decode::LINEARIZATION,
+        ] {
             assert!(first.contains(&format!("; {part};")), "{part}: {first}");
         }
         assert_eq!(under(Some("lensfun 1")), first, "nothing moved");

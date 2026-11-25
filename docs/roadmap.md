@@ -7,33 +7,78 @@ the reasoning lives in `docs/notes.md`.
 
 ## Bugs
 
-- [ ] rawler's TIFF reader sizes a value by its count before reading
-      it: one flipped count in a CR3's maker note asked for 28 GB, so a
-      corrupt or crafted raw can take the decode down. Wants raising
-      upstream with a bound against the file's length (found fuzzing
-      the Canon mode reader, 2026-11-17)
-- [ ] The XMP beside a raw is read whole, with no bound, by the
-      open's adoption (`xmp::adopt_own`) and the index's pass; the
-      take's own read stops at 64 MB (§705)
-- [ ] The GPU marker never gives up on a backend that keeps dying: a
-      machine pinned to DX12 whose DX12 later dies at every start, or
-      one with both backends counted dead, stays put until the file
-      is deleted; a count of deaths in a row, then the other backends
-      tried once (§704)
-- [ ] The GPU marker is written in place: a kill inside the write can
-      leave a torn file that strands a machine; write, then rename
-      (§704)
+- [ ] The editor's window stops drawing on GNOME Wayland after
+      sitting covered on another monitor, while clicks go on being
+      handled, and comes back minutes later: winit 0.30 waits on a
+      frame callback mutter does not send. The log names the stall
+      (`window: a press ... no frame since`). A winit patch that
+      redraws a window whose callback is held back is on a branch; it
+      needs a hosted fork, the notices, a review, and its report
+      upstream
+- [ ] A second stall under the same patch: mutter 51 never applies a
+      commit carrying `wp_commit_timer_v1.set_timestamp` until
+      something else repaints, reproduced with a small C client, and
+      seen for 51 s on NVIDIA with explicit sync. Waits on the report
+      to mutter, and a run with `__NV_DISABLE_EXPLICIT_SYNC=1`
+- [ ] Slint asks the card for every feature it has, so wgpu warns of
+      `MAPPABLE_PRIMARY_BUFFERS` at every start; ask only for what we
+      use, upstream in Slint
+- [ ] 0.12 saves a 0.13 sidecar that holds no state (a rating, a
+      flag, or a turn only) again at schema 9: the floors go, and so
+      would `turn_owed`, `line_id`, `undone`, and the tombstones; under
+      another placement it removes 0.13's copy. Ratings and turns
+      survived every run (2026-11-22). Decide before the cut whether
+      such a file should be one 0.12 refuses
+- [ ] An export of a frame nobody developed records a state at
+      schema 10 (§734), after which 0.12 can't read its rating or
+      turn; any 0.13 save does the same to an edit 0.12 made. Keep
+      the export's record on the line without a state, or accept it;
+      before the cut
+- [ ] The library index's step from 17 to 18 changes only data, yet
+      locks 0.12 out (issue 199). Keep `user_version` at 17 with a
+      marker row, or accept it; before the cut
+- [ ] A sidecar of many tiny states costs memory and time past its
+      size: 100,000 `{}` history entries (300 KB) take 644 MB and 17 s
+      over three reads, since no read caps history. Cap at read, charge
+      each state against the budget, or refuse past a count
+- [ ] A fuzz target for the join of two sidecars: a throwaway one
+      found a line id held twice, which no kept target reaches
+- [ ] The Back up sheet says "N frames already there have newer
+      sidecars here" for every sidecar-only item, also when the
+      archive's edit is the newer one coming home, or a join
+      (`panel/archive.rs`, `sidecars_only`)
+- [ ] A window test that finds a control by its label or its place can
+      pass for the wrong reason: the panel builds only the sections in
+      view, so what it finds depends on the window's height. One failed
+      on CI alone at the 0.12.0 cut; the rest want an audit, and ids
+      (2026-11-17)
+- [ ] A slow GPU, integrated or a 2 GB card, runs the learned models at
+      a minute or more a frame and stalls the desktop, at any tile
+      (§431): time the first tiles and finish on the CPU below a floor
+      (issue 181, discussion 168). First a variable that keeps the
+      learned models on the CPU, for a tester's timing
+- [ ] On unified memory the models' guards see no free figure and let
+      every model run; count a capped share (issue 181)
+- [ ] No frame is drawn while minimized (issue 195): tried on X11
+      only; waits on a Windows run, on an AMD card if one is at hand,
+      with `wgpu_core=debug` showing no `configuring surface` lines.
+      A Mac's display-link frames pass the guard by
+- [ ] On Windows the models' memory guard reads Vulkan's budget while
+      the models run on D3D12 (§431); read DXGI's (issue 195)
+- [ ] The learned denoiser's buffers stay on the card for the session
+      after one denoise; give them back when idle or hidden
+- [ ] A WebGPU out of memory that loses no device is not handled: step
+      the tile down and remember it for the card (issue 195)
+- [ ] A save rereads the XMP it is about to rewrite whole, with no
+      bound (`xmp::stage_dated`); every other read stops at 64 MB
+      (§705). Bounding it makes the save of a larger one fail
 - [ ] lavapipe is 2.7 to 3.8 levels off the CPU on three of the
       widened parity sweep's 8,000 edits (seeds 2, 17, and 20), all
       under a profile tone curve flat at black and at white; a real
       card is within 1.1 on the same edits; cause not found (§702)
-- [ ] A camera profile with a NaN inside a hue and saturation map or
-      a look table is unequal to itself and never matches its
-      shelved base (§706)
-- [ ] Dragging the crop's bottom handle past the filmstrip's
-      hide and show arrow makes the arrow flash from side to side
-      as the pointer crosses it; the arrow should stay put while a
-      crop handle is held
+- [ ] The Rotate slider's refit can carry a crop edge across an edge
+      arrow's band, and the arrow hops aside and back under the drag;
+      a handle's drag holds the arrows still, a slider's does not
 - [ ] Whites down brightens a few pixels on real exports: on 746 of
       750 frame and setting pairs some pixel comes out brighter, up
       to 42 of 65,535 on Channels and 9,663 (about 200 pixels) on AgX
@@ -41,9 +86,6 @@ the reasoning lives in `docs/notes.md`.
 - [ ] A NaN, an infinity, or a negative channel renders black on the
       GPU and in color on the CPU, and on lavapipe the black reaches
       the pixels beside it
-- [ ] A frame chosen in the Library grid or on the lightbox's sheet
-      is not remembered for the next run: only a frame Cull's loupe
-      drew or a develop landed is
 - [ ] The capture sharpen's early stop sits on a knife edge: the
       device and the CPU can stop a 32x32 block an iteration apart,
       and the block moves by up to 3% (§668). A margin past an
@@ -55,67 +97,63 @@ the reasoning lives in `docs/notes.md`.
 - [ ] Texture alone differs by 1.9e-4 between the device and the CPU
       on one monochrome file: the CPU's running sums against the
       shader's window sums, most likely (§668)
+- [ ] Monochrome sensors supported whole: the color tools out of the
+      way on a monochrome file, a greyscale export with a grey
+      profile, the DNG's bad-pixel and vignette opcodes on one plane;
+      a fork's pieces welcome as pull requests (discussion 207)
 - [ ] A monochrome frame, untested: the camera match, and HDR,
       panorama, and focus merges (§668)
 - [ ] Dehaze alone still collapses the capture sharpen's threshold
       on a noisy frame (ISO 3200, Dehaze +50: to zero). The guide
       could be taken before Dehaze too, at the cost of changing
       Dehaze-only edits (§643); waits on a measurement
-- [ ] A save writes the whole sidecar from memory without looking
-      at the disk: a second writer on a loaded frame (another window
-      or machine on a shared folder, a sync tool, `greycard presets
-      apply`) is undone, silently, at our next change. §233's check
-      wants running on the local copy too: stat before the write,
-      and on a mismatch read and join instead (after `advance`)
-- [ ] A failed save (full disk, a rename refused) is only logged;
-      the old file is intact but the user is not told. Wants words
+- [ ] A look rename still rewrites states, and reaches only the open
+      folder's sidecars: looks by id (§724 step 5)
+- [ ] A snapshot renamed on one copy returns as two after a join. The
+      join by heads: a conflict copy for diverged heads, tombstones
+      and the later name winning, and the cap over the joined graph
+      (§724 step 7, §734)
+- [ ] A delete against a rename loses the rename, and three machines
+      joining in turn can undo a rename (§734); waits on the join by
+      heads
+- [ ] The note of edits not saved is out of sight in the lightbox,
+      with every pane hidden, and in the grid while an import's line
+      shows; so is the archive's note beside it
 - [ ] An export leaves the window's device-kept points on the card
       (the sharpen guide's among them, §643) while its denoiser or
       removal asks for room; on a short card the release could drop
       them too, at the cost of the window's next develop (§646)
-- [ ] Two window defaults nothing marks for translation, "Global"
-      and "From the file" in `app.slint`, which Rust overwrites
-      later (§651): mark them or drop the defaults
-- [ ] A mask's Shadows and Highlights summed with the picture's are
-      not held to the slider's limit (Midtones' sum is, §644): a mask
-      at +2 over a picture at +2 can fold the tones
-- [ ] The GPU aberration tests allow a count of guard flips tuned to
-      two vendors (3 and none): an RX 7700 XT on Windows gives 4 and
-      1 and fails both. A share of the samples, set from that card's
-      printed figures (discussion 89, 2026-11-11)
+- [ ] The GPU aberration tests hold each pass's fit within what the
+      reference's own fit moves under one ulp of input, shown on
+      NVIDIA and lavapipe; an RX 7700 XT's farthest-tile distance was
+      never printed (discussion 89). `check()` still holds the largest
+      shifts to a flat 1e-4, and the ignored real-frames test keeps
+      its flat share
 - [ ] A sidecar written again drops what the build does not know: no
       map keeps unknown keys, a value `meta::loose` cannot read is
       written back as its default, and only the edit's version gates
       an older build, so two versions on one synced folder strip each
       other's sidecar-level fields. A minimum-reader field on the
-      sidecar and an extra map written back (review, 2026-11-11)
-- [ ] A single frame's save is last writer wins: `save_file` writes
-      without asking whether the file is still the one read, where the
-      archive path compares and joins. Check first whether a watcher
-      reloads a held frame (review, 2026-11-11)
+      sidecar and an extra map written back (review, 2026-11-11); a
+      fix is built and held on a branch, and with it the note on which
+      versions refuse which
 - [ ] The join knows a reconciled state by its English label
       (`RECONCILED`, matched by prefix and hashed into the state's
       id), so a reworded or translated label changes the merge across
-      machines: a kind on the step instead (review, 2026-11-11)
-- [ ] On a window 800 px high the Masks tab leaves the sections
-      198 px under the pinned mask list, about six rows: a section's
-      top sliders sit out of sight behind the list (issue 157; the
-      panel scrolled past its end was §693)
+      machines; the Lightroom import reads the label too, and history
+      rows stay English in a translated window. A step's kind as a
+      field instead (review, 2026-11-11)
+- [ ] The frame's limit of 200 megapixels, what is left: the detail
+      bands frame at the same size, so an export just under it peaks
+      near 10 GB (review, 2026-11-20)
+- [ ] A frame whose export failed leaves the queue (§213) with its
+      reason only in the status line, when it is the one failure, and
+      in the log; nowhere to read why afterwards
 - [ ] `greycard.exe` beside the editor on Windows: double-clicked,
       or run from Win+R, the command line is a console that opens and
       closes. A name or a place that keeps it out of the way (§684)
 - [ ] A zip install over a setup install on Windows leaves the
       setup's entry in Installed apps after the zip's uninstall (§684)
-- [ ] dxil.dll's own terms in the notices: ours is 1.8.2502.11,
-      signed by Windows and in no DXC release on GitHub, so likely the
-      Windows SDK's; the notices say whose it is and no more (§660)
-- [ ] cargo-about from a pinned prebuilt binary where one exists, in
-      place of a build from source behind a cache (§660)
-- [ ] cargo-deny over the tree: advisories and bans beside the
-      licenses cargo-about checks (review, 2026-11-11)
-- [ ] Split symbols kept for each release, so a stripped build's
-      backtrace can be named (review, 2026-11-11; the read-only tokens
-      and SHA256SUMS are §657)
 - [ ] An edit's pictures made from bytes since written over can be
       kept: a save that changes a file only past its hashed 64 KB head
       at the same length, landing while a keeping or a reduced develop
@@ -167,88 +205,47 @@ the reasoning lives in `docs/notes.md`.
       monitor profile is the lead
 - [ ] "Finding people" ran forever and the masks broke after, on
       Windows (issue 44): waits on the reporter's log
-- [ ] The Slint pin dropped once a release carries
-      slint-ui/slint#14324 (§377)
+- [ ] An 8-bit export is not dithered, which may band a smooth
+      gradient where Lightroom's does not (discussion 59, 2026-11-22);
+      unverified, waits on the tester's raw and both exports
+- [ ] Grain in an export made larger than the frame: check that it is
+      drawn at the export's size and not scaled with the picture (a
+      pixls tester, 2026-11-22); unverified
+- [ ] Slint built without its default features, so its OpenGL
+      renderer and glutin leave the binary (discussion 168); check
+      `cargo tree -i glutin` first
+- [ ] A worker test that fails can take the whole test process down
+      with SIGABRT, so the run names no cause: seen twice at
+      `a_cached_thumbnail_job_finds_what_the_pool_kept` under load
+      (2026-11-22). Its wait is longer now; the abort itself is not
+      found
+- [ ] An index a later greycard wrote is refused, and the Library
+      view's notice gives the path twice before the reason, which
+      falls off the window's edge; the roots list with no frames
+      (issue 199). Put the reason first, or list the roots from disk
+- [ ] A left-click that closes the picture's context menu moves the
+      picture toward the click, on Windows at 1:1 (issue 179); the
+      right press's release may never reach the viewport. Unverified
+      here
+- [ ] A right-click while a menu is open does not close it, on
+      Windows (issue 179); unverified here
+- [ ] The native context menu on Windows opens away from the pointer
+      at an interface scale other than 100%: muda places it by the
+      system's scale, not ours, in Slint 1.19 as before (§715, issue
+      179); on a Mac at a Scale of 150% the menus opened at the
+      pointer (2026-10-31)
 - [ ] A fill on a denoised frame still gets a little more grain than
       its surround (1.2x at two blocks on an overcast sky after §574,
       where the window's bins mix sea and rock with the sky): the
       quiet quarter of a mixed bin reads high on a denoised frame.
-      The mosaic noise cap built on the branch fill-grain-cap (§398)
-      is parked; a fill whose own grain exceeds the surround's (3x
-      with the profiled denoise) wants smoothing, not grain. Harness
-      in target/captures-2026-10-26/fill-grain
+      The parked mosaic noise cap is under AI masks and fill (§398);
+      a fill whose own grain exceeds the surround's (3x with the
+      profiled denoise) wants smoothing, not grain. Harness in
+      target/captures-2026-10-26/fill-grain
 - [ ] A file opened from the Finder opens in the editor: the delegate's
       `application:openURLs:` is written but has not run on a Mac;
       try a double-click, Open With and a Dock drop, at launch and
       while it runs (§148)
-- [ ] The default's saturation and the reds' skew, measured under AgX
-      once it is the default (§230): the per-channel curve's slope
-      added chroma in the mid-tones that read as over-saturated beside
-      ACES 2.0 and AgX Punchy (§227), and its yellow skew of bright reds
-      is what the eye expects where AgX holds them and they go pink.
-      Measure the default develop's chroma by lightness band against
-      the camera JPEG and a Lightroom export on the reference set, and
-      the reds' hue the same way; Punchy's saturation and the camera
-      match's fitted table are the two places to put the answer, not a
-      skew of our own. Waits on the AgX port
-- [ ] AgX's contrast and white as the feel track's controls (§231): the
-      port ships Blender's slope over a range shortened to put white at
-      the sensor's clip, about 19 percent more contrast per stop than
-      Blender; a second construction keeps Blender's contrast per stop
-      (`GREYCARD_AGX_SOFT`, no user control), and the user could not
-      pick between them on 33 frames. Decide whether contrast, white
-      and the inset's rotation (the reds' warmth, the lanterns) are
-      sliders, a preset's, or fixed, by the track's rule. A Mac tester
-      (2026-10-20) asks for the slope, the toe, the shoulder, the
-      contrast, and the width exposed by hand; a pixls tester
-      (2026-10-22) for the pivot and the toe and shoulder powers, as
-      darktable's sigmoid has them
-- [ ] OpenDRT (jedypod's open display transform) evaluated beside AgX
-      as a second display transform, with its parameters, on the
-      reference set; asked by the same tester
-- [ ] Blender's sRGB and P3 guard rail lerps the luminance toward the
-      opponent-compensated one by its 0.08 power; that step is Eary
-      Chow's and his generator carries no license, so the port ships
-      darktable's form of the rail, which departs from Blender's sRGB
-      table by a 99th percentile of 18 levels on saturated colors
-      inside Rec.2020 (§231). Waits on a license from its author, or on
-      a derivation of our own from the method
-- [ ] Reference frames for the feel: eight frames with a Lightroom edit
-      each and the greycard values that match, a check of the default
-      develop's brightness against the embedded JPEG, a slider response
-      weighted to the first third of the travel, an Auto from the
-      histogram (§85). Seven frames in and measured (§143); the
-      baseline landed from them (§141). Still wanted: Lightroom bases
-      for the forest, the torii, the pagoda and the flowers. Start from
-      §150: the set, `tools/reference/`, where each control stands and
-      what is open
-- [ ] The baseline per body, after §348: the anchor is the user's call
-      (the Canons pooled by session gives the GFX 100S II 0.52, equal
-      weights 0.59, the R6 Mark II alone leaves it at 0.8, the camera
-      JPEG itself takes every body down a quarter to half a stop:
-      R5 0.76, R5 Mark II 0.54, R6 0.51, R6 Mark II 0.33, GFX 0.22,
-      Z 6 III 0.66); the R6 Mark III and Z 6 III sit past the line by
-      frame and want more sessions, the Z 6 III its High Efficiency
-      raws; the two anchors read 0.21 apart by session, which §143
-      also says, and whether the R6 Mark II's 0.8 is right is
-      Lightroom's to say from history pairs of that body; Adobe's
-      `BaselineExposure` from a DNG per body as the second yardstick;
-      the fitted looks' own brightness (the GFX's 0.16 most); the
-      import's offset on unedited frames (now 0.62 stops apart, §342)
-- [ ] A dynamic contrast: one slider over Texture, Clarity, and
-      Structure, each band's gain eased back where that band is already
-      strong, so a flat area gains depth and a busy one is not crunched
-      (discussion 95; Nik's Dynamic Contrast is the reference)
-- [ ] Canon Dual Pixel RAW's second image read for highlights: it is
-      one half of each pixel, a stop darker, so the first stop over
-      the clip is measured where the summed image clipped. rawler
-      parses the dual track and decodes it only through a
-      process-wide environment switch (`RAWLER_CRX_RAW_TRAK`), so
-      first a decode parameter upstream; then alignment, the
-      half-image's falloff, and a blend held to the clipped regions
-      and eased where the picture is out of focus (parallax). CR2
-      ignores the index. Wants frames with blown highlights; RawDB
-      has R7 dual files (discussion 59, 2026-11-14)
 - [ ] Highlights cannot make clipped light visibly come back (issue
       132, fifteen rounds, 2026-11-17). A region pull reaching over
       white recovers large areas (a sun's disc, a sky) but the trade
@@ -260,90 +257,16 @@ the reasoning lives in `docs/notes.md`.
       over white costs the white itself. What is left is
       reconstruction before the curve (the learned trial below), and
       for a user today a luminance mask with Exposure down
-- [ ] A hotspot on skin under Highlights alone: decided 2026-11-17
-      that hotspots are Whites' to tame, not Highlights'. Measured on
-      108 faces: of the 3.4 L* the hotspot's lead grows at Highlights
-      -2, 2.6 is the display curve's shoulder and 0.09 the ease
-      (§250); with Whites down the roll (§711) shrinks the lead on 18
-      to 37 faces and grows it on at most 2 (issue 132)
 - [ ] A kept picture of an angled edit sits up to a quarter pixel off
       the full develop: the reduced develop rounds the frame's size at
       its own scale (`frame_of` in `edited_pictures::make`) where the
       export rounds at full scale, so an odd full size gives a
       different span. Frame the reduced picture over the full frame's
       span. Exports are exact; found on issue 145's review
-- [ ] Whites and shadows reshaped against the set: whites moves only
-      the top where Lightroom's moves the mid-tones, and wants two more
-      frames of whites exports; shadows over-lifts the mid-tones of a
-      low-key frame; the tops still sit 0.1 to 0.2 stops under
-      Lightroom's where they are not the sensor's clip (§143, §145,
-      §149, §150). The range decision is made (§315); wants the Lightroom
-      whites exports
-- [ ] The guided plane's halo at a hard edge, measured; darktable's
-      exposure-independent guided filter if it shows (§85)
-- [ ] The contrast filters weighted by chroma through the whole range,
-      so a filtered sky keeps its gradient instead of going down as one
-      flat band (§87). A change to the default look; waits on the
-      reference frames
-- [ ] The black and white base grey: Oklab lightness, where every other
-      editor mixes the channels, so None starts flatter across hues than
-      people expect (§87). A change to the default look and to every
-      mono edit written; waits on the reference frames
-- [ ] A reference view: a frame pinned beside the one being edited,
-      the panel live and the reference untouchable, drawn from the
-      developed preview the thumbnails keep so it costs no second
-      develop; a frame menu entry and a key to pin the current frame,
-      the compare's split, replaced by pinning another, cleared by the
-      key again, kept across frame changes and not across runs. A
-      0.9.0 item, after the modes have settled; the full version, the
-      reference redeveloped at the viewport's size and following a
-      proof, waits for someone to ask
-- [ ] A menu bar: File, Edit, View, Frame and Help through Slint's
-      MenuBar, which the winit backend hands to the native bar on
-      macOS and Windows (muda, already in the build; SLINT_NO_MUDA
-      turns it off for a snapshot) and draws in the window on Linux;
-      each entry a callback the window already has, its chord shown
-      from the keys table so the menus and the help sheet never
-      drift; the app menu with Quit comes with the backend. On all
-      three platforms, the drawn bar on Linux included. Offered by a
-      contributor, macOS first (discussion 89, 2026-11-12)
-- [ ] The UI scale changed live, without a restart: the scale-changed
-      event dispatched on the open window, then every cached size
-      checked (the window fit, the strip's row heights, the viewport
-      texture, the snapshot path), with the factor pinned in the
-      screenshot tests. The §377 handler's dispatch is the machinery
-- [ ] The Slint pin (§377) dropped once a release carries the logical
-      size fix, as femtovg's is; the muda context menu's positions on
-      Windows may carry the same mistake and are not in the patch. On
-      a Mac at a Scale of 150% the menus open at the pointer
-      (2026-10-31), whatever the code's reading said
-- [ ] The sort shown as a labeled control: today it is the arrows at
-      the end of the filter's row, and a tester who found a shoot in
-      reverse order found no way to turn it. Asked 2026-10-18
-- [ ] Adding to and taking from an AI mask made obvious: a mask holds
-      shapes with Add and Subtract, so a brush stroke can add to a Sky
-      mask or cut from it, and an experienced tester could not find
-      the way; the Masks tab wants the next shape's entry under the
-      mask it joins, with the mode in view. Asked 2026-10-18
-- [ ] The profiled denoise on a picture (a JPEG, a TIFF): it works on
-      RGB where the learned tier wants a mosaic, so a picture could
-      have it, luma and chroma both; the section says "raw only"
-      today (§602, 2026-11-07; wanted 2026-11-14). A picture carries
-      no noise model, so one is measured from its own flat areas,
-      after the camera's tone curve and its own smoothing
-- [ ] The left pane's gaps as a drag that wins: today a drag moves
-      room only between a list cut short and one grown past its floor,
-      so on a window where every list fits no gap is live (§603). The
-      other door holds the two lists where the pointer leaves them,
-      blank room under a short one, double-click back to automatic;
-      same weights, one rule in the layout. Pick it up if the live
-      gaps turn out too rare (2026-11-08)
 - [ ] A sheet's close gives the focus back to the control that had
       it, not the window: a field under a second sheet stops taking
       text until clicked. And Escape closes the top sheet first, where
       today the model sheet over another outlives it (§664)
-- [ ] `sheet-open()` defined from `sheets-up`, one list in place of
-      two; the every-sheet focus test made cheaper, 45 s today (§664)
 - [ ] A toned monochrome style (sepia, cyanotype) fitted along its
       one toning curve: detected as not monochrome today, so it takes
       the color fit and can leak color where the set has no samples
@@ -371,10 +294,6 @@ the reasoning lives in `docs/notes.md`.
 0.13.0: Canon highlights that hold more, and a learned denoiser that
 steps aside on a card it cannot run on.
 
-- [ ] Canon raws keep the headroom over their declared white level
-- [ ] The learned denoiser is disabled on a card that lost it, with a
-      way back
-- [ ] An edit from a newer version opens in an older one
 
 ### Speed
 
@@ -387,7 +306,10 @@ seconds.
       disk and read the log's prefetch lines
 - [ ] The window still walks the look folder on every open
       (`looks::list()`); hold it as the profile listing is held (§708)
-- [ ] The SAM 3 encoder's session takes 46 s to build on WebGPU (the provider's shader compile, not cached across sessions); a tester with People masks pays it per picture the card is given back (issue 92, §611)
+- [ ] The SAM 3 encoder's session takes 46 s to build on WebGPU (the
+      provider's shader compile, not cached across sessions); a tester
+      with People masks pays it per picture the card is given back
+      (issue 92, §611)
 - [ ] The GPU dual's last traffic (§606): the mosaic goes up twice
       for the AMaZE dual (183 MiB at 45 MP), and the automatic
       threshold's search reads back the full detail result where the
@@ -442,6 +364,8 @@ Decided (§34): ONNX Runtime through `ort`, CPU floor with CUDA, DirectML
 or CoreML when found; models downloaded on first use with their
 licenses, never bundled; a `greycard-ai` crate that core never sees.
 
+- [ ] A deblur in a mask: estimate the blur and reverse it, for a
+      subject a little out of focus, which a sharpen cannot bring back
 - [ ] AI masks, after Sky (§175): a learned sky matte for dense canopies and twigs
       against glare, where the color-line matte fails (needs clean
       data we assemble); more hard negatives
@@ -510,6 +434,25 @@ licenses, never bundled; a `greycard-ai` crate that core never sees.
       regrain drawn again; short of that, the mapped fill as the
       stand-in a pending patch shows while its fill is made again
       (§569)
+- [ ] A very small TIFF loses its color profile: the decoder refuses
+      a profile tag larger than the picture's own bytes; read it from
+      the TIFF's directory ourselves
+- [ ] A fill kept across a change under it, a lens correction among
+      them, so twenty fills are not made again for one slider; what to
+      show where a kept fill no longer matches (discussion 59,
+      2026-11-24)
+- [ ] A fill's regrain where the ring around the hole is full of
+      detail: a ridge against sky got heavy, blotchy grain in the
+      filled sky at 1024 and at 512, the noise estimate reading the
+      ring's detail as noise (2026-11-21)
+- [ ] An existing fill's model changed in place (LaMa to Fast or
+      Best), keeping its path, so a hard outline is not drawn again
+- [ ] A thumbnail's and a strip picture's AI mask made again under
+      the frame's fills, as the viewport's is: where a fill covers
+      part of the shape the two can differ
+- [ ] An AI mask made again under fills goes stale when a fill is
+      remade at another size (512 against 1024), or when a fill that
+      does not overlap the shape changes the picture it was found on
 - [ ] A fill in hand stopped between UNet calls when a develop is
       asked for, up to 36 s saved at 1024 (§569)
 - [ ] The Fast fill's files uploaded to greycard-rorem-fast (the
@@ -519,9 +462,6 @@ licenses, never bundled; a `greycard-ai` crate that core never sees.
 - [ ] A removal harness run with Fast beside Best, and a longer
       low-rate tail or a hole-mean term in the distillation's loss if
       the shards on large holes are worth chasing (§429)
-- [ ] ONNX Runtime's WebGPU Conv is wrong for input channel counts
-      that are a multiple of 3 but not 12 (§399); report upstream with
-      the reproducer under target/rorem/ortbug
 
 ### Color
 
@@ -536,6 +476,10 @@ ask for first.
       tone mapping, most of the gap left to its own picture;
       `WarpFisheye` and `FixVignetteRadial`. Test set: three Pixel 9
       DNGs
+- [ ] A DNG's forward matrix dropped when it contradicts its color
+      matrix and the file has no profile tables, in place of naming
+      CHDK (issue 201); waits on Adobe-converted DNGs to calibrate
+      the distance, since a profile's pair sits 14 to 20 ΔE apart
 - [ ] A DNG's warp on the GPU (§513): 0.4 s a develop at four threads
       on the CPU today, once per base
 - [ ] A margin past the default crop demosaiced for a DNG's warp
@@ -570,16 +514,26 @@ ask for first.
       channel from the same linear develop the OpenColorIO renders
       start from, so a difference is the transform's and not the
       export's lens profile, crop or look (§227, §230)
-- [ ] The scene-referred tail's remaining parts, after the AgX port
-      (§226 for the design): (2) the master point curve on a norm with
-      the channels scaled by one ratio, the R, G and B curves per
-      channel; (3) a gamut compression at constant hue after the curves
-      and the look table, before the output matrix, in place of the
-      clamps at the curve, the look table and the output, measured as
-      §226 measures the hue turn in sRGB; (4) the clamp before the
-      curves dropped once the curve's range is guaranteed, a final clamp
-      to the encodable range kept. Each behind the comparison over the
-      archive sets and its own notes section. Waits on the AgX port
+- [ ] The scene-referred tail's remaining parts (§226; the gamut op
+      landed as §735): (2) the master point curve on a norm with the
+      channels scaled by one ratio, the R, G and B curves per channel;
+      (4) the clamp into the curves' range dropped once the curve's
+      range is guaranteed. Each behind the comparison over the archive
+      sets and its own notes section
+- [ ] The gamut op's cost: 3.3 to 3.9 times the clamp's finish on
+      saturated frames (§735)
+- [ ] The gamut op's hue drift to a reach of 1.2 (1.07 degrees sRGB,
+      1.16 P3, against 0.1) and the neon pink's sRGB-to-P3 hue (1.60
+      against 0.5), held to what was measured (§735)
+- [ ] Blue stage lights' hue reversals under the gamut op, a little
+      over the clamp's on four frames (§735); measure again on more
+      sets
+- [ ] The camera match's developer runners' constants
+      (`fit_lightroom`, `measure_baseline`), fitted under the clamp,
+      refit under the gamut op (§735)
+- [ ] The guide's lines on Per channel's hue shift toward white, and
+      on the clipping lamp's black end, checked by eye under the gamut
+      op (§735)
 - [ ] The demosaic's direction choices flip on inputs a millionth
       apart (AMaZE, RCD and VNG4 alike), so a frame's GPU and CPU
       chromatic aberration outputs, equal to 1e-5, still export a few
@@ -599,15 +553,9 @@ ask for first.
 - [ ] Camera match follow-ups (§181): the error held out over every
       frame (§240) deciding whether a new fit of the same body from
       another folder replaces the table there, where today more frames
-      wins; the per-lens radial report fed
-      into the vignetting line below; `style:` in the filter text;
-      Sony's Picture Profiles and Panasonic's newer Photo Styles (§265)
-- [ ] The survey's ends for NEF, ARW, RW2 and DNG (§324): the IFD
-      chain, EXIF and maker note walked to where they end and read as
-      the head, the DNG's directory at its end as the tail, so those
-      bodies read kilobytes over a share where today they read whole;
-      a size cut through a TIFF is never safe, since a zeroed gap can
-      make rawler ask for gigabytes, which aborts and no guard catches
+      wins; the per-lens radial report fed into the vignetting line
+      under Upstream; Sony's Picture Profiles and Panasonic's newer
+      Photo Styles (§265)
 - [ ] Camera match Refine: the frame on screen, or the selection,
       pinned into a group's sample and the group fitted again, with the
       pinned frames' error and the rest's said before and after; a
@@ -635,8 +583,6 @@ ask for first.
 - [ ] An Adobe lens profile's off-center optic and its green-channel
       and tangential chromatic terms, unmapped in §497 (a center field
       in core's LensCorrection first)
-- [ ] A status line and a cancel while Stack bursts reads a big
-      root's previews, a minute a card and longer for Fuji
 - [ ] RawTherapee's DCP profiles offered for a fetch: they are made by
       that project under the GPL, so they can be hosted by us as the
       Sky model is and fetched into the profile directory from the
@@ -650,18 +596,85 @@ ask for first.
       Linux and ColorSync on a Mac (§428). Today the viewport falls
       back to sRGB there unless an ICC file is picked by hand, which a
       wide-gamut monitor makes wrong (§137)
+- [ ] The default's saturation and the reds' skew, measured under AgX
+      once it is the default (§230): the per-channel curve's slope
+      added chroma in the mid-tones that read as over-saturated beside
+      ACES 2.0 and AgX Punchy (§227), and its yellow skew of bright reds
+      is what the eye expects where AgX holds them and they go pink.
+      Measure the default develop's chroma by lightness band against
+      the camera JPEG and a Lightroom export on the reference set, and
+      the reds' hue the same way; Punchy's saturation and the camera
+      match's fitted table are the two places to put the answer, not a
+      skew of our own. Waits on AgX as the default
+- [ ] AgX's contrast and white as the feel track's controls (§231): the
+      port ships Blender's slope over a range shortened to put white at
+      the sensor's clip, about 19 percent more contrast per stop than
+      Blender; a second construction keeps Blender's contrast per stop
+      (`GREYCARD_AGX_SOFT`, no user control), and the user could not
+      pick between them on 33 frames. Decide whether contrast, white
+      and the inset's rotation (the reds' warmth, the lanterns) are
+      sliders, a preset's, or fixed, by the track's rule. A Mac tester
+      (2026-10-20) asks for the slope, the toe, the shoulder, the
+      contrast, and the width exposed by hand; a pixls tester
+      (2026-10-22) for the pivot and the toe and shoulder powers, as
+      darktable's sigmoid has them
+- [ ] OpenDRT (jedypod's open display transform) evaluated beside AgX
+      as a second display transform, with its parameters, on the
+      reference set; asked by the same tester
+- [ ] Reference frames for the feel: eight frames with a Lightroom edit
+      each and the greycard values that match, a check of the default
+      develop's brightness against the embedded JPEG, a slider response
+      weighted to the first third of the travel, an Auto from the
+      histogram (§85). Seven frames in and measured (§143); the
+      baseline landed from them (§141). Still wanted: Lightroom bases
+      for the forest, the torii, the pagoda and the flowers. Start from
+      §150: the set, `tools/reference/`, where each control stands and
+      what is open
+- [ ] The baseline per body, after §348: the anchor is the user's call
+      (the Canons pooled by session gives the GFX 100S II 0.52, equal
+      weights 0.59, the R6 Mark II alone leaves it at 0.8, the camera
+      JPEG itself takes every body down a quarter to half a stop:
+      R5 0.76, R5 Mark II 0.54, R6 0.51, R6 Mark II 0.33, GFX 0.22,
+      Z 6 III 0.66); the R6 Mark III and Z 6 III sit past the line by
+      frame and want more sessions, the Z 6 III its High Efficiency
+      raws; the two anchors read 0.21 apart by session, which §143
+      also says, and whether the R6 Mark II's 0.8 is right is
+      Lightroom's to say from history pairs of that body; Adobe's
+      `BaselineExposure` from a DNG per body as the second yardstick;
+      the fitted looks' own brightness (the GFX's 0.16 most); the
+      import's offset on unedited frames (now 0.62 stops apart, §342)
+- [ ] Whites and shadows reshaped against the set: whites moves only
+      the top where Lightroom's moves the mid-tones, and wants two more
+      frames of whites exports; shadows over-lifts the mid-tones of a
+      low-key frame; the tops still sit 0.1 to 0.2 stops under
+      Lightroom's where they are not the sensor's clip (§143, §145,
+      §149, §150). The range decision is made (§315); wants the Lightroom
+      whites exports
+- [ ] The guided plane's halo at a hard edge, measured; darktable's
+      exposure-independent guided filter if it shows (§85)
+- [ ] The contrast filters weighted by chroma through the whole range,
+      so a filtered sky keeps its gradient instead of going down as one
+      flat band (§87). A change to the default look; waits on the
+      reference frames
+- [ ] The black and white base grey: Oklab lightness, where every other
+      editor mixes the channels, so None starts flatter across hues than
+      people expect (§87). A change to the default look and to every
+      mono edit written; waits on the reference frames
 
 ### The library
 
+Directories stay the truth; the catalog is a rebuildable index (§72).
+A moved shoot is found, not flagged missing, and a Lightroom catalog
+comes across with its ratings and collections.
+
+- [ ] An edit made on another computer arrives when its frame or
+      folder is opened: today the archive's copy is compared only
+      before our own write to it, or at Back up and Bring back (§244)
 - [ ] `.ori` offered to greycard by the system: the Linux desktop
       entry and the Mac's Info.plist do not name it (shared-mime-info
       has no type, Apple's `com.olympus.raw-image` is `.orf`), so it
       wants types of our own. And an import pattern with `{seq}`
       numbers an ORF and its ORI apart (§671)
-Directories stay the truth; the catalog is a rebuildable index (§72).
-A moved shoot is found, not flagged missing, and a Lightroom catalog
-comes across with its ratings and collections.
-
 - [ ] The filter bar's last two chips: a "none" chip for frames with
       no value for a facet (decide it with a library of phone JPEGs in
       hand), and an error row in the index for a file whose hash fails
@@ -669,8 +682,13 @@ comes across with its ratings and collections.
       and the filter remembered between sessions are there since §174
 - [ ] The filter's ranges, what is left (§695): Home, End, Page Up,
       and Page Down with a handle focused change the frame; both
-      handles say one label to a screen reader; `mm<=35` typed is a
-      word, not a term
+      handles say one label to a screen reader
+- [ ] Left for a screen reader: menu items have names but no role
+      (Slint has no menu-item role: upstream); pane edges as sliders
+      need a name each ("Left panel width", and so on, the owner's
+      words) and their size as a value; crop handles and the curve
+      need focus, arrow keys, and a value read out; a chip cannot be
+      held out by a screen reader's press
 - [ ] Several values of one number field in the filter text,
       `focal:35,85` or `iso:400,800,1600`, for the picks a range
       cannot make (two primes, full stops only); how a range shows
@@ -738,6 +756,12 @@ comes across with its ratings and collections.
       position given to a frame by hand, and a position copied from a
       frame that has one to frames that do not. Low priority; asked
       again 2026-10-19 (issue 30)
+- [ ] The survey's ends for NEF, ARW, RW2 and DNG (§324): the IFD
+      chain, EXIF and maker note walked to where they end and read as
+      the head, the DNG's directory at its end as the tail, so those
+      bodies read kilobytes over a share where today they read whole;
+      a size cut through a TIFF is never safe, since a zeroed gap can
+      make rawler ask for gigabytes, which aborts and no guard catches
 
 ### Culling and search
 
@@ -769,6 +793,9 @@ the user.
       selection side by side, the better kept and the next brought in
       against it, until one is left; the winner flagged or rated, the
       rest untouched unless asked
+- [ ] From the lightbox straight to Develop on one of its frames, and
+      back to the same lightbox: an outlier seen there adjusted and
+      compared again
 - [ ] Focus peaking in the lightbox: its tiles are Slint images, not
       the viewport's draw, so Shift+J does not reach them (§542)
 - [ ] Search by phrase: an image embedding from a CLIP-style model
@@ -785,6 +812,8 @@ the user.
       recognizer and SFace the candidates, their training data
       unasked) and on whether the index may hold a face embedding,
       which is biometric data; never a sidecar (§253)
+- [ ] A status line and a cancel while Stack bursts reads a big
+      root's previews, a minute a card and longer for Fuji
 
 ### Merge
 
@@ -805,6 +834,10 @@ brackets and the panorama to shoot for testing are in
       one (§573)
 - [ ] The focus stack's available-memory readers run on a Mac and on
       Windows: compile-checked only (§709)
+- [ ] A focus stack's soft, low-contrast areas: where no frame is
+      clearly sharpest the bands are averaged and fine texture is
+      lost beside Helicon's; a tester's 8:1 to 20:1 stacks show it
+      (email, 2026-11-24)
 - [ ] Focus breathing in a focus stack: each frame scaled to the
       reference before the merge, the scale fitted with the alignment
       (issue 134, 2026-11-13)
@@ -833,21 +866,6 @@ brackets and the panorama to shoot for testing are in
       (found on the first real hand-stepped stack, 2026-11-08)
 - [ ] A bracket finder: a burst whose EXIF exposures step marked as a
       bracket, so the merge can be asked of a whole card (§523)
-- [ ] A vignette that darkens what is on screen: a switch on the
-      Vignette to apply it after the display curve, as most editors
-      do, beside today's exposure falloff in the scene, under which a
-      bright edge stays bright; the tester's view is that a vignette
-      is for effect, not optics. Then tonal control (shadows only),
-      and a lift of the middle to go with it (discussion 170)
-- [ ] A vignette's Amount is never reached in the frame at a high
-      Feather: at Midpoint 0.5 and Feather 1.0 the corners get half
-      of it and the edges' middles a tenth. Decide whether the corner
-      should always get the full Amount; that changes existing edits
-      (discussion 170)
-- [ ] A center for the vignette: two sliders or a drag on the picture
-      to move the shape off the frame's middle, as darktable has and
-      Lightroom has not; the center kept as fractions of the frame so
-      it sits on the crop
 - [ ] A Compress slider in the Light section: the guide plane of §85
       pulled toward mid grey by a strength, so bright regions come down
       and dark ones up together and the texture inside each rides on
@@ -856,7 +874,7 @@ brackets and the panorama to shoot for testing are in
       already); an Auto from the frame's range in stops. One slider,
       not a filmic module with a shoulder and a toe. Wanted most for a
       merged bracket written with headroom; waits on the guided plane's
-      halo measurement in the feel track, since one slider moving the whole
+      halo measurement under Color, since one slider moving the whole
       plane makes any halo count
 
 ### The engine
@@ -870,6 +888,30 @@ touches.
 
 - [ ] The editor's `--export` flag dropped, one release after §514
       made it an alias of `greycard export`
+- [ ] The render gate (§733) enforced on macOS and Windows. Waits on
+      `render_gate_spread` run on each
+- [ ] The render gate's fixtures near the thresholds it misses:
+      capture sharpen's spike and flat tests, CA's shift blur, and the
+      hot pixel threshold
+- [ ] Markesteijn's direction choice ties exactly beside a clipped
+      plateau, so an ulp upstream moves pixels at a hard edge against
+      clipped light (§733)
+- [ ] The choices an edit looks up, recorded in it: the learned
+      denoiser's model beside its tier, and the lens matched
+- [ ] A generative fill kept as made, and not made again because the
+      fill's version moved
+- [ ] At 1.0, prior process versions offered: an edit keeps the
+      rendering it was made under until its owner updates it
+- [ ] An older build writing meta (ratings, flags, keywords) to a
+      newer build's sidecar, which needs a top-level catch-all (§734)
+- [ ] A newer build's unknown fields carried through an older build's
+      edit, or read-only kept (§734)
+- [ ] The delta writer: history entries as differences, which this
+      build reads and never writes (§734)
+- [ ] Another computer's edits fetched from the archive when a frame
+      opens, not only at Back up, Bring back, or a save (§734)
+- [ ] `history` and `redo` made crate-private, as the other state
+      fields are (§734)
 
 ---
 
@@ -881,9 +923,36 @@ clears or a tester asks for it.
 
 #### Editor
 
-- [ ] The strings added since the French catalog was made
-      translated (`scripts/translations-check.py --list` names them);
-      waits on a translator
+- [ ] The panels on the other side, or all on one side, for a
+      left-handed desk (discussion 192)
+- [ ] A screen reader's press while a menu is up: the mask row
+      ignores it, as a click only closes the menu; the preset,
+      collection, strip, and grid rows have the same guard on a click
+      and are unchecked for a press; the press does not close the
+      menu (Linux only, where the menu is drawn in the window)
+- [ ] The suite in French (`GREYCARD_TEST_LANG=fr`) still fails 386
+      tests, none a lookup: 378 assert on English words (status lines,
+      notes, labels) and want data compared instead; five measure a
+      layout against English word widths
+- [ ] In a decimal-comma language a slider's fractional step, minimum,
+      and maximum are lost to a screen reader: Slint writes the number
+      with the language's separator and reads it back with `str::parse`
+      (an upstream issue to file)
+- [ ] The develop view's rating badge keeps its spoken label while
+      invisible under the grid; a size in French prints "2.5 Mo" with a
+      point
+- [ ] Words left in English in a translated window, each waiting on
+      new strings: the scope tabs (Wave, Parade, Vector); the models'
+      descriptions under Settings, Models (greycard-ai's registry);
+      the noise model's choices; a new mask's default name. And the
+      filter's flag chips share the frame menu's verbs ("Pick",
+      "Reject"): a "flag" context of their own
+- [ ] A CJK region's typeface for a user whose window is in another
+      language (from the system's locale), and in the watermark's
+      own font collection (§727)
+- [ ] The draft catalogs (de, es, it, ja, ko, nl, pl, pt_BR, zh_CN,
+      zh_TW) read by native speakers; each has its glossary and the
+      choices most in doubt listed for the reader
 - [ ] Failures as a dialog queue, not a status line: a failed outcome
       today becomes "failed: {message}" in the status bar
       (deliver.rs); a queue of typed errors with a kind, the frame it
@@ -905,26 +974,38 @@ clears or a tester asks for it.
       crop; a key that applies a named preset beside it
 - [ ] Default folds: a set of sections folded by default; and the
       scopes folded away on a small screen, their space to the panel
-      (the sections' order is dragged since §689)
+      (the sections' order is dragged since §689). Asked by a tester
+      beyond it: a section hidden outright, named layouts of sections
+      for a kind of work, and the header's metadata and histogram
+      folded as a section is
+- [ ] A click that zooms to 1:1 in Cull's loupe and compare, as it
+      does in Develop (asked by a tester); in compare a click chooses
+      the frame today, so the zoom needs a gesture of its own there
+- [ ] Edit in with a set of frames, for an outside focus stacker
+      (Helicon Focus, Shine Stacker), and its result back beside them
+      as a merge's DNG is (asked by a tester; a small audience)
 - [ ] Before and after: the picture against a chosen history step or
-      snapshot under a wipe the pointer drags; and the last render
-      kept when a section is switched off or on, so Denoise's toggle
-      shows its difference at once under the wipe instead of after
-      the whole chain runs again; two snapshots side by side asked
-      for too (pixls, 2026-11-01; issue 100, 2026-11-13)
-- [ ] The curve's backdrop in two corners (suspected, §679): with the
-      scopes weighed by the selection, a change of mask can draw the
-      last mask's weighted bins for a frame or two (`curve::backdrop`
-      checks the tap, not the weighing); and while the Original shows,
-      the backdrop is the Original's histogram behind the edit's curves
+      snapshot under a wipe the pointer drags, a history row's context
+      action setting the Before and leaving the frame clearing it, as
+      Lightroom's Copy History Step Settings to Before; and the last
+      render kept when a section is switched off or on, so Denoise's
+      toggle shows its difference at once under the wipe instead of
+      after the whole chain runs again; two snapshots side by side
+      asked for too (pixls, 2026-11-01; issue 107, 2026-11-09; issue
+      100, 2026-11-13)
+- [ ] The curve's backdrop in two corners left by the fix for the
+      weighing and the Original: a histogram dispatched under the
+      Original can land just after it goes off, and a history row's
+      preview replaces the edit's as the Original did
 - [ ] The curve's dropper under a mask: the picked tone leaves the
       masks out (`finish::pick`), so where a mask changes exposure or
       its own curves the point lands off the tone picked in the global
       editor
 - [ ] Bezier handles on a curve's points, so a point's reach along
       the curve can be set
-- [ ] The crop's grid: its lines' count and spacing chosen, so a line
-      can sit near a horizon
+- [ ] The crop's overlays: the grid's line count and spacing chosen
+      so a line can sit near a horizon; the golden spiral's squares
+      drawn, and a turn of its own for the spiral and the triangles
 - [ ] History grouped by tool: a run of steps on one tool folded into
       one line that opens, so the timeline reads clean and nothing is
       lost
@@ -945,59 +1026,11 @@ clears or a tester asks for it.
 - [ ] The long `run` and `develop_job` in `worker/` and `Look::run` in
       `roots/` cut into functions, a later round after the splits
       (§316, §318, §321)
-- [ ] The window's structure (0.8.0), in mechanical passes each
-      landing green, each alone with no other window branch in
-      flight. Landed: the CLI's `main.rs` split one file a subcommand
-      (§341); the window's `State` grouped by owner (§344: views,
-      develop, culling, sheets, work, window, launch; 17 fields left
-      at the top). Measured 2026-10-18 before carving the library
-      views: one rustc compiles the crate's 163,000 hand-written
-      lines with 392,000 generated from 17,400 lines of `.slint`,
-      six times the hand-written code by bytes, at 96 to 106 s and
-      10.6 GB for rustc from clean (`-j 4`); the library side is
-      44,000 lines, about 7 s of that, and 257 of its 419 tests build
-      the whole window, so a views crate alone halves nothing, and
-      it cannot compile its own `.slint` (one component tree a crate,
-      the grid and strip children of `App`). Tried in a workspace
-      copy, the Slint UI in a crate below the window took the
-      window's build to 28 s and 2.4 GB, its test build from 120 s
-      to 40 s, an incremental rebuild from 28 s to 13 s, with a
-      three-line change to the window and every `app.set_*` call
-      kept; the Slint crate's 74 s and 9.6 GB are paid only when a
-      `.slint` file changes (`cargo build -p` on it alone picks a
-      different feature set and forces a rebuild; build through the
-      window). So the order is: the Slint UI into its own crate
-      (landed, §351: window build 24 s and 2.3 GB, incremental 8 s;
-      `cargo build -p greycard-slint` alone still compiles a wasted
-      second copy, closed only by a workspace-hack list, left open);
-      the desktop file chooser out of `export.rs` into a window
-      `chooser.rs` (landed, §356); a render crate
-      between edit and the window holding the finish, agx, detail,
-      export, border, watermark and geometry with their test helpers
-      (landed, §361: 104 tests moved, the window's build within
-      noise of before, so the gain is the boundary and not the
-      build; the CLI and the headless export still reach it through
-      the window and could depend on it directly); a thin views
-      crate with only the shared types
-      (`versions::{Key, Cell}`, `rows::FromRow`, `file_name`, called
-      from 51 places outside), depending on the Slint and render
-      crates and never the window; the model modules with no outward
-      edge (filter, sort, grid, selection, tags, mounts, placeholder:
-      3,800 lines, 60 tests); then those with one seam each
-      (collections, culling's prefetcher, previews, thumbpool and
-      `worker/thumbs.rs` behind a thumbnails handle the views crate
-      defines and the worker implements: 6,900 lines, 68 tests);
-      measured again. The bindings (browser, culling, roots, tree,
-      library, lightbox, rows, cells, the small panels) wait for
-      0.9.0 behind three seams: opening a frame (`open_frame`,
-      `open_row`, `pick_pending` reach two dozen develop functions
-      and 70 develop fields; a small Develop trait, the mosaic
-      tracking moved to the develop side), culling drawing through
-      the develop's viewport (`st.develop.zoom` 15 times, the
-      renderer, `lut_for`, `render::Tile`; the loupe and compare
-      drawing stay in the window), and the thumbnails on the worker
-      handle. The crate tree otherwise stays as it is: core knows
-      nothing, edit and library sit on it, the window on everything
+- [ ] A `State` built without a window, so a test that touches only
+      it runs off the window: unmeasured, a study first (§720)
+- [ ] "Write the XMP, then the sidecar" is written four times:
+      `write_file`, culling's unreject, the batch save, and sync
+      (§720)
 - [ ] A cancel token through the develop: the worker drops a stale
       result by generation but never interrupts the develop making
       it, so a big frame or an export batch runs to the end after
@@ -1012,49 +1045,30 @@ clears or a tester asks for it.
       lib, the catalog reader, browser) and the first to split are
       startup and mask
 - [ ] A missing camera profile said where the user looks: the
-      status line, the export's report of what the edit went without
-      (with the headless export's exit code 2 as for a missing
-      look), and a preset or a sync that would spread the missing
-      name; today only the Camera section says it, and only while
-      open (§373)
+      status line, and a preset or a sync that would spread the
+      missing name; the export's report says it. A profile that is
+      there but will not read is still only in the log, and exits 0:
+      it waits on its sentence (§373)
 - [ ] A sidecar batch's writes a few at a time (four or eight) where
       the share rewards it, measured on a network share and on a Mac
       first (§498)
 - [ ] The panel's look, refined as the editor grows (§14); in develop
       order on Develop, Crop, Masks and Retouch tabs since 2026-09-14
-- [ ] Choose output color space/gamut for export: sRGB, Display P3 and
-      Rec.2020 since §20; the viewport shows the chosen one since §42;
-      ProPhoto as an output (a pixls tester, 2026-10-22)
+- [ ] The gamut op under AgX (§735): AgX keeps process 1's finish, a
+      look table cut per channel at its entry and the output sharpen's
+      hold. A trial (2026-11-22, CPU, sRGB) found no clear win: the
+      op's top after AgX's rail changes nothing without a look and
+      turns hue with one; the op in AgX's place takes about 5% of
+      chroma from saturated colors with no look at all. Left as it is
+      until a frame of the owner's clips under a look
+- [ ] Export to an ICC profile the user loads, matrix or table
+      (discussion 193)
+- [ ] ProPhoto as an export color space, beside sRGB, Display P3,
+      Rec.2020, and Adobe RGB (§20; a pixls tester, 2026-10-22;
+      discussion 193); the
+      viewport shows the chosen one since §42
   - ProPhoto as a working space: no (§84). It stays an output space and
     an intermediate inside the operations defined in it
-- [ ] The develop sections in an order of the user's: a list of
-      section names in settings, the panel a repeater over it with each
-      slot instantiating the section its name says, the Masks tab
-      following the same order, Look and White balance pinned at the
-      top and Monitor, Proof and Demosaic at the bottom, and up and down
-      buttons for it in the Settings sheet. Goes with the develop
-      panel's move out of app.slint, since that is the same rewiring
-- [ ] Resizable side panes: drag the left pane's and the develop
-      panel's inner edge, today's widths the minimum, about 500 px the
-      most, each kept in the settings (pixls: a 1366 × 768 laptop
-      has little room left for the picture); first see what a viewport
-      resize costs per pointer move, and hold the redraw to the drop
-      if it is a develop (hiding landed, §178; the strip stays fixed)
-- [ ] The left pane's sections sharing its height: a drag between
-      Folders, Presets, Snapshots, and History sets their shares, a
-      collapsed section's share goes to the open ones, each section's
-      list scrolls on its own, the shares kept in the settings
-      (issue 79, 2026-11-07)
-- [ ] The develop panel's sections told apart at a glance: a header
-      shade, a little more room between sections, without losing the
-      compact look (issue 80's Lightroom comparison, 2026-11-07)
-- [ ] A software GPU when there is none: the worker and greycard-gpu
-      ask wgpu for a high-performance adapter and stop when there is
-      no adapter at all (a headless box, a VM, a remote desktop), so
-      ask again with `force_fallback_adapter` and take lavapipe or
-      WARP, slow but right; the develop already runs on the CPU, the
-      viewport does not. A tester on such a machine decides whether
-      the viewport wants a CPU path too
 - [ ] A scene mode for the R, G and B curves: the color curves on
       log-encoded scene values before the display curve, in stops about
       mid grey, as a grading tool (what Resolve's log controls do),
@@ -1082,6 +1096,71 @@ clears or a tester asks for it.
       elsewhere, and the queued frames marked in the strip and the
       grid; the Folder row, the list, removal, Export the queue, and
       Clear landed (§409, §416, §430)
+- [ ] A dynamic contrast: one slider over Texture, Clarity, and
+      Structure, each band's gain eased back where that band is already
+      strong, so a flat area gains depth and a busy one is not crunched
+      (discussion 95; Nik's Dynamic Contrast is the reference)
+- [ ] A reference view: a frame pinned beside the one being edited,
+      the panel live and the reference untouchable, drawn from the
+      developed preview the thumbnails keep so it costs no second
+      develop; a frame menu entry and a key to pin the current frame,
+      the compare's split, replaced by pinning another, cleared by the
+      key again, kept across frame changes and not across runs. The
+      full version, the reference redeveloped at the viewport's size
+      and following a proof, waits for someone to ask
+- [ ] A menu bar: File, Edit, View, Frame and Help through Slint's
+      MenuBar, which the winit backend hands to the native bar on
+      macOS and Windows (muda, already in the build; SLINT_NO_MUDA
+      turns it off for a snapshot) and draws in the window on Linux;
+      each entry a callback the window already has, its chord shown
+      from the keys table so the menus and the help sheet never
+      drift; the app menu with Quit comes with the backend. On all
+      three platforms, the drawn bar on Linux included. Offered by a
+      contributor, macOS first (discussion 89, 2026-11-12)
+- [ ] The UI scale changed live, without a restart: the scale-changed
+      event dispatched on the open window, then every cached size
+      checked (the window fit, the strip's row heights, the viewport
+      texture, the snapshot path), with the factor pinned in the
+      screenshot tests. The §377 handler's dispatch is the machinery
+- [ ] Adding to and taking from an AI mask made obvious: a mask holds
+      shapes with Add and Subtract, so a brush stroke can add to a Sky
+      mask or cut from it, and an experienced tester could not find
+      the way; the Masks tab wants the next shape's entry under the
+      mask it joins, with the mode in view. Asked 2026-10-18
+- [ ] The left pane's gaps as a drag that wins: today a drag moves
+      room only between a list cut short and one grown past its floor,
+      so on a window where every list fits no gap is live (§603). The
+      other door holds the two lists where the pointer leaves them,
+      blank room under a short one, double-click back to automatic;
+      same weights, one rule in the layout. Pick it up if the live
+      gaps turn out too rare (2026-11-08)
+- [ ] `sheet-open()` defined from `sheets-up`, one list in place of
+      two; the every-sheet focus test made cheaper, 45 s today (§664)
+- [ ] The Overlay vignette's tonal control (shadows only) and a lift
+      of the middle to go with it (§721, discussion 170)
+- [ ] A vignette's Amount is never reached in the frame at a high
+      Feather: at Midpoint 0.5 and Feather 1.0 the corners get half
+      of it and the edges' middles a tenth. Decide whether the corner
+      should always get the full Amount; that changes existing edits
+      (discussion 170)
+- [ ] A center for the vignette: two sliders or a drag on the picture
+      to move the shape off the frame's middle, as darktable has and
+      Lightroom has not; the center kept as fractions of the frame so
+      it sits on the crop
+- [ ] Report a problem fills in the CPU on Windows on ARM and on ARM
+      Linux, where it is left empty (the registry; no model name in
+      `/proc/cpuinfo`)
+- [ ] A Windows install for all users: an -AllUsers switch on the
+      installer that elevates itself, puts the program under Program
+      Files, and writes the common Start Menu folder, the machine's
+      Path, the file associations under HKLM, and an entry under the
+      machine's Uninstall key, with uninstall.cmd taking the same
+      switch; today GREYCARD_PREFIX puts the files there and the rest
+      stays the one user's. The setup (§619) is the one user's too.
+      Asked again in discussion 178.
+      Asked 2026-10-19. Two testers would rather unzip anywhere,
+      as RawTherapee ships, than install: the zip runs in place today
+      from bin\, and the guide says so; keep it beside the installer
 
 
 #### Library
@@ -1104,7 +1183,6 @@ clears or a tester asks for it.
       offset for a clock left on the wrong time, a matching tolerance,
       the position written to the sidecar and the XMP, as digiKam and
       darktable do
-
 - [ ] Folders opened outside every root looked at again as a root's
       folders are: opening a folder indexes it, but nothing passes over
       it afterwards, so when it is deleted its rows are never marked
@@ -1115,13 +1193,12 @@ clears or a tester asks for it.
 - [ ] "Forget missing frames" on the Settings sheet, with how many and
       the oldest's date, so the missing rows go without the CLI's
       `--prune` (§160)
+- [ ] The sort shown as a labeled control: today it is the arrows at
+      the end of the filter's row, and a tester who found a shoot in
+      reverse order found no way to turn it. Asked 2026-10-18
 
 #### Engine
 
-- [ ] A step's kind as a field, not its English label: the Lightroom
-      import and the reconcile read the label today, so a translated
-      label would fork state ids between machines, and history rows
-      stay English in a translated window
 - [ ] A token from a sidecar's load that its save requires: says
       whether the sidecar was read from disk or is a default (§640
       and §645 were this mistake), and lets a save see that the file
@@ -1129,8 +1206,6 @@ clears or a tester asks for it.
 - [ ] One maker-note container reader: `decode/style.rs` holds three
       TIFF readers, two BMFF walkers, and the Nikon header parsed
       twice, so a bounds fix on untrusted bytes is made more than once
-- [ ] A sidecar keeps the fields a later build wrote (built, held on
-      a branch); with it, the note on which versions refuse which
 - [ ] The window's horizon call (`greycard_core::horizon::horizon` in
       panel/crop.rs) moved behind the engine; a core op outside
       develop, so the layering test (§540) cannot see it
@@ -1153,12 +1228,12 @@ clears or a tester asks for it.
       calls core ops in its own order (architecture.md), the one path
       outside `walk`; a `Purpose` for it, so there is one pipeline
       (an outside review, 2026-11-02)
-- [ ] Export on the GPU, or the reason it is not written down: every
-      export runs the CPU finish while the viewport runs the shader
-      twin, so a fast card never speeds an export; the twin is held
-      to the CPU by the parity test, so the shader could serve export
-      at full size through tiles, with the CPU as the fallback and the
-      reference (an outside review, 2026-11-02)
+- [ ] The export's finish on the GPU, or the reason it is not written
+      down: the demosaic, CA, lens, Detail, dehaze, and sharpen run
+      there since §600 and §607, but the finish stays on the CPU while
+      the viewport runs its shader twin, which the parity test holds
+      to the CPU; tiles at full size, with the CPU as the fallback and
+      the reference (an outside review, 2026-11-02)
 - [ ] Samples below black kept through the demosaic: measured (§549),
       the clamp lifts the darkest 1% by 3% at ten stops under white
       on an ISO 1250 frame, under one raw unit, and dropping it would
@@ -1176,10 +1251,6 @@ clears or a tester asks for it.
 - [ ] A mix with the original for the profiled denoise, as the
       learned one's Luma and Chroma: weighed against a lower
       Strength, which keeps edges better at the same grain
-- [ ] The profiled denoise's unbiased inverse has a pole below zero
-      when the fitted `b` is zero (`Vst`, §549): nothing reaches it
-      today, since the develop never hands the denoise a negative, but
-      a guard belongs there
 - [ ] `stack.rs` and `register.rs` warps: rows written the way the lens
       correction's were, with captured models re-read per pixel; the
       lens gain (§165) says they are the next place to look
@@ -1196,22 +1267,9 @@ clears or a tester asks for it.
       any mosaic (§331)
 - [ ] The capture sharpen's radius measured from an X-Trans mosaic
       (§322)
-- [ ] A learned denoiser for X-Trans, in this order (§322). First the
-      contract: a packing of the 6x6 pattern into the network's input,
-      since the Bayer four planes at half resolution have no
-      equivalent, and that decides the data's shape. Then the data,
-      from three sources: the bulk from the archive's low-ISO Bayer
-      frames, demosaiced and re-mosaiced onto the X-Trans pattern
-      (thousands of frames, license ours); raw.pixls.us's base-ISO
-      RAFs, CC0, one to a few per body across X-Trans I to the
-      current sensors in both compressions, as real-pattern training
-      examples and as the held-out validation set, so the reported
-      number is on real X-Trans; and the noise model per body fitted
-      from the flat regions of raw.pixls.us's high-ISO RAFs and our
-      own Fuji samples. Our side writes the re-mosaic export and a
-      fetch script for the pixls set; the training is the user's, as
-      the Bayer tiers were. The README's training clause grows the
-      CC0 set
+- [ ] The X-Trans denoiser, what is left (§731): fp16 copies for Core
+      ML, a merge of X-Trans frames, and a tier's fetch taking only the
+      network a library needs
 - [ ] A GPU X-Trans demosaic, if the CPU's 0.6 s on 40 MP becomes what
       a develop waits on (§322)
 - [ ] Per-camera hot pixel defect map. Waits on a place for per-camera
@@ -1242,6 +1300,39 @@ clears or a tester asks for it.
 - [ ] Nikon High Efficiency in the published builds: the JPEG XS
       patent pool charges per copy and exempts nothing (§176); the
       macOS system decoder is the one way around it
+- [ ] Canon Dual Pixel RAW's second image read for highlights: it is
+      one half of each pixel, a stop darker, so the first stop over
+      the clip is measured where the summed image clipped. rawler
+      parses the dual track and decodes it only through a
+      process-wide environment switch (`RAWLER_CRX_RAW_TRAK`), so
+      first a decode parameter upstream; then alignment, the
+      half-image's falloff, and a blend held to the clipped regions
+      and eased where the picture is out of focus (parallax). CR2
+      ignores the index. Wants frames with blown highlights; RawDB
+      has R7 dual files (discussion 59, 2026-11-14)
+- [ ] The profiled denoise on a picture (a JPEG, a TIFF): it works on
+      RGB where the learned tier wants a mosaic, so a picture could
+      have it, luma and chroma both; the section says "raw only"
+      today (§602, 2026-11-07; wanted 2026-11-14). A picture carries
+      no noise model, so one is measured from its own flat areas,
+      after the camera's tone curve and its own smoothing
+- [ ] The models' adapter checked for a CPU type as the window's now
+      is (§374): ONNX Runtime's WebGPU provider picks its own adapter
+      through Dawn, and on a machine whose only Vulkan adapter is
+      lavapipe it may run the models as software shaders, minutes a
+      frame; the CPU provider is the right one there. Unverified
+      either way; a run under VK_DRIVER_FILES naming lavapipe alone
+      with a model fetched says which
+- [ ] dxil.dll's own terms in the notices: ours is 1.8.2502.11,
+      signed by Windows and in no DXC release on GitHub, so likely the
+      Windows SDK's; the notices say whose it is and no more (§660)
+- [ ] cargo-about from a pinned prebuilt binary where one exists, in
+      place of a build from source behind a cache (§660)
+- [ ] cargo-deny over the tree: advisories and bans beside the
+      licenses cargo-about checks (review, 2026-11-11)
+- [ ] Split symbols kept for each release, so a stripped build's
+      backtrace can be named (review, 2026-11-11; the read-only tokens
+      and SHA256SUMS are §657)
 
 #### Immich
 
@@ -1256,7 +1347,8 @@ clears or a tester asks for it.
 - [ ] Edit in, the rest of it (§499, §577): a raw-first tool (PureRAW,
       Photo AI) given the raw and its DNG offered in place; the edited
       TIFF's watch kept while the file is listed rather than an hour.
-      Try the Mac and Windows launches on the machines first
+      Try the Mac and Windows launches on the machines first.
+      Asked for again with DxO PureRAW as the case (issue 208)
 - [ ] A plugin protocol, after 1.0 and only on demand: an executable
       given a rendered file or a mask over JSON on stdin and stdout, a
       process boundary rather than in-process code, so a plugin's
@@ -1267,7 +1359,6 @@ clears or a tester asks for it.
 #### Nice-to-have
 
 - [ ] Flexible dual monitor support; color management per display.
-- [ ] Different frameline options when cropping
 - [ ] The crop frame easier to take hold of: an edge is grabbed along
       its whole length today, but a tester found only the corners
       (reddit, 2026-11-14); measure the edges' reach, widen it, and
@@ -1286,10 +1377,15 @@ clears or a tester asks for it.
       the empty corners kept for a pixel editor, and a scale beside
       the perspective sliders to bring back what was pushed out, as
       darktable has (discussion 149, 2026-11-14)
+- [ ] Perspective fit automatically from the picture's own lines,
+      as darktable's rotate and perspective does (pixls, 2026-11-23)
 - [ ] An aspect adjust beside the perspective sliders, stretching or
       squashing one axis so a tower a strong vertical correction
       stretched is its own height again, and a shear, as darktable's
       rotate and perspective has (discussion 149, 2026-11-15)
+- [ ] An anamorphic desqueeze: the lens's squeeze typed in or picked
+      (1.33, 1.5, 1.8, 2.0), stretching one axis exactly, apart from
+      the perspective's aspect adjust (issue 212)
 - [ ] The generative remove on a card too small for it (a 4 GB card
       has Fast and Best greyed, §646), measured 2026-11-15: the fp16
       UNet holds 5.0 to 5.3 GiB on the card whatever the tile, so
@@ -1310,26 +1406,48 @@ clears or a tester asks for it.
 - [ ] Camera tethering
 - [ ] Red-eye correction (issue 175): click an eye, or the eyes found
       by the Parts mask, and the red pupil goes dark and neutral
-- [ ] Idea: AI sharpening
+- [ ] AI upscaling
 - [ ] Idea: AI color grade matching to a reference
-- [ ] Learned highlight reconstruction, a trial for 0.13.0: the
-      develop's ceiling raised so a fill may pass the brightest
-      channel's clip, and a small model trained on unclipped frames
-      clipped by the benchmark (§677), scored there before it nears
-      the editor. With one or two channels left we are within 0.002
-      of the best of darktable and RawTherapee; with none left
-      darktable's segmentation with its rebuild is the bar (0.077
-      against our 0.092, one rebuild setting tried), a sixth of what
-      the raised ceiling's oracle shows. Guided laplacians lost to
-      opposed in every one of 103 comparisons and is not ported
-      (§686). It invents, so it is an option, off by
-      default; the classical fill stays the default
+- [ ] Learned highlight reconstruction, for 0.13.0 (§719): a small
+      model trained on unclipped frames clipped by the benchmark
+      (§677), 0.063 there against opposed's 0.093 with no channel
+      left, and preferred by eye in the blind rounds. Ported in steps: a Python
+      oracle with synthetic fixtures, the clip codes, the region
+      analysis, the network, and the synthesis in core, and the
+      engine's stage, the edit's field, and the rounds that deliver
+      it, and its switch in Light. Left: the timing pass on real
+      frames at 24, 45, and 100 MP, an X-Trans score, words for an
+      edit naming a version the build lacks (and exit 2 from the
+      CLI), no "at work" on a frame with nothing clipped, and the
+      switch drawn dimmed while Light is off. It
+      invents, so it is an option, off by default; the classical fill
+      stays the default
+- [ ] The learned highlight fill is hidden (`GREYCARD_HIGHLIGHT_FILL=1`
+      shows its switch). hl-2 keeps hl-1 to regions the training
+      reached (§719 1f) and waits on a blind round by the owner. Left
+      for model work: a small sun disc, a sky through branches, and a
+      blotchy sky in far pieces; a retrain at whole-frame scale on
+      real brackets
+- [ ] The learned fill's range shift drifts under a lens correction:
+      Highlights and Whites read the range up to 0.19 stops off on a
+      heavily clipped frame with strong distortion and vignetting,
+      0.03 under a DNG warp. Exact: the fill's change carried through
+      the geometric stages to the guide's tap (§719)
 - [ ] A generative fill trained for clipped highlights: the frame
       darkened two stops so the clip is a flat patch in an ordinary
       picture, a fill model trained to paint it, pairs made by
       clipping well-exposed raws; the object remover failed at this
       because it is trained to remove. Judged by eye, blind, not by
-      error against the truth; an option like the generative remove
+      error against the truth; an option like the generative remove.
+      After the learned fill ships, and beside it, for clipped regions
+      with real structure (clouds, fabric, faces); needing a GPU is
+      accepted. A 16 GB card can fine-tune an existing fill model in
+      about a day a run, or train a mid-sized feed-forward one from
+      scratch on crops in several; a pretrained base's license and
+      data want vetting, as the remove's did. First trial: a
+      feed-forward fine-tune in a log-encoded space on the regions the
+      learned fill marks large and textured, judged blind against it;
+      the result cached so the view and the export agree
 - [ ] Highlight fills judged blind by eye beside the benchmark's
       error: no fill can match what the sensor never recorded, and
       the smoothness bar may reject fills that look right
@@ -1345,6 +1463,43 @@ clears or a tester asks for it.
 #### User Requests
 
 - [ ] MIDI Controller support
+- [ ] A second key for the Original at its own geometry, uncropped
+      and unturned, with the view fit while it shows (issue 198); it
+      needs a develop of its own, the kept Original being the edit's
+- [ ] An export that leaves out the location alone and keeps the rest
+      of the metadata (discussion 147)
+- [ ] PEF on more than one file: opened and previewed from one K-1
+      frame, landscape. Wants a portrait frame (a full JPEG stored
+      already turned is refused for the small preview), an older
+      body, and a Pentax camera style reader (issue 197)
+- [ ] An export names a lens picked by hand even with the correction
+      off, so a stand-in profile's name goes out as the lens; and a
+      source's LensMake is kept beside a LensModel we fill, where
+      they may disagree (§737). The owner's call
+- [ ] The filter bar's Kind row shown disabled, not hidden, where
+      the frames hold one kind (discussion 59, 2026-11-22)
+- [ ] A `{total}` token in the import's and the export's Name, for
+      "3 of 40", and renaming files already in the library by a
+      pattern (discussion 59)
+- [ ] An export color space "as shot": the camera's setting for a raw,
+      the file's own profile for a picture (a pixls tester,
+      2026-11-22)
+- [ ] AVIF and JPEG XL as export formats (a pixls tester, 2026-11-22)
+- [ ] A Feather on the learned masks, beside Refine edge (a pixls
+      tester, 2026-11-22)
+- [ ] A mask's Detail with its own sharpen radius and threshold, and a
+      denoise in a mask (a pixls tester, 2026-11-22)
+- [ ] SHARPEN's Radius past 2, to 3 (discussion 194)
+- [ ] A mask's fourth distinct Output sharpen setting said in the
+      window, not only the log (§736)
+- [ ] A crop held to a longest side in pixels, to judge what
+      resolution a tight crop leaves, as RawTherapee has (discussion
+      194)
+- [ ] Turn the picture by dragging on it in the Crop tab, as Lightroom
+      does (discussion 59)
+- [ ] A key for a named export preset (discussion 59)
+- [ ] Defringe's Purple and Green labels set apart from the sliders
+      under them, and other sub-labels with them (discussion 59)
 - [ ] HEIC/HEIF as pictures: HEVC is patent-encumbered, so nothing of
       ours ships a decoder; macOS through ImageIO, Linux and Windows
       through a libheif found at runtime and loaded by name as ONNX
@@ -1352,13 +1507,9 @@ clears or a tester asks for it.
       beside it from a pure-Rust decoder
 - [ ] A toolbar of common actions, the set the user's, with the
       menu bar (pixls, 2026-10-22)
-- [ ] Clear the card after an import, behind a confirmation and only
-      once every copy's hash has been checked (pixls, 2026-10-19)
 - [ ] The toolchain that rendered an export embedded in its metadata,
       so opening the export can find the source and reapply the edit
       (pixls, 2026-10-19)
-- [ ] The picture zoomed in steps from the keyboard, as the grid's
-      tiles are with plus and minus (pixls, 2026-10-22)
 - [ ] Saturation in the shadows or the highlights alone, with the
       hue held (pixls, 2026-10-24)
 - [ ] Structure's strength judged on real frames (§507): +100 reads
@@ -1374,12 +1525,10 @@ clears or a tester asks for it.
 - [ ] The parametric curve's three dividers show where they sit as
       numbers and take a typed value, beside the drag on the graph
       (2026-11-14)
-- [ ] The brush's Flow is what other apps call Opacity: one stroke
-      lays down at most its amount, and strokes build on each other.
-      Decide whether to rename it or add a Flow that builds within a
-      stroke (pixls, 2026-10-25)
-- [ ] ART's `.arp` profiles read beside a raw as RawTherapee's
-      `.pp3` are: the same key file, found by its extension
+- [ ] ART's `.arp` profiles, what the reader leaves: its black level
+      (a slider of ±2, times 2000 of RawTherapee's) and its Saturation
+      tool named, not carried; the offer and the sheet say RawTherapee
+      for a folder of `.arp` alone, which waits on words
       (pixls, 2026-10-24)
 - [ ] The clipping warnings as a pair of plain buttons, with the
       toolbar (pixls, 2026-10-24)
@@ -1464,18 +1613,14 @@ clears or a tester asks for it.
 - [ ] Fit and 100% in one click both ways: the Fit button and the
       navigator go back to the last scale, and a click on the picture
       toggles under every tool (discussion 59, 2026-11-04)
-- [ ] [ and ] as the brush's size with a brush in hand, since Turn on
-      them costs a develop when hit by habit (discussion 59,
-      2026-11-04)
 - [ ] A tablet in hand: the brush's size set without a wheel and seen
       while its slider drags, the pen's pressure on the flow, and the
       shortcuts a pen can reach (discussion 59, 2026-11-06)
 - [ ] A luminance curve beside the channels', bending the tone and
       leaving the color; kin to the master curve on a norm
-      (discussion 59, 2026-11-09)
-- [ ] A mask's Show mask and Invert switches each beside their own
-      word; side by side, "Invert" reads as the label of Show mask's
-      switch (discussion 59, 2026-11-10)
+      (discussion 59, 2026-11-09). Asked for again as the stand-in
+      for darktable's tone equalizer, with more bands than Light's
+      three (reddit, 2026-11-23)
 - [ ] An export batch timed end to end on a few hundred edited
       frames, masks and fills included, and the slow stage found; a
       tester's job took days against hours in Lightroom, the switching
@@ -1499,16 +1644,13 @@ clears or a tester asks for it.
       and property releases (2026-11-15). Open: the whole IPTC Photo
       Metadata Standard, or a chosen set
 - [ ] The filter bar's chip row says that it scrolls: with many
-      cameras, lenses, and ISOs it runs past the right edge and
-      nothing shows there is more (the wheel, a drag, or Shift and
-      the wheel move it, §168). An edge fade or a thin scroll bar,
-      and a sentence in the guide (issue 155)
+      cameras and lenses it runs past the right edge and nothing shows
+      there is more (the wheel, a drag, or Shift and the wheel move it,
+      §168). An edge fade or a thin scroll bar, and a sentence in the
+      guide (issue 155)
 - [ ] The Library's roots in name order, or an order to choose: they
       stand in the order added, which reads as disorder to someone
       who added each shoot as its own root (issue 154)
-- [ ] "Edit in" another program reads the export sheet's Metadata
-      choice: today it takes the sheet's defaults, so its TIFF carries
-      everything under None too (§658)
 - [ ] `.greycard` off the name of an export written beside its raw
       (issue 116, 2026-11-10). Today the tag is also what keeps
       `IMG_0001.jpg` from being paired with `IMG_0001.CR3` as the
@@ -1522,17 +1664,10 @@ clears or a tester asks for it.
       switch and option (the display curve among them), not the
       sliders, set from the open frame; the lens setting (§613) is the
       first of these (discussion 89, 2026-11-10)
-- [ ] A history step as the compare's Before: a row's context action
-      sets it, the key swaps against it instead of the original, and
-      leaving the frame clears it, as Lightroom's Copy History Step
-      Settings to Before (issue 107, 2026-11-09)
 - [ ] Lossy WebP as an export format: the `image` crate's encoder is
       lossless only, so lossy wants libwebp (BSD, a C build) or a
       pure-Rust encoder found; lossless is in (§632; issue 121,
       2026-11-10)
-- [ ] White balance, Light, Color, and Detail as one Basic panel with
-      a subsection each, as Lightroom's; undecided, and it meets the
-      section-order items above (discussion 118, 2026-11-10)
 - [ ] Dehaze on luminance alone, or a blend between that and the
       color one, so the haze's blue shift is dialed in (discussion 59,
       2026-11-10)
@@ -1540,8 +1675,6 @@ clears or a tester asks for it.
       the width of F's mat a setting (discussion 59, 2026-11-10)
 - [ ] White balance presets from the camera's own, where a maker
       note carries them (Canon, Nikon), under the fixed six (§636)
-- [ ] An icon beside each white balance preset (sun, cloud, shade,
-      bulb, tube, flash) in the menu (§636)
 - [ ] Remove from a collection in any view: the frame menu lists the
       collections the frame is in, not only the open one (discussion
       59, 2026-11-15)
@@ -1549,6 +1682,27 @@ clears or a tester asks for it.
       whatever is open, without the filter bar showing; today a smart
       collection opens the place it was saved from. Covers "raws
       only" (discussion 59, 2026-11-15)
+- [ ] Collection sets that fold and unfold under COLLECTIONS: today a
+      slash in a name only sorts and mutes the set's name, and a big
+      catalog import brings hundreds (discussion 59, 2026-11-23)
+- [ ] Redo among the keys that can be changed: it is fixed because it
+      has two defaults; one key to move and Ctrl+Y kept as a second,
+      or more than one key an action (discussion 204)
+- [ ] A stitch for a sheet copied in parts: the film shifted under a
+      fixed camera wants a flat, shift-only fit and no projection
+      (discussion 59, 2026-11-23)
+- [ ] A panorama's alignment adjusted by hand where the fit is
+      slightly off (discussion 59, 2026-11-23)
+- [ ] Printing: layout, margins, and the printer's ICC profile
+      (discussion 59, 2026-11-23)
+- [ ] A large generative fill beside film grain: scaled into the
+      1024 window and back, it comes out softer than the scan around
+      it (discussion 59, 2026-11-23)
+- [ ] A pair of other kinds as one frame, as a raw and its JPEG are:
+      a scanner's TIFF and JPEG of one name (pixls, 2026-11-24)
+- [ ] A saturation that darkens a color as it deepens it, as
+      darktable's does, beside ours, which moves chroma alone; it
+      wants a name (pixls, 2026-11-24)
 - [ ] A favorite: a shortcut in the left pane to a folder inside a
       root, where adding it as a root is refused (discussion 59,
       2026-11-15)
@@ -1571,23 +1725,18 @@ clears or a tester asks for it.
       the same click to clear, and beside them pick and reject as
       buttons, for whoever does not use the keys; in the grid too
       (issue 123, 2026-11-12)
-- [ ] A tooltip on a switch's label cut short, with the slider
-      labels' (§642: three French labels are cut at the default panel
-      width)
-- [ ] Slider labels at one width for the panel, the longest up to a
-      cap, and a tooltip on a label cut short (issue 127, 2026-11-11)
+- [ ] A tooltip with the whole label where a slider's or a switch's
+      label is cut short (issue 127; §642: three French labels are cut
+      at the default panel width); the labels' one width, with a cap,
+      landed in §672
 - [ ] Presets given more room on the left: a tab of its own or a
       list dragged taller, judged after the left pane's rework (issue
       133, 2026-11-12)
-- [ ] Lens profiles (`.lcp`) read from the profile folder's
-      subfolders too, as the camera profiles are since §662
-- [ ] The output sharpen's Radius in output pixels, or a choice: it
-      scales with an export's size today, so a web-size export barely
-      sharpens (§663)
+- [ ] The lens picker's list held back while its popup is open, which
+      waits on Slint's ComboBox saying so; and "made under" hashing
+      the profile folder's subfolders (§725)
 - [ ] The clipping warning under focus peaking reads the picture
       before the output sharpen (§663)
-- [ ] The output sharpen in a mask's look, after the picture's has
-      landed (issue 135)
 - [ ] Choose a color grading wheel without enlarging it or moving
       its point: the name chooses, the icon beside it enlarges
       (discussion 166)
@@ -1600,6 +1749,51 @@ clears or a tester asks for it.
       Local Contrast curve have it: contrast per detail size past
       Texture, Clarity, and Structure's three fixed bands
       (discussions 45 and 161)
+- [ ] Straight strokes for the repair brushes, and a click then a
+      Shift+click joined by a line; Shift on a drag pans today, so
+      the two share the key (issue 177)
+- [ ] Past 1:1 a block straddling a turned or perspective source's
+      edge shows part canvas and part the clamped edge color, where
+      the export has nothing (found reviewing issue 180)
+- [ ] A look named by its file, not the .cube's TITLE, and the looks
+      folder read with its subfolders, shown as a tree (pixls,
+      2026-11-18)
+- [ ] A relative sync: the change, not the value, applied across the
+      selected frames (issue 106)
+- [ ] Canon headroom (§716) on more bodies and ISOs: the 850D at ISO
+      100 holds 0.45 stops and waits on a bracket to show that band
+      linear; any other CR3 body needs a frame blown in every channel
+      a shutter and ISO
+- [ ] Light above the declared white on other makers, small and
+      unproven (survey, 2026-11-20): Sony A7R V 0.10 stops at ISO 640,
+      Nikon Z6III 0.05 (lossy HE frames only), OM-5 0.04; each waits
+      on a bracket. The GFX 100S II's green and blue clip 0.002 to
+      0.011 stops under its white (the format's maximum, rawler has no
+      entry): the clip flag still catches them, by 0.27% at the
+      closest; a measured white upstream would make the margin honest
+- [ ] Leica in camera match: the film style read from an M's DNG
+      (`Maker::Leica`; the maker note's tags are unnamed until frames
+      in each style say which is which), fitted against its JPEG or
+      the full-size preview the DNG carries. Six M11 frames in one
+      style laid 0.4 to 0.5 stops under our default, the color
+      already close. Waits on a frame or two in each style, to
+      name the tags (2026-11-19)
+- [ ] DNG previews, what is left: JPEG XL, tiled, and 9 to 16 bit
+      previews are passed over for the next one; a preview is read
+      with the whole file in memory (65 MB at 60 MP), where the IFD
+      and its strip would do; upstream, rawler's `preview_image`
+      takes the first preview listed, and a public
+      `apply_linearization` would spare consumers the table
+- [ ] A clearer name for the Lens section's From the file, which
+      reads as the raw's own corrections (issue 189). The owner's
+      wording
+- [ ] A generative fill's patch holds only sRGB's colors: its window
+      is clamped into sRGB on the way to the model and comes back so,
+      feather included, where the picture around it keeps the working
+      space's (audit, 2026-11-20; discussion 193 asked about gamut)
+- [ ] The lens match (§723), what is left: a lens name with no line
+      word on a body of another line; Sigma's and Tamron's own line
+      words; the database's 36 bare-number names
 
 ## Blocked
 
@@ -1608,29 +1802,12 @@ Slint, a runtime exposing what it knows, a rawler release. It joins a
 release when the wait clears.
 
 #### Platform
-- [ ] The Windows installer signed (Authenticode): waits on a
-      signing service
-- [ ] Report a problem fills in the CPU as it fills the OS and the GPU
-      (report.rs): `/proc/cpuinfo`'s model name, `sysctl
-      machdep.cpu.brand_string`, the registry on Windows. The bug form
-      has the field since 0.8.1; two of ten issues turned on it
-- [ ] The models' adapter checked for a CPU type as the window's now
-      is (§374): ONNX Runtime's WebGPU provider picks its own adapter
-      through Dawn, and on a machine whose only Vulkan adapter is
-      lavapipe it may run the models as software shaders, minutes a
-      frame; the CPU provider is the right one there. Unverified
-      either way; a run under VK_DRIVER_FILES naming lavapipe alone
-      with a model fetched says which
-- [ ] A Windows install for all users: an -AllUsers switch on the
-      installer that elevates itself, puts the program under Program
-      Files, and writes the common Start Menu folder, the machine's
-      Path, the file associations under HKLM, and an entry under the
-      machine's Uninstall key, with uninstall.cmd taking the same
-      switch; today GREYCARD_PREFIX puts the files there and the rest
-      stays the one user's. The setup (§619) is the one user's too.
-      Asked 2026-10-19. Two testers would rather unzip anywhere,
-      as RawTherapee ships, than install: the zip runs in place today
-      from bin\, and the guide says so; keep it beside the installer
+- [ ] SignPath's padded version check changed for a version that is
+      not six characters long (1.0.0), in `packaging/signpath` and in
+      SignPath's copies (§732)
+- [ ] The first release under SignPath Foundation's certificate
+      (§732), which waits on its issue; the allowed branch names
+      tightened once a tag's request shows its ref
 - [ ] A GPU path for the models on Windows on ARM: pyke publishes an
       ARM64 Windows build of ONNX Runtime with DirectML, no WebGPU,
       and DirectML ships with Windows, so ort-dylib could make our
@@ -1638,17 +1815,6 @@ release when the wait clears.
       there. Waits on a tester running the aarch64-windows package
       at all (§372), then on reading what the DirectML provider
       needs beside the library
-- [ ] A SHA-256 sums file attached to every release, written by the
-      release workflow over the four packages, so a download can be
-      checked and an updater has something to verify against; a
-      signature (minisign or sigstore) after it
-- [ ] Self-update from the editor: the release check already finds
-      the newest tag; the step after is to download the platform's
-      package, verify it against the sums file, install it where the
-      install script put the running copy (rename-then-replace on
-      Windows, the app bundle and its quarantine flag on macOS, the
-      tarball's layout or the AppImage file on Linux), relaunch, and
-      roll back if the new copy does not start. Waits on the sums file
 
 - [ ] The window's own monitor for the profile, without choosing it.
       Waits on the Wayland color-management protocol reaching Slint's
@@ -1656,20 +1822,23 @@ release when the wait clears.
 - [ ] HDR output. The same wait; check each Slint release (§5, §17)
 - [ ] Wide-gamut output: a profile away once the compositor says which
       monitor (§17)
-- [ ] Self-updating: when the check (§186) finds a newer release, an
-      Update button on the Settings sheet downloads the build for this
-      platform from the release, verifies it against the release's
-      checksum, swaps it in beside the running binary and relaunches,
-      so nobody downloads and unpacks by hand again; opt-in, with the
-      release page a click away as it is now. Waits on a signed build
-      on Windows (Authenticode; the Mac is notarized, §440) so a swapped
-      binary is not refused by the gate, and on each platform's way of
-      replacing a running binary (rename and relaunch on Windows, the
-      bundle swapped on the Mac, the tarball's folder on Linux); §186's
-      reasons against it stand until those are in hand
+- [ ] Self-update from the editor: when the check (§186) finds a newer
+      release, an opt-in Update button on the Settings sheet downloads
+      the platform's package, verifies it against the release's
+      SHA256SUMS (§657), installs it where the running copy was put
+      (rename and relaunch on Windows, the bundle and its quarantine
+      flag on the Mac, the tarball's folder or the AppImage on Linux),
+      relaunches, and rolls back if the new copy does not start; the
+      release page stays a click away. Waits on a signed build on
+      Windows (Authenticode; the Mac is notarized, §440) so a swapped
+      binary is not refused; §186's reasons against it stand until then
 
 #### Upstream
 
+- [ ] A merged DNG's embedded preview past 1024 px: rawler's
+      `DngWriter::preview` shrinks anything wider to fit 1024x768, by
+      nearest neighbor; wants a size in dnglab's writer, then a pin
+      bump (`merge::PREVIEW_SIDE`)
 - [ ] Drop the rawler `[patch.crates-io]`. Waits on a rawler release
       carrying dnglab/dnglab#896 (the Deflate float writer) and #835
       (Nikon HE); the pin is the fork's float-deflate-pin, upstream
@@ -1698,8 +1867,13 @@ release when the wait clears.
       size that overflows the offset; report upstream as its follow-up
 - [ ] ort rc.13 ignores every `ep::WebGPU` option (the key prefix is
       applied twice); greycard sets them through a config entry
-      instead (§159). Fixed on ort's main in pykeio/ort@bc23566;
-      drop the workaround when a release carries it
+      instead (§159). Fixed in ort rc.14; rc.15 builds and passes
+      on our ONNX Runtime 1.28 with `api-27` kept (trial on the
+      branch `worktree-agent-af1fe58eca13b72c8`, 2026-11-18), needs
+      one unsafe call to keep mapped weights off the heap, and has
+      no exit hook, though §714's ending stays; move when we want
+      the options or ONNX Runtime 1.31, alone, after a close after a
+      denoise on Windows
 - [ ] The GPU Subject model on Windows adapters: its remaining
       Splits need nine storage buffers; an adapter allowing fewer
       falls back to the CPU. Runs on WebGPU on an M5 Mac
@@ -1712,6 +1886,12 @@ release when the wait clears.
       next line
 - [ ] The makers' embedded lens corrections, exact where a file carries
       them. Waits on rawler surfacing them (and the Panasonic lens name)
+      (discussion 187)
+- [ ] rawler reads a Pentax DNG's lens from its maker note; our own
+      read (§737) goes when it does. The patch is written; waits on
+      the pull request
+- [ ] lensfun lacks the smc PENTAX-FA 35mm F2 AL, so a K-1 with it
+      finds its body and no profile (issue 197)
 - [ ] lensfun calibrates the Sigma 50mm f/1.4 DG HSM Art with a
       distortion k1 of exactly zero (made on a Canon 6D), so it gets no
       distortion correction where Adobe's profile straightens it; measure
@@ -1721,3 +1901,18 @@ release when the wait clears.
       two definitions for one Canon ID; each decode of such a file
       warns and asks for an upstream issue. Contribute the entries
       to rawler; until then those warnings are kept out of the log
+- [ ] rawler's TIFF reader sizes a value by its count before reading
+      it: one flipped count in a CR3's maker note asked for 28 GB, so a
+      corrupt or crafted raw can take the decode down. Wants raising
+      upstream with a bound against the file's length (found fuzzing
+      the Canon mode reader, 2026-11-17)
+- [ ] ONNX Runtime's WebGPU Conv is wrong for input channel counts
+      that are a multiple of 3 but not 12 (§399); report upstream with
+      the reproducer under target/rorem/ortbug
+- [ ] Blender's sRGB and P3 guard rail lerps the luminance toward the
+      opponent-compensated one by its 0.08 power; that step is Eary
+      Chow's and his generator carries no license, so the port ships
+      darktable's form of the rail, which departs from Blender's sRGB
+      table by a 99th percentile of 18 levels on saturated colors
+      inside Rec.2020 (§231). Waits on a license from its author, or on
+      a derivation of our own from the method

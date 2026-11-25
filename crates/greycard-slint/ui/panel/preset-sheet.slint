@@ -31,8 +31,10 @@ export component PresetSheet inherits Rectangle {
         TouchArea { }
         // The field has the focus, and a key goes up from it and never
         // reaches the window's keys: Escape is taken here, on the card,
-        // so a click beside it still reaches the scrim.
+        // so a click beside it still reaches the scrim. No stop of its
+        // own: Tab goes round the card's controls, as the sync sheet's.
         FocusScope {
+            focus-on-tab-navigation: false;
             key-pressed(e) => {
                 if (e.text == Key.Escape) {
                     root.preset-open = false;
@@ -58,6 +60,8 @@ export component PresetSheet inherits Rectangle {
                 preset-name-edit := LineEdit {
                     text <=> root.preset-name;
                     placeholder-text: @tr("Name");
+                    // Named as its hint says.
+                    accessible-label: self.placeholder-text;
                     accepted(t) => { root.preset-saved(); }
                     init => { self.focus(); }
                 }
@@ -79,11 +83,11 @@ export component PresetSheet inherits Rectangle {
                 Rectangle { height: Theme.space-2; }
                 HorizontalLayout {
                     spacing: Theme.space-2;
-                    PanelButton {
+                    cancel := PanelButton {
                         text: @tr("Cancel");
                         clicked => { root.preset-open = false; }
                     }
-                    PanelButton {
+                    save := PanelButton {
                         text: @tr("Save");
                         icon: @image-url("../icons/save.svg");
                         primary: true;

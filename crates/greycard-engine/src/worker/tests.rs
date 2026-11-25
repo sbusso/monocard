@@ -357,6 +357,7 @@ pub(super) fn aberrated_frame(width: usize, height: usize) -> RawFrame {
             black: LevelPattern::uniform(100.0, 1),
             white: LevelPattern::uniform(1100.0, 1),
             black_deltas: None,
+            saturation: None,
         },
         as_shot_coefficients: Some([2.0, 1.0, 4.0]),
         calibrations: vec![Calibration {
@@ -2207,6 +2208,63 @@ fn cache_at(dir: &std::path::Path) -> ThumbCache {
     ))))
 }
 
+/// A picture file's thumbnail kept before its profile was read is a
+/// miss, made again and kept under the pictures' recipe; a raw's kept
+/// under the same recipe is still a hit, its thumbnail unchanged.
+#[test]
+fn a_pictures_thumbnail_kept_before_profiles_were_read_is_made_again() {
+    let dir = thumb_scratch("picture-recipe");
+    let png = dir.join("exported.png");
+    image::RgbImage::from_pixel(30, 20, image::Rgb([40, 190, 50]))
+        .save(&png)
+        .unwrap();
+    let raw = dir.join("IMG_0003.CR3");
+    std::fs::write(&raw, vec![0x33u8; 90_000]).unwrap();
+    let cache = cache_at(&dir);
+    let stale = Thumb {
+        width: 3,
+        height: 2,
+        rgb: vec![7; 18],
+    };
+    for path in [&png, &raw] {
+        let kept_before = Tag {
+            recipe: THUMB_RECIPE,
+            stamp: file_stat(path).unwrap().1,
+        };
+        let hash = greycard_library::hash_file(path).unwrap();
+        cache
+            .lock()
+            .unwrap()
+            .as_mut()
+            .unwrap()
+            .put(&hash, THUMB_WIDTH, kept_before, &stale)
+            .unwrap();
+    }
+    assert_ne!(thumb_recipe(&png), THUMB_RECIPE);
+    assert_eq!(thumb_recipe(&raw), THUMB_RECIPE);
+    let look = |path: &std::path::Path| {
+        cached_thumbnail_noting(
+            &cache,
+            None,
+            None,
+            &Frame::file(path),
+            THUMB_WIDTH,
+            thumbnail,
+        )
+        .unwrap()
+    };
+    let (made, cached) = look(&png);
+    assert!(!cached, "the picture's old entry is a miss");
+    assert_eq!((made.width, made.height), (30, 20));
+    let (again, cached) = look(&png);
+    assert!(cached, "and the new one is kept");
+    assert_eq!(again.width, 30);
+    let (kept, cached) = look(&raw);
+    assert!(cached, "the raw's entry is still a hit");
+    assert_eq!(kept.rgb, stale.rgb);
+    crate::testing::remove_dir_retry(&dir);
+}
+
 /// A raw nothing can decode: its thumbnail can only have come
 /// from the cache.
 #[test]
@@ -2241,7 +2299,7 @@ fn a_cached_thumbnail_is_not_made_again() {
         .put(
             &hash,
             THUMB_WIDTH,
-            thumb_tag(file_stat(&raw).unwrap()),
+            thumb_tag(&raw, file_stat(&raw).unwrap()),
             &kept,
         )
         .unwrap();
@@ -2277,7 +2335,7 @@ fn a_cached_thumbnail_job_finds_what_the_pool_kept() {
     let raw = dir.join("IMG_0002.CR3");
     std::fs::write(&raw, vec![0x2au8; 90_000]).unwrap();
     let hash = greycard_library::hash_file(&raw).unwrap();
-    let stamp = thumb_tag(file_stat(&raw).unwrap()).stamp;
+    let stamp = thumb_tag(&raw, file_stat(&raw).unwrap()).stamp;
     let (tx, rx) = std::sync::mpsc::channel();
     let tx = Mutex::new(tx);
     let worker = Worker::new(move |o| {
@@ -2292,7 +2350,9 @@ fn a_cached_thumbnail_job_finds_what_the_pool_kept() {
             Outcome::NoThumbnail { index, .. } => format!("none {index}"),
             _ => return,
         };
-        tx.lock().unwrap().send(line).unwrap();
+        // A send after the test gave up must not panic on the worker's
+        // thread: that aborts the whole run and hides which wait failed.
+        let _ = tx.lock().unwrap().send(line);
     });
     let mut thumbs = Thumbs::at(dir.join("thumbs"), greycard_library::thumbs::DEFAULT_CAP);
     let made = crate::made::made_size(worker.pool().expect("a window's worker").size());
@@ -2302,7 +2362,12 @@ fn a_cached_thumbnail_job_finds_what_the_pool_kept() {
         rgb: vec![90; 60],
     };
     thumbs
-        .put(&hash, made, thumb_tag(file_stat(&raw).unwrap()), &kept)
+        .put(
+            &hash,
+            made,
+            thumb_tag(&raw, file_stat(&raw).unwrap()),
+            &kept,
+        )
         .unwrap();
     worker.set_thumb_cache(Some(thumbs));
     std::fs::remove_file(&raw).unwrap();
@@ -2312,7 +2377,9 @@ fn a_cached_thumbnail_job_finds_what_the_pool_kept() {
         hash: hash.clone(),
         stamp,
     });
-    let wait = std::time::Duration::from_secs(10);
+    // Ten seconds was too short on a loaded runner, beside the long
+    // tests of this suite.
+    let wait = std::time::Duration::from_secs(60);
     assert_eq!(
         rx.recv_timeout(wait).unwrap(),
         format!("thumbnail 3 {made} 5 true")
@@ -2325,6 +2392,61 @@ fn a_cached_thumbnail_job_finds_what_the_pool_kept() {
         stamp: stamp + 1,
     });
     assert_eq!(rx.recv_timeout(wait).unwrap(), "none 4");
+    worker.stop();
+    crate::testing::remove_dir_retry(&dir);
+}
+
+/// An offline picture's thumbnail kept before its profile was read,
+/// under the raws' recipe, stands in while its file is out of reach;
+/// with the file in reach, the job finds none and it is made again.
+#[test]
+fn a_cached_thumbnail_job_finds_a_pictures_earlier_entry_offline_only() {
+    let dir = thumb_scratch("offline-earlier");
+    let png = dir.join("exported.png");
+    image::RgbImage::from_pixel(30, 20, image::Rgb([40, 190, 50]))
+        .save(&png)
+        .unwrap();
+    let hash = greycard_library::hash_file(&png).unwrap();
+    let stamp = file_stat(&png).unwrap().1;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let tx = Mutex::new(tx);
+    let worker = Worker::new(move |o| {
+        let line = match o {
+            Outcome::Thumbnail { index, width, .. } => format!("thumbnail {index} {width}"),
+            Outcome::NoThumbnail { index, .. } => format!("none {index}"),
+            _ => return,
+        };
+        let _ = tx.lock().unwrap().send(line);
+    });
+    let mut thumbs = Thumbs::at(dir.join("thumbs"), greycard_library::thumbs::DEFAULT_CAP);
+    let made = crate::made::made_size(worker.pool().expect("a window's worker").size());
+    let kept = Thumb {
+        width: 5,
+        height: 4,
+        rgb: vec![90; 60],
+    };
+    let before = Tag {
+        recipe: THUMB_RECIPE,
+        stamp,
+    };
+    thumbs.put(&hash, made, before, &kept).unwrap();
+    worker.set_thumb_cache(Some(thumbs));
+    let job = |index| Job::CachedThumbnail {
+        index,
+        frame: Frame::file(png.clone()),
+        hash: hash.clone(),
+        stamp,
+    };
+    let wait = std::time::Duration::from_secs(60);
+    worker.send(job(1));
+    assert_eq!(rx.recv_timeout(wait).unwrap(), "none 1", "in reach");
+    std::fs::remove_file(&png).unwrap();
+    worker.send(job(2));
+    assert_eq!(
+        rx.recv_timeout(wait).unwrap(),
+        "thumbnail 2 5",
+        "out of reach"
+    );
     worker.stop();
     crate::testing::remove_dir_retry(&dir);
 }
@@ -2894,7 +3016,7 @@ fn a_base_taken_back_from_the_shelf_is_developed_from_and_not_made_again() {
         &mut base,
         &mut shelf,
         (Some(key.clone()), None),
-        (&edit, 0, &|_| false),
+        (&edit, 0, &|_, _| false),
         None,
         None,
     );
@@ -2907,7 +3029,7 @@ fn a_base_taken_back_from_the_shelf_is_developed_from_and_not_made_again() {
         &mut base,
         &mut shelf,
         (None, Some((&key, &Input::Raw(reread.clone())))),
-        (&edit, 0, &|_| false),
+        (&edit, 0, &|_, _| false),
         None,
         None,
     );
@@ -2938,7 +3060,7 @@ fn a_base_taken_back_from_the_shelf_is_developed_from_and_not_made_again() {
         &mut base,
         &mut shelf,
         (Some(key.clone()), Some((&key, &Input::Raw(frame.clone())))),
-        (&warmer, 0, &|_| false),
+        (&warmer, 0, &|_, _| false),
         None,
         None,
     );
@@ -3017,7 +3139,7 @@ fn a_base_under_a_camera_profile_is_taken_back_after_the_directory_is_listed() {
             base,
             shelf,
             (Some(from.clone()), Some((to.0, &Input::Raw(to.1.clone())))),
-            (&edit, 0, &|_| false),
+            (&edit, 0, &|_, _| false),
             None,
             None,
         );
@@ -3093,6 +3215,78 @@ fn the_base_in_hand_under_a_camera_profile_outlives_a_listing() {
     crate::testing::remove_dir_retry(&dir);
 }
 
+/// An export whose edit names a camera profile not in the profile
+/// directory is developed under the file's own matrices and says so,
+/// as a missing look is said, and so does one there that will not
+/// read; with the profile there it says nothing and the profile is in
+/// the picture.
+#[test]
+fn an_export_says_a_camera_profile_it_went_without() {
+    let dir = crate::testing::scratch_dir("export-profile");
+    write_profile(&dir, "Test Cam Neutral", 0.8);
+    profiles_in(Some(&dir));
+    let frame = Arc::new(aberrated_frame(120, 80));
+    let settings = greycard_render::export::Settings::default();
+    let mut ai = Ai::new();
+    let mut edit = Edit::default();
+    edit.camera.profile = greycard_edit::camera::ProfileChoice::Named("Test Cam Neutral".into());
+    let pixels = |r: greycard_render::export::Rendered| -> Vec<u16> {
+        match r.pixels {
+            greycard_render::export::Pixels::Eight(p) => p.into_iter().map(u16::from).collect(),
+            greycard_render::export::Pixels::Sixteen(p) => p,
+        }
+    };
+    let (with, said) = export_held(&frame, &edit, None, &mut ai, &settings);
+    assert!(said.is_empty(), "{said:?}");
+    let (own, said) = export_held(&frame, &Edit::default(), None, &mut ai, &settings);
+    assert!(said.is_empty(), "{said:?}");
+    let (with, own) = (pixels(with), pixels(own));
+    assert!(with != own, "the profile is applied");
+
+    edit.camera.profile = greycard_edit::camera::ProfileChoice::Named("Camera/Gone".into());
+    let (without, said) = export_held(&frame, &edit, None, &mut ai, &settings);
+    assert_eq!(
+        said,
+        ["the camera profile Camera/Gone: not in the profile directory; written without it"]
+    );
+    assert!(
+        pixels(without) == own,
+        "the file's own, as the window draws it"
+    );
+
+    // A folder named like a profile is no profile: not there, and said.
+    std::fs::create_dir_all(dir.join("Folder.dcp")).unwrap();
+    edit.camera.profile = greycard_edit::camera::ProfileChoice::Named("Folder".into());
+    let (folder, said) = export_held(&frame, &edit, None, &mut ai, &settings);
+    assert_eq!(
+        said,
+        ["the camera profile Folder: not in the profile directory; written without it"]
+    );
+    assert!(pixels(folder) == own);
+
+    // A profile there that will not read (cut short, or garbage):
+    // developed under the file's own as the develop decides, and said.
+    let whole = std::fs::read(dir.join("Test Cam Neutral.dcp")).unwrap();
+    std::fs::write(dir.join("Broken.dcp"), &whole[..whole.len() / 3]).unwrap();
+    std::fs::write(dir.join("Garbage.dcp"), b"not a profile").unwrap();
+    for name in ["Broken", "Garbage"] {
+        edit.camera.profile = greycard_edit::camera::ProfileChoice::Named(name.into());
+        let (broken, said) = export_held(&frame, &edit, None, &mut ai, &settings);
+        assert_eq!(
+            said,
+            [format!(
+                "the camera profile {name}: it would not read; written without it"
+            )]
+        );
+        assert!(
+            pixels(broken) == own,
+            "the file's own, as the develop has it"
+        );
+    }
+    profiles_in(None);
+    crate::testing::remove_dir_retry(&dir);
+}
+
 /// A frame whose edit asks for the learned denoiser, with the model not
 /// to be had: its base is the engine's own path standing in, shelved
 /// when the frame is left and taken back on the return, the same
@@ -3126,7 +3320,11 @@ fn a_base_standing_in_for_the_learned_denoiser_is_taken_back() {
             assert!(matches!(outcome, Outcome::Developed { .. }));
             image.expect("a picture on the CPU")
         };
-    assert!(stands_in(&ai(), &edit), "no model in the test's store");
+    assert!(
+        stands_in(&ai(), &edit, false),
+        "no model in the test's store"
+    );
+    assert!(stands_in(&ai(), &edit, true), "nor its X-Trans network");
     let a = Arc::new(aberrated_frame(120, 80));
     let b = Arc::new(aberrated_frame(64, 48));
     let (ka, kb) = (shelf_key("a.CR2", &a), shelf_key("b.CR2", &b));
@@ -3143,7 +3341,7 @@ fn a_base_standing_in_for_the_learned_denoiser_is_taken_back() {
             base,
             shelf,
             (Some(from.clone()), Some((to.0, &Input::Raw(to.1.clone())))),
-            (&edit, 0, &|e| stands_in(&ai(), e)),
+            (&edit, 0, &|e, x| stands_in(&ai(), e, x)),
             None,
             None,
         );
@@ -3201,7 +3399,7 @@ fn a_base_taken_back_on_the_gpu_is_uploaded_again_and_develops_as_a_fresh_one() 
         &mut base,
         &mut shelf,
         (Some(key.clone()), None),
-        (&edit, 0, &|_| false),
+        (&edit, 0, &|_, _| false),
         gpu.as_ref(),
         None,
     );
@@ -3210,7 +3408,7 @@ fn a_base_taken_back_on_the_gpu_is_uploaded_again_and_develops_as_a_fresh_one() 
         &mut base,
         &mut shelf,
         (None, Some((&key, &Input::Raw(frame.clone())))),
-        (&edit, 0, &|_| false),
+        (&edit, 0, &|_, _| false),
         gpu.as_ref(),
         None,
     );
@@ -3314,7 +3512,7 @@ fn a_neighbor_prefetched_is_taken_back_by_its_open() {
         &mut base,
         &mut shelf,
         (None, Some((&key, &input))),
-        (&edit, 0, &|_| false),
+        (&edit, 0, &|_, _| false),
         None,
         None,
     );
@@ -4096,7 +4294,7 @@ fn walk_timing() {
                 Job::Open {
                     path: path.clone(),
                     version: None,
-                    edit: sidecar.line.current.clone(),
+                    edit: sidecar.line.current().clone(),
                     generation,
                     seed_blend: false,
                     turn: sidecar.turn,
@@ -5140,10 +5338,11 @@ fn a_set_frame_s_walk_writes_what_the_develop_writes() {
     }
 }
 
-/// An X-Trans mosaic has no learned denoiser: the walk says so in the
-/// develop's words, and writes its picture.
+/// An X-Trans mosaic asks for its tier's X-Trans network: not in the
+/// store, the walk names that network as the develop does, stands the
+/// engine's path in, and writes its picture.
 #[test]
-fn a_set_frame_s_walk_says_the_x_trans_has_no_learned_denoiser() {
+fn a_set_frame_s_walk_asks_for_the_x_trans_network() {
     let mut frame = aberrated_frame(168, 120);
     frame.layout = greycard_core::raw::SensorLayout::Cfa(greycard_core::raw::CfaPattern::xtrans());
     let mut edit = Edit::default();
@@ -5152,10 +5351,17 @@ fn a_set_frame_s_walk_says_the_x_trans_has_no_learned_denoiser() {
         develop_and_walk("export-walk-xtrans", &Input::Raw(Arc::new(frame)), &edit, 0);
     same_pixels(&developed, &walked);
     assert_eq!(left_out, said);
-    assert_eq!(
-        left_out,
-        ["the denoise: the learned denoiser has no X-Trans version yet; none ran"]
-    );
+    // Where ONNX Runtime cannot be had, the runtime is why, as on Bayer.
+    let want = match greycard_ai::runtime::status() {
+        Ok(_) => format!(
+            "the learned denoiser: {} is not downloaded; the engine's denoise instead",
+            greycard_ai::DENOISE_XTRANS_FAST.name
+        ),
+        Err(why) => {
+            format!("the learned denoiser failed ({why}); the engine's denoise instead")
+        }
+    };
+    assert_eq!(left_out, [want]);
 }
 
 /// A picture file walks as its develop does: turned, cropped, its
@@ -5432,7 +5638,9 @@ fn the_edits_pictures_are_refined() {
         };
         (
             developed.guide.picture.is_some(),
-            crate::edited_pictures::make(&developed.image, &finish).big,
+            crate::edited_pictures::make(&developed.image, &finish)
+                .unwrap()
+                .big,
         )
     };
     let (with, refined) = picture(&edit);
@@ -5778,6 +5986,7 @@ fn a_develop_shows_its_picture_and_then_makes_its_fills_one_a_round() {
             &mut None,
             &deliver,
             round,
+            &crate::walk::NoHold,
         );
         let Outcome::Developed { fills, .. } = outcome else {
             panic!("developed");
@@ -5819,6 +6028,183 @@ fn a_develop_shows_its_picture_and_then_makes_its_fills_one_a_round() {
     assert!(fills.pending.is_empty() && fills.made.is_empty());
 }
 
+/// A crop that changes what a Fill's window sees has the fill made
+/// again, and the fill made under the crop before stands in until the
+/// new one lands: the develop the crop asks for shows the old fill,
+/// still to make, never what the patch took out; the round after shows
+/// the new one. A crop's fill that fails has no stand-in.
+#[test]
+fn a_fill_remade_for_a_crop_shows_the_old_one_until_it_lands() {
+    use greycard_edit::retouch::{Method, Patch};
+    let mut image = WorkingImage::new(256, 256);
+    image.data.fill(0.4);
+    let input = picture_input(&Arc::new(image));
+    let mut edit = Edit {
+        retouch: Retouch {
+            enabled: true,
+            patches: vec![Patch {
+                id: 1,
+                method: Method::Fill,
+                points: vec![[0.93, 0.5]],
+                radius: 0.04,
+                ..Default::default()
+            }],
+        },
+        ..Default::default()
+    };
+    let mut ai = Ai::for_test(greycard_ai::Store::at("no-store"), Vec::new());
+    ai.fill_by_test = Some(0.9);
+    let deliver: Deliver = Arc::new(|_| {});
+    let mut base = None;
+    let develop = |edit: &Edit, ai: &mut Ai, round: &mut Round, base: &mut Option<FrameKept>| {
+        let (outcome, image) = develop_round(
+            &input,
+            edit,
+            0,
+            1,
+            base,
+            ai,
+            (None, None),
+            &mut None,
+            &deliver,
+            round,
+            &crate::walk::NoHold,
+        );
+        let Outcome::Developed { fills, .. } = outcome else {
+            panic!("developed");
+        };
+        let image = image.expect("on the CPU");
+        // The fill's middle: the crop keeps the left edge.
+        let v = image.data[(128 * image.width + 238) * 3];
+        (fills.pending, v)
+    };
+    let mut round = Round::first();
+    assert_eq!(
+        develop(&edit, &mut ai, &mut round, &mut base),
+        (vec![1], 0.4)
+    );
+    round = Round::next(round.ahead);
+    let (left, v) = develop(&edit, &mut ai, &mut round, &mut base);
+    assert!(left.is_empty() && (v - 0.9).abs() < 5e-3, "made: {v}");
+
+    // Cropped over the fill's window, its edge hidden.
+    edit.geometry.crop = Some(greycard_edit::geometry::Crop::of([0.0, 0.0, 0.97, 1.0]));
+    ai.fill_by_test = Some(0.7);
+    let mut round = Round::first();
+    let (left, v) = develop(&edit, &mut ai, &mut round, &mut base);
+    assert_eq!(left, [1], "made again");
+    assert!((v - 0.9).abs() < 5e-3, "the old fill stands in, not {v}");
+    round = Round::next(round.ahead);
+    let (left, v) = develop(&edit, &mut ai, &mut round, &mut base);
+    assert!(
+        left.is_empty() && (v - 0.7).abs() < 5e-3,
+        "the new fill: {v}"
+    );
+
+    // Another crop whose fill fails: the patch as it was.
+    edit.geometry.crop = Some(greycard_edit::geometry::Crop::of([0.0, 0.0, 0.95, 1.0]));
+    ai.fill_by_test = Some(-1.0);
+    let mut round = Round::first();
+    develop(&edit, &mut ai, &mut round, &mut base);
+    round = Round::next(round.ahead);
+    let (_, v) = develop(&edit, &mut ai, &mut round, &mut base);
+    assert_eq!(v, 0.4, "a failed fill has no stand-in");
+}
+
+/// A removal remade for a crop on a card that refuses it each round:
+/// its stand-in shows while it is still to come, and once its rounds
+/// end stuck the next develop shows the patch as it was, not the old
+/// crop's fill kept in a patched picture.
+#[test]
+fn a_refused_fill_ends_on_the_base_not_its_stand_in() {
+    use super::engine::FillsDue;
+    use greycard_edit::retouch::{FillChoice, Method, Patch};
+    const GIB: u64 = 1 << 30;
+    let mut image = WorkingImage::new(256, 256);
+    image.data.fill(0.4);
+    let input = picture_input(&Arc::new(image));
+    let mut patch = Patch {
+        id: 1,
+        method: Method::Fill,
+        points: vec![[0.93, 0.5]],
+        radius: 0.04,
+        remove: true,
+        ..Default::default()
+    };
+    patch.set_fill_choice(FillChoice::Best);
+    let mut edit = Edit {
+        retouch: Retouch {
+            enabled: true,
+            patches: vec![patch],
+        },
+        ..Default::default()
+    };
+    let mut ai = Ai::for_test(greycard_ai::Store::at("no-store"), Vec::new());
+    ai.fill_by_test = Some(0.9);
+    ai.card_by_test = Some(Some(16 * GIB));
+    ai.free_memory_by_test = Some(16 * GIB);
+    ai.set_providers_by_test(vec![
+        greycard_ai::Provider::WebGpu,
+        greycard_ai::Provider::Cpu,
+    ]);
+    let deliver: Deliver = Arc::new(|_| {});
+    let mut base = None;
+    let develop = |edit: &Edit, ai: &mut Ai, round: &mut Round, base: &mut Option<FrameKept>| {
+        let (outcome, image) = develop_round(
+            &input,
+            edit,
+            0,
+            1,
+            base,
+            ai,
+            (None, None),
+            &mut None,
+            &deliver,
+            round,
+            &crate::walk::NoHold,
+        );
+        let image = image.expect("on the CPU");
+        let v = image.data[(128 * image.width + 238) * 3];
+        (outcome, v)
+    };
+    let pending = |o: &Outcome| match o {
+        Outcome::Developed { fills, .. } => fills.pending.clone(),
+        _ => panic!("developed"),
+    };
+    let mut round = Round::first();
+    develop(&edit, &mut ai, &mut round, &mut base);
+    round = Round::next(round.ahead);
+    let (_, v) = develop(&edit, &mut ai, &mut round, &mut base);
+    assert!((v - 0.9).abs() < 5e-3, "made: {v}");
+
+    // Cropped over its window, on a card with too little free for it.
+    edit.geometry.crop = Some(greycard_edit::geometry::Crop::of([0.0, 0.0, 0.97, 1.0]));
+    ai.free_memory_by_test = Some(GIB / 4);
+    let mut round = Round::first();
+    let (outcome, v) = develop(&edit, &mut ai, &mut round, &mut base);
+    assert_eq!(pending(&outcome), [1]);
+    assert!((v - 0.9).abs() < 5e-3, "the stand-in: {v}");
+    // Each round after refuses it, until the rounds end stuck.
+    let mut left = Some(1);
+    for _ in 0..4 {
+        round = Round::next(round.ahead);
+        let (mut outcome, _) = develop(&edit, &mut ai, &mut round, &mut base);
+        let due = FillsDue::after(&mut outcome, &edit, 0, round, left, base.as_mut());
+        match due {
+            Some(_) => left = Some(pending(&outcome).len()),
+            None => {
+                left = None;
+                break;
+            }
+        }
+    }
+    assert!(left.is_none(), "the rounds ended");
+    // A slider past the retouch: the patch as it was.
+    edit.light.exposure = 0.0001;
+    let (_, v) = develop(&edit, &mut ai, &mut Round::first(), &mut base);
+    assert!((v - 0.4).abs() < 5e-3, "the base, not the stand-in: {v}");
+}
+
 /// A develop that starts past its retouch, from a point that left fills
 /// for later, says them still to make: a sharpen moved between two
 /// rounds does not give the fills up.
@@ -5839,6 +6225,7 @@ fn a_develop_past_its_retouch_still_has_its_fills_to_make() {
             &mut None,
             &deliver,
             round,
+            &crate::walk::NoHold,
         );
         let Outcome::Developed { fills, .. } = outcome else {
             panic!("developed");
@@ -5954,7 +6341,7 @@ fn fill_worker(
 fn fill_worker_at(
     what: &str,
     value: f32,
-    (width, height): (usize, usize),
+    size: (usize, usize),
 ) -> (
     Worker,
     PathBuf,
@@ -5962,6 +6349,31 @@ fn fill_worker_at(
     std::sync::mpsc::Receiver<String>,
     std::sync::mpsc::Sender<()>,
 ) {
+    let (worker, dir, path, rx, go, _) = fill_worker_noting(what, value, size);
+    (worker, dir, path, rx, go)
+}
+
+/// What each develop of [`fill_worker_noting`] said refused: its
+/// generation, the fills failed, and the removals short of the card
+/// with their need, bytes.
+type Refusals = Arc<Mutex<Vec<(u64, Vec<String>, Vec<(String, u64)>)>>>;
+
+/// [`fill_worker_at`], each develop that says a fill refused noted.
+#[allow(clippy::type_complexity)]
+fn fill_worker_noting(
+    what: &str,
+    value: f32,
+    (width, height): (usize, usize),
+) -> (
+    Worker,
+    PathBuf,
+    PathBuf,
+    std::sync::mpsc::Receiver<String>,
+    std::sync::mpsc::Sender<()>,
+    Refusals,
+) {
+    let refusals: Refusals = Arc::default();
+    let noted = refusals.clone();
     let (dir, paths) = dngs(what, &[&format!("{what}.dng")], width, height);
     let (tx, rx) = std::sync::mpsc::channel();
     let tx = Mutex::new(tx);
@@ -5972,6 +6384,17 @@ fn fill_worker_at(
             generation, fills, ..
         } => {
             let first = fills.pending.len() == 3;
+            if !fills.failed.is_empty() || !fills.short.is_empty() {
+                noted.lock().unwrap().push((
+                    generation,
+                    fills.failed.iter().map(|(n, _)| n.clone()).collect(),
+                    fills
+                        .short
+                        .iter()
+                        .map(|(n, need, _)| (n.clone(), *need))
+                        .collect(),
+                ));
+            }
             tx.lock()
                 .unwrap()
                 .send(format!("developed {generation}: {:?}", fills.pending))
@@ -5994,7 +6417,7 @@ fn fill_worker_at(
         _ => {}
     });
     worker.fill_by_test(value);
-    (worker, dir, paths[0].clone(), rx, go_tx)
+    (worker, dir, paths[0].clone(), rx, go_tx, refusals)
 }
 
 fn open_with_fills(path: &std::path::Path) -> Job {
@@ -6269,11 +6692,29 @@ fn fills_said_then(
     what: &str,
     size: (usize, usize),
     edit: Edit,
-    (free, freed, elsewhere): (u64, u64, u64),
+    card: (u64, u64, u64),
     then: Option<Job>,
 ) -> (Vec<String>, Vec<usize>) {
-    let (worker, dir, path, rx, go) = fill_worker_at(what, 0.9, size);
+    let (said, gave, _, _) = fills_said_at(what, size, edit, card, None, then);
+    (said, gave)
+}
+
+/// [`fills_said_then`] with a UNet held for a queue as `unet` has it
+/// (`Worker::unet_by_test`), and each fill begun with the side it ran
+/// at.
+fn fills_said_at(
+    what: &str,
+    size: (usize, usize),
+    edit: Edit,
+    (free, freed, elsewhere): (u64, u64, u64),
+    unet: Option<(usize, u64)>,
+    then: Option<Job>,
+) -> FillsSaid {
+    let (worker, dir, path, rx, go, refusals) = fill_worker_noting(what, 0.9, size);
     worker.free_by_test(free, freed, elsewhere);
+    if let Some((side, bytes)) = unet {
+        worker.unet_by_test(side, bytes);
+    }
     go.send(()).unwrap();
     worker.send(Job::Open {
         path: path.to_path_buf(),
@@ -6313,10 +6754,21 @@ fn fills_said_then(
         to_mask(&mut said);
         gave.push(worker.gave_back_by_test());
     }
+    let ran_at = worker.ran_at_by_test();
     worker.stop();
     crate::testing::remove_dir_retry(&dir);
-    (said, gave)
+    let refused = refusals.lock().unwrap().clone();
+    (said, gave, ran_at, refused)
 }
+
+/// What [`fills_said_at`] saw: the worker's words, its give-backs by
+/// job, each fill begun with its side, and each develop's refusals.
+type FillsSaid = (
+    Vec<String>,
+    Vec<usize>,
+    Vec<(String, usize)>,
+    Vec<(u64, Vec<String>, Vec<(String, u64)>)>,
+);
 
 /// [`three_fills`]' edit, each a removal.
 fn three_removes() -> Edit {
@@ -6489,7 +6941,7 @@ fn a_frame_taken_back_from_the_shelf_still_says_the_card() {
         &mut base,
         &mut shelf,
         (Some(a.clone()), None),
-        (&edit, 0, &|_| false),
+        (&edit, 0, &|_, _| false),
         None,
         None,
     );
@@ -6499,7 +6951,7 @@ fn a_frame_taken_back_from_the_shelf_still_says_the_card() {
         &mut base,
         &mut shelf,
         (Some(b), Some((&a, &Input::Raw(frame.clone())))),
-        (&edit, 0, &|_| false),
+        (&edit, 0, &|_, _| false),
         None,
         None,
     );
@@ -6745,6 +7197,11 @@ fn a_set_short_by_the_engines_own_sets_waits_for_nothing() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert_eq!(set.tally().exported, 3, "{:?}", set.tally().failed);
+    // The worker notes a frame's waits after the tally counts it.
+    while worker.waits_by_test().len() < 3 {
+        assert!(started.elapsed() < wait, "the last frame's waits noted");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     assert_eq!(worker.waits_by_test(), [0, 0, 0]);
     assert_eq!(
         calls.load(std::sync::atomic::Ordering::Relaxed),
@@ -6812,6 +7269,10 @@ fn a_set_short_of_the_card_waits_once() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     assert_eq!(set.tally().failed.len(), 3, "no frame's removals made");
+    while worker.waits_by_test().len() < 3 {
+        assert!(started.elapsed() < wait, "the last frame's waits noted");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
     let waits = worker.waits_by_test();
     let first = waits[0];
     // Nothing of the worker's to give back, so the frame is not tried
@@ -6958,13 +7419,24 @@ fn a_fill_job_lets_go_for_a_removal_and_clears_it_after() {
     assert!(!left);
 }
 
-/// A big fill among small ones, the card short of it alone, gives its
-/// place in the round to the next: the small ones are made. Nothing
-/// given back since, the big one is not asked of the card again, and
-/// the queue ends; a develop after asks no fill round and gives
-/// nothing back.
+/// The three fills' names with the side each ran at, in the order they
+/// were made: the second, at `big`, last, refused in its turn.
+fn ran_at(big: usize) -> Vec<(String, usize)> {
+    vec![
+        ("Fill 1".into(), 512),
+        ("Fill 3".into(), 512),
+        ("Fill 2".into(), big),
+    ]
+}
+
+/// A big fill among small ones, the card short of it at 1024 alone and
+/// nothing to give back: refused at 1024 in its turn, as it always was,
+/// the small ones made; asked again after the card was given back
+/// (nothing went), it runs at 512, the last resort. No develop says it
+/// refused: still to come after its refusal at 1024. A develop after
+/// asks no fill round and gives nothing back.
 #[test]
-fn a_big_fill_the_card_is_short_of_lets_the_small_ones_by() {
+fn a_big_fill_the_card_is_short_of_at_1024_runs_at_512() {
     const GIB: u64 = 1 << 30;
     let mut edit = three_removes();
     // A window past 512 runs at 1024 (7.1 GiB); the others at 512 (6.3).
@@ -6975,11 +7447,12 @@ fn a_big_fill_the_card_is_short_of_lets_the_small_ones_by() {
         turn: 0,
         of: None,
     };
-    let (said, gave) = fills_said_then(
+    let (said, gave, ran, refused) = fills_said_at(
         "short-big",
         (1600, 1200),
         edit,
         (6 * GIB + GIB / 2, 0, 0),
+        None,
         Some(then),
     );
     assert_eq!(
@@ -6991,12 +7464,99 @@ fn a_big_fill_the_card_is_short_of_lets_the_small_ones_by() {
             "filling 1: Fill 2",
             "filling 1: Fill 3",
             "developed 1: [2]",
+            "filling 1: Fill 2",
             "developed 1: []",
             "mask",
             "developed 2: []",
         ]
     );
+    assert_eq!(ran, ran_at(512));
+    assert_eq!(refused, [], "never said refused");
     assert_eq!(gave[0], gave[1], "nothing given back by the develop");
+}
+
+/// The card short of every fill and nothing to give back anywhere: the
+/// small ones are said refused in the first round; the big one, refused
+/// at 1024 there, is still to come, and is said refused only from the
+/// round that asked it again, at 512, with 512's need.
+#[test]
+fn a_big_fill_short_of_both_is_said_refused_at_512_alone() {
+    const GIB: u64 = 1 << 30;
+    let mut edit = three_removes();
+    edit.retouch.patches[1].radius = 0.25;
+    let (said, _, ran, refused) = fills_said_at(
+        "short-both",
+        (1600, 1200),
+        edit,
+        (6 * GIB, 0, 0),
+        None,
+        None,
+    );
+    assert!(ran.is_empty(), "{ran:?}");
+    let need = crate::ai::remove_needs(512, false);
+    let small = |n: &str| (n.to_string(), need);
+    let all = (
+        1,
+        vec!["Fill 1".into(), "Fill 2".into(), "Fill 3".into()],
+        vec![small("Fill 1"), small("Fill 2"), small("Fill 3")],
+    );
+    // The round after it says the refusal again, as for any fill the
+    // card stays short of, and the rounds end.
+    assert_eq!(
+        refused,
+        [
+            (
+                1,
+                vec!["Fill 1".into(), "Fill 3".into()],
+                vec![small("Fill 1"), small("Fill 3")]
+            ),
+            all.clone(),
+            all,
+        ],
+        "{said:?}"
+    );
+}
+
+/// The big fill short of 1024 where the worker's other models hold
+/// 8 GiB: refused at 1024, the card given back once across them, and
+/// made at 1024, never at 512.
+#[test]
+fn a_big_fill_short_of_1024_with_room_elsewhere_runs_at_1024() {
+    const GIB: u64 = 1 << 30;
+    let mut edit = three_removes();
+    edit.retouch.patches[1].radius = 0.25;
+    let (said, gave, ran, _) = fills_said_at(
+        "short-big-elsewhere",
+        (1600, 1200),
+        edit,
+        (6 * GIB + GIB / 2, 0, 8 * GIB),
+        None,
+        None,
+    );
+    assert_eq!(ran, ran_at(1024), "{said:?}");
+    assert_eq!(gave[0], 1, "{said:?}");
+}
+
+/// A queue holding the UNet at 512, a big fill after a small one: the
+/// big one keeps the queue's UNet and is refused at 1024 rather than
+/// run at 512 beside it; the worker's give-back lets the UNet go and
+/// the big one, asked again, runs at 1024.
+#[test]
+fn a_queues_unet_at_512_gives_way_to_a_big_fill_at_1024() {
+    const GIB: u64 = 1 << 30;
+    let mut edit = three_removes();
+    edit.retouch.patches[1].radius = 0.25;
+    // 3 GiB free beside the UNet: 512 held needs 2.4, 1024 cold 7.1.
+    let (said, gave, ran, _) = fills_said_at(
+        "queue-unet",
+        (1600, 1200),
+        edit,
+        (3 * GIB, 0, 0),
+        Some((512, greycard_ai::remove::UNET_ON_CARD)),
+        None,
+    );
+    assert_eq!(ran, ran_at(1024), "{said:?}");
+    assert_eq!(gave[0], 1, "{said:?}");
 }
 
 /// A set of two frames the card stays short of gives the card back
@@ -7053,6 +7613,126 @@ fn a_set_short_of_the_card_gives_it_back_once() {
         assert!(failed, "a frame the card is short of fails");
     }
     assert_eq!(worker.gave_back_by_test(), 1);
+    worker.stop();
+    crate::testing::remove_dir_retry(&dir);
+}
+
+/// A set of two frames, each with a big removal the card is short of
+/// at 1024 and nothing to give back: the first frame is refused at 1024
+/// after its tries and tried again, where it runs at 512; the second,
+/// its set met short, falls to 512 at once. Both are written.
+#[test]
+fn a_set_short_of_1024_alone_is_written_at_512() {
+    const GIB: u64 = 1 << 30;
+    let (dir, paths) = dngs("short-set-big", &["short-set-big.dng"], 1600, 1200);
+    let (tx, rx) = std::sync::mpsc::channel();
+    let tx = Mutex::new(tx);
+    let worker = Worker::new(move |o| {
+        if let Outcome::SetFrameDone { done, .. } = o {
+            let failed = matches!(done, crate::queue::Done::Failed { .. });
+            tx.lock().unwrap().send(failed).unwrap();
+        }
+    });
+    worker.fill_by_test(0.9);
+    worker.free_by_test(6 * GIB + GIB / 2, 0, 0);
+    worker.send(Job::Open {
+        path: paths[0].clone(),
+        version: None,
+        edit: Edit::default(),
+        generation: 1,
+        seed_blend: false,
+        turn: 0,
+        stance_known: false,
+        learned: Vec::new(),
+    });
+    let set = Arc::new(crate::queue::Set::new(
+        2,
+        None,
+        greycard_render::export::Settings::default(),
+        greycard_render::export::OnExists::Overwrite,
+    ));
+    let mut edit = three_removes();
+    edit.retouch.patches[1].radius = 0.25;
+    let frame = |i: usize| crate::queue::Frame {
+        source: paths[0].clone(),
+        edit: edit.clone(),
+        version: None,
+        turn: 0,
+        time_shift: 0,
+        seed_blend: false,
+        out: dir.join(format!("short-set-big-{i}.jpg")),
+        moved_from: None,
+    };
+    worker.send(Job::ExportSet {
+        set,
+        frames: vec![frame(0), frame(1)],
+    });
+    for i in 0..2 {
+        let failed = rx
+            .recv_timeout(std::time::Duration::from_secs(120))
+            .expect("a frame done");
+        assert!(!failed, "frame {i} written at 512");
+    }
+    worker.stop();
+    crate::testing::remove_dir_retry(&dir);
+}
+
+/// A set canceled while its frame runs, its big removal refused at
+/// 1024 with nothing to give back: the frame is not tried again at 512,
+/// and fails as a canceled frame short of the card does.
+#[test]
+fn a_canceled_set_is_not_tried_again_at_512() {
+    const GIB: u64 = 1 << 30;
+    let (dir, paths) = dngs("short-set-cancel", &["short-set-cancel.dng"], 1600, 1200);
+    let set = Arc::new(crate::queue::Set::new(
+        1,
+        None,
+        greycard_render::export::Settings::default(),
+        greycard_render::export::OnExists::Overwrite,
+    ));
+    let (tx, rx) = std::sync::mpsc::channel();
+    let tx = Mutex::new(tx);
+    let canceling = set.clone();
+    let worker = Worker::new(move |o| match o {
+        // Canceled as its first fill starts.
+        Outcome::Filling { .. } => canceling.cancel(),
+        Outcome::SetFrameDone { done, .. } => tx.lock().unwrap().send(done).unwrap(),
+        _ => {}
+    });
+    worker.fill_by_test(0.9);
+    worker.free_by_test(6 * GIB + GIB / 2, 0, 0);
+    worker.send(Job::Open {
+        path: paths[0].clone(),
+        version: None,
+        edit: Edit::default(),
+        generation: 1,
+        seed_blend: false,
+        turn: 0,
+        stance_known: false,
+        learned: Vec::new(),
+    });
+    let mut edit = three_removes();
+    edit.retouch.patches[1].radius = 0.25;
+    worker.send(Job::ExportSet {
+        set,
+        frames: vec![crate::queue::Frame {
+            source: paths[0].clone(),
+            edit,
+            version: None,
+            turn: 0,
+            time_shift: 0,
+            seed_blend: false,
+            out: dir.join("short-set-cancel.jpg"),
+            moved_from: None,
+        }],
+    });
+    let done = rx
+        .recv_timeout(std::time::Duration::from_secs(120))
+        .expect("the frame done");
+    assert!(
+        matches!(done, crate::queue::Done::Failed { .. }),
+        "{done:?}"
+    );
     worker.stop();
     crate::testing::remove_dir_retry(&dir);
 }
@@ -7320,6 +8000,112 @@ fn a_mask_answered_with_the_open_is_given_with_the_window_s_model() {
         Some(greycard_ai::SKY.id)
     );
     assert_eq!(ai.given_model_by_test((1, 0)), None, "not listed, not read");
+    crate::testing::remove_dir_retry(&dir);
+}
+
+/// A frame whose learned mask a fill lies over, made again on the
+/// retouched picture on an earlier visit, draws it the first time it is
+/// stepped back to: the raster made under its fills is read from the
+/// mask cache and goes ahead of the picture, and nothing is asked again
+/// after it, so the window never draws the frame without the mask and
+/// then with it.
+#[test]
+fn a_mask_made_again_under_a_fill_comes_before_the_first_picture() {
+    use greycard_edit::mask::Component;
+    let (dir, paths) = dngs("mask-under-fill", &["filled.dng", "other.dng"], 128, 96);
+    let store = greycard_ai::Store::at(dir.join("models"));
+    let shape = Shape::Background {};
+    let model = &greycard_ai::SUBJECT;
+    let mut edit = Edit::default();
+    edit.adjustments.push(greycard_edit::Adjustment {
+        id: 1,
+        name: "Background".into(),
+        mask: greycard_edit::mask::Mask {
+            components: vec![Component {
+                shape: shape.clone(),
+                ..Component::default()
+            }],
+            ..Default::default()
+        },
+        ..greycard_edit::Adjustment::default()
+    });
+    edit.retouch = Retouch {
+        enabled: true,
+        patches: vec![greycard_edit::retouch::Patch {
+            id: 1,
+            method: greycard_edit::retouch::Method::Fill,
+            points: vec![[0.5, 0.5]],
+            radius: 0.04,
+            ..Default::default()
+        }],
+    };
+    // The base's raster, every texel the shape, and the one made again
+    // under the fill over it, as an earlier visit left them.
+    let frame = (128, 96);
+    let width = greycard_edit::brush::raster_width(&shape, frame);
+    let height = greycard_edit::brush::raster_height(width, 96.0 / 128.0);
+    let raster =
+        greycard_edit::brush::Raster::from_data(96.0 / 128.0, width, vec![255; width * height]);
+    let under = crate::ai::print_of(&crate::ai::overlapping(&edit.retouch, &raster));
+    let print = crate::mask_base::print(Some(&paths[0]), &edit, 0, crate::mask_base::Size::Full);
+    let mut ai = Ai::for_test_on_disk(store.clone());
+    for (salt, value) in [(None, 255), (Some(under), 200)] {
+        let slot = ai
+            .cached_path_under(&paths[0], (&shape, Some(model)), frame, print, salt)
+            .expect("a slot in the mask cache");
+        std::fs::create_dir_all(slot.parent().unwrap()).unwrap();
+        image::GrayImage::from_pixel(width as u32, height as u32, image::Luma([value]))
+            .save_with_format(&slot, image::ImageFormat::Png)
+            .unwrap();
+    }
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let log = seen.clone();
+    let worker = Worker::new(move |o| {
+        let s = match o {
+            Outcome::Developed {
+                generation, fills, ..
+            } => format!("developed {generation}: {:?}", fills.pending),
+            Outcome::Mask { key, raster, .. } => {
+                format!("mask {key:?}: {}", raster.data()[0])
+            }
+            Outcome::MaskFailed { key, .. } => format!("failed {key:?}"),
+            _ => return,
+        };
+        log.lock().unwrap().push(s);
+    });
+    worker.models_by_test(store);
+    worker.fill_by_test(0.9);
+    let open = |path: &PathBuf, generation| Job::Open {
+        path: path.clone(),
+        version: None,
+        edit: edit.clone(),
+        generation,
+        seed_blend: false,
+        turn: 0,
+        stance_known: false,
+        learned: vec![((1, 0), model)],
+    };
+    let said = |what: &str| seen.lock().unwrap().iter().any(|s| s == what);
+    // The first visit makes the fill and keeps it.
+    worker.send(open(&paths[0], 1));
+    until("the fill is made", &|| said("developed 1: []"));
+    worker.send(open(&paths[1], 2));
+    until("the step away develops", &|| said("developed 2: []"));
+    std::thread::sleep(masks::SETTLE + std::time::Duration::from_millis(200));
+    seen.lock().unwrap().clear();
+    // Stepped back to.
+    worker.send(open(&paths[0], 3));
+    until("the step back develops", &|| said("developed 3: []"));
+    std::thread::sleep(masks::SETTLE + std::time::Duration::from_millis(200));
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec![
+            "mask (1, 0): 200".to_string(),
+            "developed 3: []".to_string()
+        ],
+        "the mask made under the fill, then the picture, and nothing after"
+    );
+    worker.stop();
     crate::testing::remove_dir_retry(&dir);
 }
 
@@ -7913,7 +8699,7 @@ fn white_at(temperature: f64) -> Edit {
 /// and the frame at `turn`.
 fn write_sidecar(raw: &std::path::Path, edit: Edit, turn: u8) {
     let mut sidecar = greycard_edit::Sidecar {
-        line: greycard_edit::Line::of(edit),
+        line: greycard_edit::Line::of(edit, 0).unwrap(),
         turn,
         ..greycard_edit::Sidecar::default()
     };
@@ -7975,7 +8761,7 @@ fn open_after(
         &mut base,
         shelf,
         (None, Some((&key, &input))),
-        (edit, turn, &|_| false),
+        (edit, turn, &|_, _| false),
         None,
         None,
     );
@@ -8105,6 +8891,7 @@ fn the_read_first_takes_no_lightroom_develop() {
         b,
         Some(greycard_edit::Placement::Beside),
         greycard_edit_io::on_disk::Fresh::default(),
+        |_, _| None,
     );
     assert_ne!(folder_as_it_is(&dir), before, "the window's read takes it");
     crate::testing::remove_dir_retry(&dir);
@@ -8120,13 +8907,16 @@ fn a_virtual_copy_s_line_is_the_one_read_first() {
     let b = &paths[0];
     let (cool, warm) = (white_at(4000.0), white_at(6500.0));
     let mut sidecar = greycard_edit::Sidecar {
-        line: greycard_edit::Line::of(cool.clone()),
+        line: greycard_edit::Line::of(cool.clone(), 0).unwrap(),
         ..greycard_edit::Sidecar::default()
     };
     let id = sidecar
         .new_version(None, Some("Warm"))
         .expect("a version made");
-    sidecar.line_mut(Some(&id)).expect("the version").current = warm.clone();
+    sidecar
+        .line_mut(Some(&id))
+        .expect("the version")
+        .record(warm.clone());
     sidecar
         .save_in(b, greycard_edit::Placement::Beside)
         .expect("written");
@@ -8342,14 +9132,16 @@ fn a_line_never_developed_is_read_first_with_its_seed_to_come() {
         turn: 2,
         ..greycard_edit::Sidecar::default()
     };
-    let fresh = sidecar.new_version_from_original(Edit::default(), Some("Fresh"));
+    let fresh = sidecar
+        .new_version_from_original(Edit::default(), Some("Fresh"))
+        .unwrap();
     let edited = sidecar
         .new_version(None, Some("Warm"))
         .expect("a version made");
     sidecar
         .line_mut(Some(&edited))
         .expect("the version")
-        .current = white_at(6500.0);
+        .record(white_at(6500.0));
     sidecar
         .save_in(b, greycard_edit::Placement::Beside)
         .expect("written");
@@ -8760,4 +9552,40 @@ fn a_failed_mono_model_waits_for_another() {
     std::fs::write(&path, b"another model").unwrap();
     assert!(ai.can_denoise_mono(Mode::Fast));
     crate::testing::remove_dir_retry(&dir);
+}
+
+/// A save sent before the develop of its edit waits for it, whatever
+/// the worker does between: another job meanwhile (the masks' picture
+/// asked) does not let it go, and the develop's landing, on the device
+/// here, keeps the edit's pictures.
+#[test]
+fn a_save_waits_for_its_develop_past_another_job() {
+    let Some(ctx) = greycard_gpu::Context::own().ok() else {
+        skipped("a save waiting on the device");
+        return;
+    };
+    let rig = crate::testing::edited::rig("waits");
+    rig.worker.set_context(ctx);
+    let edited = rig.worker.edited();
+    // Clarity: a develop of its own, which the open's does not stand
+    // for.
+    let mut clearer = Edit::for_picture();
+    clearer.detail.clarity = 0.4;
+    let hash = greycard_library::hash_file(&rig.png).unwrap();
+    let key = edited.key_of(&rig.png, &clearer);
+    rig.save(&clearer, 0);
+    rig.worker.send(crate::worker::Job::MaskPicture {
+        edit: Box::new(clearer.clone()),
+        generation: 1,
+    });
+    while !matches!(rig.next(), crate::testing::edited::Heard::MaskPicture) {}
+    rig.worker.send(crate::worker::Job::Develop {
+        edit: clearer,
+        generation: 2,
+        turn: 0,
+        of: None,
+    });
+    rig.kept();
+    assert!(edited.all_kept_by(&hash, key, crate::edited_pictures::EDITED_RECIPE));
+    rig.quiet();
 }

@@ -4,7 +4,6 @@
 use slint::platform::Key;
 
 use super::*;
-use crate::testing::labeled;
 
 const ITEM: &str = "From the camera...";
 
@@ -61,7 +60,7 @@ fn the_popup_setting_is_on_the_library_page_where_it_is_compiled() {
     let label = mono.get_camera_popup_label();
     assert_eq!(count_labeled(&app, &label), usize::from(cfg!(mono_usb)));
     if cfg!(mono_usb) {
-        crate::testing::click_switch(&app, &label);
+        click_switch(&app, &label);
         assert!(!mono.get_camera_popup());
         assert!(!crate::settings::Settings::load().mono_camera_popup);
     }

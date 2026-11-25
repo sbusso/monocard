@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use greycard_edit::Edit;
 
-use crate::{Tweak, filter, panel};
+use crate::{Tweak, capture, filter, panel};
 
 /// What the command line asked of this run, and what the run has done
 /// of it: the captures and their waits, the timing runs, and the actions
@@ -64,7 +64,8 @@ pub(crate) struct Launch {
     /// The command line owns the run, as the open note counts it
     /// (`open_note::scripted`: a capture, a timing run, a script of
     /// keys, a press, a menu, or a turn), or `--cull-develop`: no frame
-    /// Cull draws is kept as the last file (`startup::keep_last_file`).
+    /// chosen in Cull is kept as the last file (`startup::keep_last_file`);
+    /// a develop landing keeps its own rule.
     pub(crate) owned: bool,
     /// `--filter`'s facet terms, chosen when the pass is done.
     pub(crate) facets_wanted: Vec<filter::Wanted>,
@@ -119,7 +120,7 @@ pub(crate) struct Launch {
     /// logical pixels.
     pub(crate) panel_scroll: Option<f32>,
     /// A sheet or a tool put on screen before the snapshot.
-    pub(crate) snapshot_shown: Option<panel::viewport::Shown>,
+    pub(crate) snapshot_shown: Option<capture::Shown>,
     /// Something a batch run asked for did not happen: the exit code
     /// says so.
     pub(crate) failed: bool,

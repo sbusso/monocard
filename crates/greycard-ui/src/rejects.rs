@@ -265,6 +265,19 @@ fn move_into(
         // own sidecars, and the short XMP the pair shares, which is
         // neither file's alone where they are and stays the pair's.
         let companions = pairs.remove(raw).unwrap_or_default();
+        // What saves put aside beside each `.gcd` (other writers' files
+        // kept, files that would not parse) goes with it, under the
+        // same name; left behind, a later frame of the name would take
+        // them for its own.
+        let mut asides = Vec::new();
+        for gcd in sidecar.iter().cloned().chain(
+            companions
+                .iter()
+                .filter_map(|c| greycard_edit::Sidecar::find(c)),
+        ) {
+            let names = gcd.parent().map_or(&[][..], |d| folders.names(d));
+            asides.extend(greycard_edit::asides_among(&gcd, names));
+        }
         let theirs: Vec<PathBuf> = companions
             .iter()
             .flat_map(|c| {
@@ -290,6 +303,7 @@ fn move_into(
             .chain(greycards.iter().cloned())
             .chain(greycard_edit_io::xmp::paths_of(raw))
             .chain(theirs)
+            .chain(asides)
             .filter_map(|from| {
                 let file = from.file_name()?;
                 let to = match from.parent().filter(|p| Some(*p) != raw.parent()) {
@@ -345,8 +359,16 @@ fn move_into(
                     dir.display()
                 )
             };
+            // An orphan that will not parse is set aside first; a newer
+            // greycard's is never written over nor taken away (§724):
+            // the frame waits.
+            if !keep {
+                for g in &gcds {
+                    greycard_edit::Sidecar::set_aside_if_broken(g);
+                }
+            }
             gcds.iter()
-                .find(|to| keep && to.exists())
+                .find(|to| to.exists() && (keep || greycard_edit::Sidecar::must_keep(to)))
                 .map(|to| there(to))
                 .or_else(|| {
                     beside.iter().find_map(|(from, to)| {

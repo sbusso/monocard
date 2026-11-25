@@ -296,6 +296,31 @@ measured against that camera's JPEGs, so a frame opens about as
 bright as the camera's own picture of it. A frame edited before 0.8 keeps the brightness it had; **Reset**
 takes it to its body's.
 
+### Highlight fill
+
+The switch under **Shadows**, off by default. Where a highlight
+clipped, as in a blown lamp, a sun, a bright sky, or backlit leaves,
+**Highlight fill** paints it in with the light and color a small model
+learned from photographs, carried in from the clipped area's edge. It
+works on every clipped pixel, one channel clipped or all three, so a
+frame with much bright foliage changes in many small places; a frame
+with nothing clipped is left as it was. The model is built into
+greycard, so nothing downloads.
+
+The picture comes first without the fill, and the status line says
+**the highlight fill is at work** until the filled one replaces it,
+usually within a second or two. Exports and the edit's thumbnails wait
+for the fill.
+
+The switch is greyed on a frame the fill does not work on yet: a JPEG
+or TIFF, an X-Trans raw, a linear or monochrome DNG, and a merge. It
+keeps its setting there, so a sync or paste that turns it on takes
+effect on the frames that can use it.
+
+It is shown in **Light** but travels with **Demosaic**: Light's
+switch, its reset, and ticking **Light** in a copy or a preset leave
+it alone; tick **Demosaic** to carry it.
+
 ### Display curve
 
 At the foot of **LIGHT**, on a raw, the **Display curve** switch
@@ -451,6 +476,13 @@ that sensor yet. **Denoise**, the profiled one, works as on any raw. A
 tier already set on an X-Trans frame (by a sync from another camera,
 say) can still be turned off. See [Demosaic](#demosaic).
 
+On a graphics card that was lost while the learned denoiser ran, the
+section says "learned: not on this graphics card" and the tiers rest
+there, so greycard keeps working. **Try again**, beside that line,
+gives the tiers back: use it after a driver update, or with other
+programs closed. A merge whose frames asked for a tier says "no
+learned denoise on this graphics card" after its finished line.
+
 ### The learned denoiser
 
 The buttons along the top choose it: **off** (the default), **fast**,
@@ -497,7 +529,8 @@ lens the file names. **Maker**, above it, narrows the list to one
 maker's lenses, or **All**. The field beside **Maker**, **Find a
 lens**, narrows it further to the lenses whose name or maker holds
 every word typed, such as "24-70" or "sigma art". The line under
-**Lens** names the profile found, or says why none was:
+**Lens** names the profile found and its source, lensfun or an Adobe
+profile, or says why none was:
 
 - "no lens profiles on this machine": click **Get lens profiles**.
 - "the file names no lens": for example a manual or adapted lens. Pick
@@ -532,8 +565,9 @@ Where to get LCPs:
   Windows from `C:\ProgramData\Adobe\CameraRaw\LensProfiles\1.0`, on
   a Mac from
   `/Library/Application Support/Adobe/CameraRaw/LensProfiles/1.0`.
-  They sit in one folder per maker; copy the `.lcp` files themselves, as
-  greycard reads only the profile folder's own files.
+  They sit in one folder per maker, and greycard reads the profile
+  folder's subfolders, so copy in the folders you need as they are, or
+  link in the whole `1.0` folder.
 - **Your own**, made with Adobe Lens Profile Creator for a lens no
   database has.
 
@@ -558,6 +592,11 @@ These are all on by default when a profile is found:
   frame itself and corrected before the profile, and the measurement
   has the last word. It is live on a JPEG, a TIFF, or a linear DNG.
 - **Vignetting** brightens the darkened corners.
+
+A switch is greyed when the profile has no data of its kind, as many
+database entries have no vignetting; resting the pointer on it says
+so. Its setting is kept for a lens
+that has it.
 
 ### By hand
 
@@ -628,11 +667,20 @@ do not fringe.
 | Slider | Range | What it does |
 |---|---|---|
 | **Amount** | 0 to 200% | How strongly edges are sharpened. |
-| **Radius** | 0.5 to 3 | The width of the edges it acts on, in pixels of the full-size picture. An export made smaller gets a radius made smaller with it. |
+| **Radius** | 0.5 to 3 | The width of the edges it acts on, in pixels of the picture made: an export made smaller is sharpened at the same radius as the full frame. |
 | **Threshold** | 0 to 10% | Differences below it are mostly left alone, so smooth skin, sky, and noise stay smooth. Raise it if grain sharpens. |
 
 At the fit zoom you will see little of it, as with the grain; check
 it at 1:1.
+
+A mask's Detail has an **Output sharpen** of its own, −100 to +200,
+with a **Radius** and a **Threshold** under it. Each shows the
+picture's until you move it, and a double-click gives the picture's
+back; they act above zero and are off below it.
+Below zero it takes the picture's sharpening away under the mask
+(−100 is none); above zero it adds, and works with the picture's own
+at zero. An export made smaller skips the export sheet's **Sharpen**
+for a frame sharpened here, so the two do not stack.
 
 ## Vignette
 
@@ -644,6 +692,15 @@ Darkens or lightens the edges of the picture as cropped.
 | **Midpoint** | 0 to 100% | How far in from the edges it starts. |
 | **Feather** | 0 to 100% | How soft the transition is. |
 | **Roundness** | −100 to +100 | 0 follows the frame's shape. Positive is rounder, toward a circle. Negative is squarer. |
+
+**Style** picks where the vignette acts. **Exposure**, the default,
+turns the light down at the edges before the display curve, as a lens
+does: a bright sky at the edge rolls through the curve and stays
+bright. **Overlay** darkens the finished picture, after the display
+curve and any look, as most editors' post-crop vignette does: the sky
+darkens with everything else, and colors keep their hue. Positive
+amounts under Overlay lighten the edges toward white, which softens
+their color.
 
 ## Grain
 
@@ -675,6 +732,9 @@ another only if you see a problem in fine detail:
 
 When a learned denoiser is on, it does the demosaic itself and this
 choice has no effect.
+
+The **Highlight fill** switch in **Light** travels with this section:
+tick **Demosaic** in a preset, a paste, or a sync to carry it.
 
 ### Fujifilm X-Trans
 

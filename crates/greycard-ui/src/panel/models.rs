@@ -120,10 +120,17 @@ pub(crate) fn probe(st: &mut State, app: &App) {
     {
         let generation = all.probe_generation;
         let weak = app.as_weak();
+        let store = st.develop.store.as_ref().map(|s| s.root().to_path_buf());
         let spawned = std::thread::Builder::new()
             .name("models probe".into())
             .spawn(move || {
                 let here = Here::now();
+                // Whether the learned denoiser lost this card on an
+                // earlier run, for this driver and build: its tiers rest
+                // (the read logs it, with the record's path).
+                if let Some(root) = store {
+                    greycard_ai::runtime::read_denoisers_off_card(&root, crate::ai::providers);
+                }
                 let _ = weak.upgrade_in_event_loop(move |app| probed(&app, here, generation));
             });
         if let Err(e) = spawned {
@@ -165,6 +172,9 @@ fn probed(app: &App, here: Here, generation: u64) {
     // The card is known now: the Fill's choices greyed where it can
     // never hold the remove.
     crate::panel::retouch::show_patches(&st, &st.develop.edit, app);
+    // And the record read: the learned tiers rest on a card the
+    // denoiser lost.
+    crate::panel::deliver::show_learned_unavailable(app);
     if st.current.is_some() {
         offer_once(&mut st, app);
     }
@@ -837,7 +847,10 @@ mod tests {
             assert_eq!(l.license, m.license.name);
             assert!(!l.purpose.is_empty());
         }
-        assert_eq!(crate::testing::count_labeled(&app, "MODELS"), 1);
+        assert_eq!(
+            crate::testing::count_id(&app, "SettingsSheet::models-heading"),
+            1
+        );
         assert_eq!(line(&app, &SKY).status, "in the store");
         assert_eq!(line(&app, &SAM).status, "not downloaded");
         assert_eq!(
@@ -864,15 +877,17 @@ mod tests {
         app.window()
             .set_size(slint::LogicalSize::new(1366.0, 768.0));
         crate::testing::settle(&app);
-        let (at, size) = crate::testing::labeled(&app, &label);
+        let button = "SettingsSheet::models-fetch-button";
+        assert_eq!(crate::testing::label_of(&app, button), label);
+        let (at, size) = crate::testing::by_id(&app, button);
         assert!(
             at.y >= 0.0 && at.y + size.height <= 768.0,
             "{at:?} {size:?}"
         );
         crate::testing::keeps_its_last_line(
             &app,
-            "Each under its own license",
-            (430.0, 450.0),
+            &crate::tr!("Each under its own license, kept beside it in the store."),
+            "SettingsSheet::pane",
             2400.0,
         );
         // While the machine is probed, the lines say so and the button

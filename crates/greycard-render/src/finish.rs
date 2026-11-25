@@ -15,6 +15,7 @@ use greycard_edit::brush::Raster;
 use greycard_edit::curve::{CurveLut, color_shift, lookup};
 use greycard_edit::mask::Sample;
 use greycard_edit::mixer::{BANDS, MEAN_RADIUS, confidence};
+use greycard_edit::output_sharpen::{RADIUS_MAX, RADIUS_MIN, SHARE_MAX, SHARE_MIN, THRESHOLD_MAX};
 use greycard_edit::{
     BlackWhite, Color, DisplayCurve, Edit, Grain, Light, Look, Mask, Mixer, OutputSharpen, Tint,
     WhiteShift,
@@ -59,10 +60,27 @@ pub struct Baked {
     /// Detail is in the develop. Put on at the finish from the
     /// develop's bands (`crate::detail`).
     pub detail: [f32; 5],
+    /// A local's own share of the output sharpen's amount (its Detail's
+    /// Output sharpen), held to the slider's ends, and nothing while its
+    /// Detail is off. Never the global's, whose sharpen is
+    /// [`Self::output_sharpen`]. Under zero it scales the picture's
+    /// amount, over zero it adds to it, by the mask's weight
+    /// ([`crate::output_sharpen::Plan`]).
+    pub output_share: f32,
+    /// A local's own Radius and Threshold for a positive share, held to
+    /// the sliders' ends; none takes the picture's. Nothing while its
+    /// Detail is off, and nothing to a negative share.
+    pub output_radius: Option<f32>,
+    pub output_threshold: Option<f32>,
     /// Global only, as the black and white is: the unsharp mask on the
     /// finished picture ([`crate::output_sharpen`]), between the look
     /// table and the output transform. Off on every local's.
     pub output_sharpen: OutputSharpen,
+    /// Global only, as the output sharpen is: the vignette acts on the
+    /// picture as shown, after the look table, rather than in the
+    /// exposure (`greycard_edit::vignette::Place`). Its stops come in by
+    /// the pixel either way ([`finish_pixel_with`]).
+    pub vignette_shown: bool,
 }
 
 /// What the finish is handed. A raw's develop is a scene, which the
@@ -255,13 +273,15 @@ impl Source {
         self.curve_at(c, how, &White::default_white())
     }
 
-    /// The display curve, per channel or AgX as `how` says, reaching
-    /// white at `white`, the frame's; a clip at white for a picture.
+    /// The display curve, per channel or AgX as `how` says,
+    /// reaching white at `white`, the frame's; a clip at white for a
+    /// picture. Per channel, the floor first ([`crate::gamut::floor`]).
     #[inline]
     pub(crate) fn curve_at(self, c: [f32; 3], how: DisplayCurve, white: &White) -> [f32; 3] {
         match (self, how) {
             (Source::Display, _) => c.map(|x| x.clamp(0.0, 1.0)),
             (Source::Scene(_), DisplayCurve::Channels) => {
+                let c = crate::gamut::floor(c, white.white);
                 c.map(|x| tone_at(x, white.stops, white.white, white.gain))
             }
             (Source::Scene(_), DisplayCurve::Agx) => white.agx.apply(c),
@@ -296,7 +316,23 @@ impl Baked {
             } else {
                 [0.0; 5]
             },
+            output_share: if look.detail.enabled {
+                look.detail.output_sharpen.clamp(SHARE_MIN, SHARE_MAX)
+            } else {
+                0.0
+            },
+            output_radius: look
+                .detail
+                .output_sharpen_radius
+                .filter(|_| look.detail.enabled)
+                .map(|r| r.clamp(RADIUS_MIN, RADIUS_MAX)),
+            output_threshold: look
+                .detail
+                .output_sharpen_threshold
+                .filter(|_| look.detail.enabled)
+                .map(|t| t.clamp(0.0, THRESHOLD_MAX)),
             output_sharpen: OutputSharpen::default(),
+            vignette_shown: false,
         }
     }
 
@@ -312,6 +348,7 @@ impl Baked {
             source,
             display_curve: edit.display_curve,
             output_sharpen: edit.output_sharpen,
+            vignette_shown: edit.vignette.on_display(),
             ..Self::of(&edit.look())
         }
     }
@@ -334,6 +371,17 @@ impl Baked {
         self.profile_tone
             .as_ref()
             .filter(|_| self.source.is_scene())
+    }
+
+    /// Whether the output is AgX's rail rather than the gamut op: a
+    /// scene under AgX with no camera profile's curve in its place. The
+    /// look table then clips at its entry, as before the op
+    /// (`finish_pixel_display`), and the rail takes only what is under
+    /// zero (`agx::output_rail`).
+    pub fn agx_railed(&self) -> bool {
+        self.source.is_scene()
+            && self.display_curve == DisplayCurve::Agx
+            && self.profile_curve().is_none()
     }
 }
 
@@ -654,25 +702,12 @@ impl Guide {
 /// share of the cell and not by its height.
 pub fn guide_plane(image: &WorkingImage) -> Guide {
     let (w, h) = (image.width, image.height);
-    let scale = w.max(h).div_ceil(GUIDE_EDGE).max(1);
-    let (gw, gh) = (w.div_ceil(scale), h.div_ceil(scale));
-    let mut small = vec![0.0f32; gw * gh];
-    small.par_chunks_mut(gw).enumerate().for_each(|(gy, out)| {
-        let (y0, y1) = (gy * scale, ((gy + 1) * scale).min(h));
-        for (gx, o) in out.iter_mut().enumerate() {
-            let (x0, x1) = (gx * scale, ((gx + 1) * scale).min(w));
-            let mut acc = 0.0f32;
-            for y in y0..y1 {
-                let row = &image.data[y * w * 3..(y + 1) * w * 3];
-                for px in row.as_chunks::<3>().0[x0..x1].iter() {
-                    let y = LUMA[0] * px[0] + LUMA[1] * px[1] + LUMA[2] * px[2];
-                    acc += (y.max(1e-6) / MID_GREY).log2().max(GUIDE_FLOOR);
-                }
-            }
-            *o = acc / ((x1 - x0) * (y1 - y0)) as f32;
-        }
+    let cells = GuideCells::of(w, h, &|x, y| {
+        let p = 3 * (y * w + x);
+        [image.data[p], image.data[p + 1], image.data[p + 2]]
     });
-    let data = greycard_core::guided::filter(&small, None, gw, gh, GUIDE_RADIUS, GUIDE_EPS);
+    let (scale, gw, gh) = (cells.scale, cells.width, cells.height);
+    let data = cells.filtered();
     let range = plane_range(&data);
     Guide {
         width: gw,
@@ -681,6 +716,116 @@ pub fn guide_plane(image: &WorkingImage) -> Guide {
         data,
         range,
         picture: None,
+    }
+}
+
+/// The guide plane's reduced grid before its filter: each cell's mean
+/// log luminance ([`guide_plane`]'s first half), for a picture read
+/// pixel by pixel. What a stage before the guide's tap measures the
+/// frame's range on, before and after it changes some pixels, so it
+/// can hand the tap the difference ([`GuideCells::redo`]).
+#[derive(Debug, Clone, PartialEq)]
+pub struct GuideCells {
+    /// The picture's size.
+    pub picture: (usize, usize),
+    /// Source pixels to a cell each way.
+    pub scale: usize,
+    /// Cells across and down.
+    pub width: usize,
+    pub height: usize,
+    /// Each cell's mean, row by row.
+    pub data: Vec<f32>,
+}
+
+impl GuideCells {
+    /// The cells of a `w` by `h` picture whose pixel (x, y) is
+    /// `pixel(x, y)`, in the working space: the grid [`guide_plane`]
+    /// lays on a picture of that size, each cell's mean to the bit
+    /// [`guide_plane`]'s for the same pixels.
+    pub fn of(w: usize, h: usize, pixel: &(impl Fn(usize, usize) -> [f32; 3] + Sync)) -> Self {
+        let scale = w.max(h).div_ceil(GUIDE_EDGE).max(1);
+        let (gw, gh) = (w.div_ceil(scale), h.div_ceil(scale));
+        let mut data = vec![0.0f32; gw * gh];
+        let cells = Self {
+            picture: (w, h),
+            scale,
+            width: gw,
+            height: gh,
+            data: Vec::new(),
+        };
+        if gw > 0 {
+            data.par_chunks_mut(gw).enumerate().for_each(|(gy, out)| {
+                for (gx, o) in out.iter_mut().enumerate() {
+                    *o = cells.mean(gx, gy, pixel);
+                }
+            });
+        }
+        Self { data, ..cells }
+    }
+
+    /// The pixels of cell (`gx`, `gy`): columns, then rows.
+    pub fn span(&self, gx: usize, gy: usize) -> (std::ops::Range<usize>, std::ops::Range<usize>) {
+        let (w, h) = self.picture;
+        let s = self.scale;
+        (gx * s..((gx + 1) * s).min(w), gy * s..((gy + 1) * s).min(h))
+    }
+
+    /// Cell (`gx`, `gy`)'s mean log luminance over mid grey: a row at a
+    /// time, left to right, as [`guide_plane`] always summed it.
+    fn mean(&self, gx: usize, gy: usize, pixel: &impl Fn(usize, usize) -> [f32; 3]) -> f32 {
+        let (xs, ys) = self.span(gx, gy);
+        let n = (xs.len() * ys.len()) as f32;
+        let mut acc = 0.0f32;
+        for y in ys {
+            for x in xs.clone() {
+                let px = pixel(x, y);
+                let y = LUMA[0] * px[0] + LUMA[1] * px[1] + LUMA[2] * px[2];
+                acc += (y.max(1e-6) / MID_GREY).log2().max(GUIDE_FLOOR);
+            }
+        }
+        acc / n
+    }
+
+    /// The cells again where `changed` says a cell's pixels changed,
+    /// read through `pixel`; every other cell keeps its bits.
+    pub fn redo(
+        &mut self,
+        pixel: &(impl Fn(usize, usize) -> [f32; 3] + Sync),
+        changed: &(impl Fn(std::ops::Range<usize>, std::ops::Range<usize>) -> bool + Sync),
+    ) {
+        let gw = self.width;
+        if gw == 0 {
+            return;
+        }
+        let mut data = std::mem::take(&mut self.data);
+        data.par_chunks_mut(gw).enumerate().for_each(|(gy, out)| {
+            for (gx, o) in out.iter_mut().enumerate() {
+                let (xs, ys) = self.span(gx, gy);
+                if changed(xs, ys) {
+                    *o = self.mean(gx, gy, pixel);
+                }
+            }
+        });
+        self.data = data;
+    }
+
+    /// The plane: the guided filter over the cells, as [`guide_plane`]
+    /// makes it.
+    pub fn filtered(&self) -> Vec<f32> {
+        greycard_core::guided::filter(
+            &self.data,
+            None,
+            self.width,
+            self.height,
+            GUIDE_RADIUS,
+            GUIDE_EPS,
+        )
+    }
+
+    /// The frame's range as the plane made of these cells reads it
+    /// ([`Guide::range`]).
+    pub fn range(&self) -> [f32; 2] {
+        plane_range(&self.filtered())
     }
 }
 
@@ -738,10 +883,12 @@ pub fn finish_pixel_look(
 }
 
 /// `finish_pixel` with `stops` more exposure at this pixel, the
-/// vignette's, and `grain` laid on the encoded output, both places in
-/// the frame rather than a look; `reference`, the mean Oklab a
-/// and b of the source about this pixel (`local_ab`), which the
-/// mixer and the black and white read their hue and their confidence
+/// vignette's (or as many on the picture as shown, after the look
+/// table, where the global look says [`Baked::vignette_shown`]), and
+/// `grain` laid on the encoded output, both places in the frame
+/// rather than a look; `reference`, the mean Oklab a and b of the
+/// source about this pixel (`local_ab`), which the mixer and the
+/// black and white read their hue and their confidence
 /// from when it is given; and `guide`, the smoothed log luminance of
 /// the source there ([`Guide`]), which the three exposure shifts read
 /// their region from.
@@ -803,7 +950,9 @@ pub fn finish_pixel_display(
         Some(m) => rebalanced(px, reference, &m),
         None => (px, reference),
     };
-    let mut exposure = global.source.baseline(&global.light) + global.light.exposure + stops;
+    // The vignette in the exposure, or on the picture as shown below.
+    let scene_stops = if global.vignette_shown { 0.0 } else { stops };
+    let mut exposure = global.source.baseline(&global.light) + global.light.exposure + scene_stops;
     // The display white where the frame's baseline puts the clip, or
     // where the profile's curve reaches one when it renders.
     let profile = global.profile_curve();
@@ -876,6 +1025,13 @@ pub fn finish_pixel_display(
         Some(p) => p.apply(shaped),
         None => global.source.curve_at(shaped, global.display_curve, &white),
     };
+    // A profile's curve can leave the working cube under zero; the lower
+    // faces at held hue take the clamp's place there
+    // (`gamut::into_working`). The clamp below is the tables' index, and
+    // every other curve's range is in it already.
+    if profile.is_some() {
+        c = crate::gamut::into_working(c);
+    }
     c = [0, 1, 2].map(|k| {
         let x = encode(c[k].clamp(0.0, 1.0));
         let mut x2 = x;
@@ -901,8 +1057,25 @@ pub fn finish_pixel_display(
     // whole stage — into the table's primaries, clipped into them,
     // encoded, looked up tetrahedrally, decoded, back, blended by the
     // strength — and the shader does the same arithmetic.
+    // Where the gamut op follows, the table reads the color brought to
+    // its cube and adds its change to the color as it came
+    // (`gamut::look_kept`), so the output brings it in once. Under AgX's
+    // rail, which takes nothing over one, the table clips at its entry
+    // as it always did (`Look::at`), so an AgX picture with a look is
+    // what it was.
     if let Some(look) = look {
-        c = look.at(c);
+        c = if global.agx_railed() {
+            look.at(c)
+        } else {
+            crate::gamut::look_kept(look, c)
+        };
+    }
+    // The vignette on the picture as shown: after the display curve,
+    // every point and color curve and the look table, so a bright edge
+    // darkens with the rest, and before the output sharpen and the
+    // grain, which go over it as they go over the picture.
+    if global.vignette_shown && stops != 0.0 {
+        c = greycard_edit::Vignette::shown(c, stops);
     }
     c
 }
@@ -927,11 +1100,12 @@ pub fn finish_pixel_output(
     // (`agx::output_rail`). Nothing to do in Rec.2020, where the
     // formation leaves nothing under zero, and nothing on the other
     // curves. The weights are the matrix's, kept from the last pixel.
-    if global.source.is_scene()
-        && global.display_curve == DisplayCurve::Agx
-        && global.profile_curve().is_none()
-    {
+    // AgX keeps its own; every other curve's output goes through the
+    // gamut op ([`crate::gamut`]).
+    if global.agx_railed() {
         s = crate::agx::output_rail(s, rail_weights(to_out));
+    } else if let Some(op) = crate::gamut::op_for(to_out, gamut_params(global.source)) {
+        s = op.apply(c);
     }
     let e = s.map(|v| encode(v.clamp(0.0, 1.0)));
     match grain {
@@ -982,6 +1156,18 @@ pub fn rebalanced(
         })
     });
     (out, reference)
+}
+
+/// The gamut op's thresholds for a source: a scene's knees, or a
+/// picture already rendered for a display at thresholds of one, so
+/// nothing inside its output moves.
+#[inline]
+pub fn gamut_params(source: Source) -> crate::gamut::Params {
+    if source.is_scene() {
+        crate::gamut::Params::SCENE
+    } else {
+        crate::gamut::Params::EDGE
+    }
 }
 
 /// The output rail's weights for `to_out`, computed once per matrix
@@ -1080,6 +1266,9 @@ pub fn pick(
         Some(p) => p.apply(shaped),
         None => source.curve_at(shaped, display_curve, &white),
     };
+    if profile.is_some() {
+        c = crate::gamut::into_working(c);
+    }
     let encoded = c.map(|v| encode(v.clamp(0.0, 1.0)));
     let luma = encode((LUMA[0] * c[0] + LUMA[1] * c[1] + LUMA[2] * c[2]).clamp(0.0, 1.0));
     let shaded = [0, 1, 2].map(|k| decode(lookup(curves, k, encoded[k])));
@@ -1572,6 +1761,14 @@ pub const MIDTONES_REACH: f32 = 1.75;
 /// the bell's slope is the 0.75 above. Unheld, a mask at the limit over
 /// a picture at it would double that and fold the curve.
 pub const MIDTONES_LIMIT: f32 = 2.0;
+/// What the shadows and the highlights that reach the region shifts
+/// are held to, once summed as the midtones is ([`MIDTONES_LIMIT`]): the
+/// sliders' own limit, where shadows' least slope is 0.14 and
+/// highlights' 0.125. A mask at the limit over a picture at it would
+/// take either under zero and fold the tones.
+pub const SHADOWS_LIMIT: f32 = 2.0;
+/// As [`SHADOWS_LIMIT`].
+pub const HIGHLIGHTS_LIMIT: f32 = 2.0;
 
 /// How much of the midtones slider a region takes, by where it sits
 /// in the frame's span ([`highlights_span`]): a bell, full
@@ -1760,7 +1957,8 @@ fn shape_rolled(
         let y = LUMA[0] * c[0] + LUMA[1] * c[1] + LUMA[2] * c[2];
         (y.max(1e-6) / MID_GREY).log2()
     });
-    let lifted = g + t.shadows * (1.0 - smoothstep(SHADOWS_RAMP.0, SHADOWS_RAMP.1, g));
+    let lifted = g + t.shadows.clamp(-SHADOWS_LIMIT, SHADOWS_LIMIT)
+        * (1.0 - smoothstep(SHADOWS_RAMP.0, SHADOWS_RAMP.1, g));
     // The middle on the frame's own span, as the whites' pivot is.
     let lifted = if t.midtones == 0.0 {
         lifted
@@ -1770,14 +1968,15 @@ fn shape_rolled(
     // A frame with headroom: the negative travel pulls its kept range
     // under display white first, the ramp then on its span as pulled.
     // The whites keeps its pivot on the span as the frame has it.
+    let highlights = t.highlights.clamp(-HIGHLIGHTS_LIMIT, HIGHLIGHTS_LIMIT);
     let (read, ramp_span) = match kept {
-        Some(k) if t.highlights < 0.0 => {
-            let share = Kept::share(t.highlights);
+        Some(k) if highlights < 0.0 => {
+            let share = Kept::share(highlights);
             (k.pull(lifted, share), k.span(share))
         }
         _ => (lifted, span),
     };
-    let shifted = read + t.highlights * highlights_weight(read, ramp_span);
+    let shifted = read + highlights * highlights_weight(read, ramp_span);
     let gain = 2f32.powf(shifted - g);
     let pointed = white_point(
         c.map(|v| v * gain),
@@ -2083,7 +2282,8 @@ pub fn finish_with<T: Copy + Default + Send>(
 /// [`finish_with`] of an image `reach` of its pixels to a pixel of the
 /// full-size develop, as an export made smaller is: the mean a color
 /// window and the mixer read a hue from spans the same part of the
-/// scene as in the viewport ([`local_ab_at`]).
+/// scene as in the viewport ([`local_ab_at`]). The output sharpen is
+/// not scaled by it: its radius is in this image's own pixels.
 // The picture, the looks, the pixel maps, and the output: each its own.
 #[allow(clippy::too_many_arguments)]
 pub fn finish_reaching<T: Copy + Default + Send>(
@@ -2216,7 +2416,12 @@ fn finish_in_bands<'l, T: Copy + Default + Send>(
     };
     let w = image.width;
     let mut out = vec![T::default(); w * image.height * 3];
-    match crate::output_sharpen::Params::of(&global.output_sharpen, reach) {
+    // The picture's sharpen and the masks' shares of it, their terms,
+    // and whether a mask's share makes each pixel's amounts its own.
+    // Held at zero under AgX's rail, as before the gamut op.
+    match crate::output_sharpen::Plan::finishing(&global.output_sharpen, locals)
+        .map(|p| p.holding(global.agx_railed()))
+    {
         // One pass, each pixel to its output at once.
         None => out
             .par_chunks_mut(w * 3)
@@ -2240,29 +2445,60 @@ fn finish_in_bands<'l, T: Copy + Default + Send>(
         // pixel's neighbors there; then the band to the output, its
         // grain drawn again. Only a band is ever held, and a band comes
         // out as the same rows of the whole frame would.
-        Some(params) => {
+        Some(plan) => {
             let h = image.height;
-            let reach_rows = params.reach();
+            let reach_rows = plan.reach();
+            let (shared, terms) = (plan.shared, plan.terms());
             for y0 in (0..h).step_by(band.max(1)) {
                 let count = band.max(1).min(h - y0);
                 let lo = y0.saturating_sub(reach_rows);
                 let hi = (y0 + count + reach_rows).min(h);
                 let mut held = vec![[0.0f32; 3]; w * (hi - lo)];
-                held.par_chunks_mut(w)
-                    .zip(image.data[lo * w * 3..hi * w * 3].par_chunks(w * 3))
-                    .enumerate()
-                    .for_each(|(r, (row_held, row_in))| {
-                        let mut on = Vec::with_capacity(locals.len());
-                        for (x, (o, px)) in row_held
-                            .iter_mut()
-                            .zip(row_in.as_chunks::<3>().0)
-                            .enumerate()
-                        {
-                            *o = display_at(x, lo + r, px, &mut on).0;
+                // Each pixel's amounts, only where a mask puts a share on:
+                // the picture's and the shares under the masks' weights,
+                // a term's each.
+                let mut amounts = vec![0.0f32; if shared { w * (hi - lo) * terms } else { 0 }];
+                let row = |r: usize,
+                           row_held: &mut [[f32; 3]],
+                           row_in: &[f32],
+                           amounts: Option<&mut [f32]>| {
+                    let mut on = Vec::with_capacity(locals.len());
+                    let mut amounts = amounts;
+                    for (x, (o, px)) in row_held
+                        .iter_mut()
+                        .zip(row_in.as_chunks::<3>().0)
+                        .enumerate()
+                    {
+                        *o = display_at(x, lo + r, px, &mut on).0;
+                        if let Some(a) = amounts.as_deref_mut() {
+                            plan.amounts_at(&on, &mut a[x * terms..(x + 1) * terms]);
                         }
-                    });
-                let sharpened =
-                    crate::output_sharpen::sharpen_rows(&held, w, hi - lo, y0 - lo, count, &params);
+                    }
+                };
+                let rows_in = image.data[lo * w * 3..hi * w * 3].par_chunks(w * 3);
+                if shared {
+                    held.par_chunks_mut(w)
+                        .zip(amounts.par_chunks_mut(w * terms))
+                        .zip(rows_in)
+                        .enumerate()
+                        .for_each(|(r, ((h, a), i))| row(r, h, i, Some(a)));
+                } else {
+                    held.par_chunks_mut(w)
+                        .zip(rows_in)
+                        .enumerate()
+                        .for_each(|(r, (h, i))| row(r, h, i, None));
+                }
+                let band_amounts =
+                    shared.then(|| &amounts[(y0 - lo) * w * terms..(y0 - lo + count) * w * terms]);
+                let sharpened = crate::output_sharpen::sharpen_plan_rows(
+                    &held,
+                    w,
+                    hi - lo,
+                    y0 - lo,
+                    count,
+                    &plan,
+                    band_amounts,
+                );
                 drop(held);
                 out[y0 * w * 3..(y0 + count) * w * 3]
                     .par_chunks_mut(w * 3)
@@ -2390,7 +2626,7 @@ mod tests {
         assert_eq!(run(7), whole);
         assert_eq!(run(1), whole);
         // And the frame to the look table, sharpened whole.
-        let p = crate::output_sharpen::Params::of(&edit.output_sharpen, 1.0).unwrap();
+        let p = crate::output_sharpen::Params::of(&edit.output_sharpen).unwrap();
         let mut colors: Vec<[f32; 3]> = (0..w * h)
             .map(|i| {
                 let (x, y) = (i % w, i / w);
@@ -2415,6 +2651,51 @@ mod tests {
                 "at {x},{y}"
             );
         }
+        // Masks at settings of their own, three radii and a take: the
+        // bands are the whole frame's still, the widest reach theirs.
+        let own = |share: f32, radius: Option<f32>, threshold: Option<f32>, to: f32| {
+            let mut a = adjustment.clone();
+            a.mask.components[0].shape = greycard_edit::mask::Shape::Linear {
+                from: [0.0, to - 0.3],
+                to: [0.0, to],
+            };
+            a.look.detail.output_sharpen = share;
+            a.look.detail.output_sharpen_radius = radius;
+            a.look.detail.output_sharpen_threshold = threshold;
+            Local::of(&a, vec![None], None)
+        };
+        let locals = vec![
+            own(1.7, Some(3.0), Some(0.0), 0.4),
+            own(0.6, Some(0.5), None, 0.7),
+            own(-0.5, Some(2.0), None, 0.9),
+            own(0.9, None, Some(0.03), 0.6),
+        ];
+        let plan = crate::output_sharpen::Plan::finishing(&edit.output_sharpen, &locals).unwrap();
+        assert_eq!(plan.own.len(), 3);
+        let run = |band: usize| {
+            finish_in_bands(
+                band,
+                &image,
+                1.0,
+                None,
+                &global,
+                &locals,
+                |x, y| ((x as f32 + 0.5) / w as f32, (y as f32 + 0.5) / w as f32),
+                |x, y| {
+                    let (fx, fy) = ((x as f32 + 0.5) / w as f32, (y as f32 + 0.5) / h as f32);
+                    (0.0, Some(grain.at(fx, fy, w as f32 / h as f32)))
+                },
+                None,
+                None,
+                None,
+                &to_out,
+                |v: f32| v,
+            )
+        };
+        let masked = run(h);
+        assert_ne!(masked, whole);
+        assert_eq!(run(7), masked);
+        assert_eq!(run(1), masked);
     }
 
     /// A camera profile's tone curve takes the display curve's place
@@ -2708,7 +2989,11 @@ mod tests {
             profile_tone: None,
             white: None,
             detail: [0.0; 5],
+            output_share: 0.0,
+            output_radius: None,
+            output_threshold: None,
             output_sharpen: OutputSharpen::default(),
+            vignette_shown: false,
         };
         finish_pixel(px, &global, &[], m)
     }
@@ -2733,7 +3018,11 @@ mod tests {
             profile_tone: None,
             white: None,
             detail: [0.0; 5],
+            output_share: 0.0,
+            output_radius: None,
+            output_threshold: None,
             output_sharpen: OutputSharpen::default(),
+            vignette_shown: false,
         }
     }
 
@@ -2743,6 +3032,230 @@ mod tests {
         let mut table = lut::Lut3d::identity(2);
         table.data.iter_mut().for_each(|px| *px = to);
         Arc::new(table)
+    }
+
+    /// A strong fading table (sRGB's primaries, at full strength).
+    pub(crate) fn fading_table() -> lut::Look {
+        let mut table = lut::Lut3d::identity(17);
+        for v in table.data.iter_mut() {
+            *v = [v[0] * 0.9 + 0.05, v[1].powf(1.1), v[2] * 0.85 + 0.1];
+        }
+        lut::Look::new(Arc::new(table), 1.0).unwrap()
+    }
+
+    /// An AgX picture with a look table is what it was before the gamut
+    /// op: AgX's rail takes only what is under zero, so the table clips
+    /// at its entry (`Look::at`), the display stage before it and the
+    /// rail after it as they were. Over saturated and natural scene
+    /// colors into sRGB, P3, and Rec.2020, to the bit. Reading the table
+    /// at its cube (`gamut::look_kept`) left a strong fade's over-one to
+    /// the final clamp: up to 125 levels apart in sRGB (review M1).
+    #[test]
+    fn an_agx_picture_with_a_look_is_what_it_was() {
+        let look = fading_table();
+        let edit = Edit {
+            display_curve: DisplayCurve::Agx,
+            ..Edit::default()
+        };
+        let global = Baked::global(&edit, Source::SCENE);
+        assert!(global.agx_railed());
+        let mut state = 0x9e37_79b9_u32;
+        let mut unit = move || {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            (state >> 8) as f32 / (1u32 << 24) as f32
+        };
+        let colors: Vec<[f32; 3]> = (0..20_000)
+            .map(|i| {
+                let level = 0.02 * 2f32.powf(9.0 * unit());
+                let c = [unit(), unit(), unit()];
+                // Half saturated (a channel near nothing), half natural.
+                let c = if i % 2 == 0 {
+                    let k = (unit() * 3.0) as usize % 3;
+                    let mut c = c;
+                    c[k] *= 0.02;
+                    c
+                } else {
+                    c.map(|v| 0.3 + 0.7 * v)
+                };
+                c.map(|v| v * level)
+            })
+            .collect();
+        for space in [
+            crate::export::Space::Srgb,
+            crate::export::Space::DisplayP3,
+            crate::export::Space::Rec2020,
+        ] {
+            let m = space.matrix();
+            let mut worst = 0.0f32;
+            for px in &colors {
+                let got = finish_pixel_with(
+                    *px,
+                    &global,
+                    &[],
+                    0.0,
+                    None,
+                    None,
+                    None,
+                    None,
+                    Some(&look),
+                    &m,
+                );
+                // As it was: the display stage, the table as `Look::at`
+                // has it, and the output with AgX's rail.
+                let shown = finish_pixel_display(*px, &global, &[], 0.0, None, None, None, None);
+                let want = finish_pixel_output(look.at(shown), &global, None, &m);
+                for k in 0..3 {
+                    worst = worst.max((got[k] - want[k]).abs());
+                }
+            }
+            eprintln!(
+                "{space:?}: an AgX look {:.3} levels from before",
+                worst * 255.0
+            );
+            assert!(worst * 255.0 < 1e-3, "{space:?}: {} levels", worst * 255.0);
+        }
+    }
+
+    /// An AgX picture with an output sharpen is what it was before the
+    /// gamut op too: under AgX's rail the sharpen holds channels under
+    /// zero at zero (`output_sharpen::Params::hold`) as it always did.
+    /// A color curve puts channels under zero at the sharpen; the
+    /// picture's sharpen alone, and a mask taking half of it off over a
+    /// gradient (a negative share), into sRGB, P3, and Rec.2020, against
+    /// the display stage, the sharpen held, and AgX's rail, composed as
+    /// before, to the bit. Left unheld, 26 levels apart in sRGB (review
+    /// of the no-tail build, fix-check).
+    #[test]
+    fn an_agx_picture_with_an_output_sharpen_is_what_it_was() {
+        use crate::output_sharpen::{Plan, amount_at, sharpen_rows};
+        let (w, h) = (96usize, 64usize);
+        let mut state = 0x2545_f491_u32;
+        let mut unit = move || {
+            state ^= state << 13;
+            state ^= state >> 17;
+            state ^= state << 5;
+            (state >> 8) as f32 / (1u32 << 24) as f32
+        };
+        let mut image = WorkingImage::new(w, h);
+        for px in image.data.as_chunks_mut::<3>().0 {
+            let level = 0.02 * 2f32.powf(8.0 * unit());
+            let mut c = [unit(), unit(), unit()];
+            if unit() < 0.5 {
+                c[(unit() * 3.0) as usize % 3] *= 0.02;
+            }
+            *px = c.map(|v| v * level);
+        }
+        let mut edit = Edit {
+            display_curve: DisplayCurve::Agx,
+            curves: Curves {
+                red_green: vec![[0.0, 0.85], [1.0, 0.85]],
+                blue_yellow: vec![[0.0, 0.2], [1.0, 0.2]],
+                ..Default::default()
+            },
+            ..Edit::default()
+        };
+        edit.output_sharpen.amount = 1.5;
+        edit.output_sharpen.radius = 1.0;
+        edit.output_sharpen.threshold = 0.0;
+        let global = Baked::global(&edit, Source::SCENE);
+        assert!(global.agx_railed());
+        let mut look = Look::default();
+        look.detail.enabled = true;
+        look.detail.output_sharpen = -0.5;
+        let adjustment = greycard_edit::Adjustment {
+            id: 1,
+            mask: Mask {
+                components: vec![greycard_edit::mask::Component {
+                    shape: greycard_edit::mask::Shape::Linear {
+                        from: [0.0, 0.2],
+                        to: [0.0, 0.5],
+                    },
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+            look,
+            ..Default::default()
+        };
+        let masked = vec![Local::of(&adjustment, vec![None], None)];
+        let at = |x: usize, y: usize| ((x as f32 + 0.5) / w as f32, (y as f32 + 0.5) / w as f32);
+        for locals in [Vec::new(), masked] {
+            // As it was: the display stage, the sharpen held, the rail.
+            let mut amounts = Vec::with_capacity(w * h);
+            let shown: Vec<[f32; 3]> = (0..w * h)
+                .map(|i| {
+                    let (x, y) = (i % w, i / w);
+                    let (u, v) = at(x, y);
+                    let on: Vec<(&Baked, f32)> = locals
+                        .iter()
+                        .map(|l| (&l.baked, l.weight_sampled(u, v, None)))
+                        .filter(|(_, m)| *m > 0.0)
+                        .collect();
+                    amounts.push(amount_at(edit.output_sharpen.amount, &on));
+                    finish_pixel_display(
+                        image.pixel(x, y),
+                        &global,
+                        &on,
+                        0.0,
+                        None,
+                        None,
+                        None,
+                        None,
+                    )
+                })
+                .collect();
+            let plan = Plan::finishing(&global.output_sharpen, &locals).unwrap();
+            let (p, shared) = (plan.picture, plan.shared);
+            assert_eq!(shared, !locals.is_empty());
+            let sharpened = sharpen_rows(
+                &shown,
+                w,
+                h,
+                0,
+                h,
+                &p.holding(true),
+                shared.then_some(&amounts[..]),
+            );
+            assert!(
+                shown.iter().filter(|c| c.iter().any(|v| *v < 0.0)).count() > w * h / 20,
+                "channels under zero at the sharpen"
+            );
+            for space in [
+                crate::export::Space::Srgb,
+                crate::export::Space::DisplayP3,
+                crate::export::Space::Rec2020,
+            ] {
+                let m = space.matrix();
+                let got = finish_with(
+                    &image,
+                    None,
+                    &global,
+                    &locals,
+                    at,
+                    |_, _| (0.0, None),
+                    None,
+                    None,
+                    None,
+                    &m,
+                    |v: f32| v,
+                );
+                let mut worst = 0.0f32;
+                for (i, c) in sharpened.iter().enumerate() {
+                    let want = finish_pixel_output(*c, &global, None, &m);
+                    for k in 0..3 {
+                        worst = worst.max((got[i * 3 + k] - want[k]).abs());
+                    }
+                }
+                eprintln!(
+                    "{space:?}, {} masks: an AgX sharpen {:.3} levels from before",
+                    locals.len(),
+                    worst * 255.0
+                );
+                assert!(worst * 255.0 < 1e-3, "{space:?}: {} levels", worst * 255.0);
+            }
+        }
     }
 
     /// The look table runs after the tone curve and before the output
@@ -2774,7 +3287,10 @@ mod tests {
         // value lands well above half.
         let black = flat_table([0.0; 3]);
         let full = lut::Look::new(black.clone(), 1.0).unwrap();
-        assert_eq!(finish_pixel_look(px, &global, Some(&full), &m), [0.0; 3]);
+        // To rounding: the table's change is added to the color as it
+        // came (`gamut::look_kept`).
+        let none = finish_pixel_look(px, &global, Some(&full), &m);
+        assert!(none.iter().all(|v| v.abs() < 1e-5), "{none:?}");
         let half = lut::Look::new(black, 0.5).unwrap();
         let mid = finish_pixel_look(px, &global, Some(&half), &m);
         for k in 0..3 {
@@ -2874,9 +3390,11 @@ mod tests {
         // The curve lifts mid grey about half a stop: 0.18 linear is
         // 0.46 encoded; the curve gives about 0.56.
         assert!(g[1] > 0.53 && g[1] < 0.60, "{g:?}");
-        // Past display white the curve is white; a stop under it, not.
+        // Past display white the curve is white (the gamut op's rail
+        // holds a white's luminance a ten-thousandth under one, two
+        // millionths encoded); a stop under it, not.
         let w = fp([4.0; 3], &light, &no_mix, &id, &m);
-        assert!((w[1] - 1.0).abs() < 1e-6, "{w:?}");
+        assert!((w[1] - 1.0).abs() < 1e-5, "{w:?}");
         let under = fp([DISPLAY_WHITE / 2.0; 3], &light, &no_mix, &id, &m);
         assert!(under[1] > 0.9 && under[1] < 0.99, "{under:?}");
         // Contrast leaves mid grey where it was and moves a stop above it.
@@ -2936,19 +3454,27 @@ mod tests {
             }
         }
         // And the whole finish at a stacked corner keeps a primary's
-        // dark channels where they would be with no pass at all.
+        // dark channels near where they would be with no pass at all:
+        // within 1e-5 of zero, the gamut op's rebuilding of a face color
+        // from its ray (about 1e-7 linear). A primary under the floor's
+        // onset, which whitens a brighter one by design (`gamut::floor`).
         let mut corner = Edit::default();
-        corner.light.exposure = 5.0;
         corner.light.tone.contrast = 0.5;
         corner.light.tone.whites = 2.0;
         let m = crate::export::Space::Rec2020.matrix();
-        let plain = finish_pixel(
-            [0.0, 4.2, 0.0],
-            &Baked::global(&corner, Source::SCENE),
-            &[],
-            &m,
-        );
-        assert_eq!([plain[0], plain[2]], [0.0, 0.0], "{plain:?}");
+        for green in [0.05f32, 0.15, 0.3] {
+            let plain = finish_pixel(
+                [0.0, green, 0.0],
+                &Baked::global(&corner, Source::SCENE),
+                &[],
+                &m,
+            );
+            assert!(plain[1] > 0.2, "{green}: {plain:?}");
+            assert!(
+                plain[0].abs() < 1e-5 && plain[2].abs() < 1e-5,
+                "{green}: {plain:?}"
+            );
+        }
     }
 
     /// Contrast summed under masks is held at `MIN_CONTRAST`: the
@@ -2975,6 +3501,116 @@ mod tests {
             let grey = finish_pixel([MID_GREY; 3], &global, &on, &m)[1];
             let light = finish_pixel([1.0; 3], &global, &on, &m)[1];
             assert!(dark < grey && grey < light, "{n}: {dark} {grey} {light}");
+        }
+    }
+
+    /// Shadows and highlights summed under masks are held to the
+    /// sliders' limit, as the midtones is: past it, the picture's and
+    /// its masks' render as the limit on the picture alone, under one
+    /// mask or several overlapping, either sign, on a plain frame and
+    /// on a merge whose kept range the negative highlights pulls; at
+    /// the limit and under it the sum is the sum, to the bit.
+    #[test]
+    fn summed_shadows_and_highlights_are_held_to_the_limit() {
+        let m = crate::export::Space::Srgb.matrix();
+        let toned = |highlights: bool, v: f32| {
+            let mut look = Look::default();
+            if highlights {
+                look.light.tone.highlights = v;
+            } else {
+                look.light.tone.shadows = v;
+            }
+            look
+        };
+        let pixels: Vec<[f32; 3]> = (-14..=8)
+            .map(|k| grey_at(k as f32 * 0.5))
+            .chain([[0.6, 0.3, 0.9], [0.02, 0.05, 0.01], [3.0, 2.0, 1.2]])
+            .collect();
+        // A merge with two stops kept, its guide's top past white, so
+        // the pull is in play under a negative highlights.
+        let merge = Source::Scene(Baseline::DEFAULT.with_headroom(2.0));
+        let range = [-1.5, 3.5];
+        let picture = merge.baseline(&Edit::default().light);
+        let kept = Kept::of(range, picture, 1.0, 2.0, DISPLAY_WHITE_STOPS);
+        assert!(kept.is_some());
+        for (source, guided) in [(Source::SCENE, false), (merge, true)] {
+            let render = |highlights: bool, picture: f32, masks: &[(f32, f32)]| {
+                let mut edit = Edit::default();
+                edit.set_look(toned(highlights, picture));
+                let global = Baked::global(&edit, source);
+                let locals: Vec<Baked> = masks
+                    .iter()
+                    .map(|&(v, _)| Baked::of(&toned(highlights, v)))
+                    .collect();
+                let on: Vec<(&Baked, f32)> = locals
+                    .iter()
+                    .zip(masks)
+                    .map(|(b, &(_, w))| (b, w))
+                    .collect();
+                pixels
+                    .iter()
+                    .map(|&px| {
+                        let reading = (px[1] / MID_GREY).log2();
+                        let guide = guided.then_some((reading, range));
+                        finish_pixel_with(px, &global, &on, 0.0, None, None, guide, None, None, &m)
+                    })
+                    .collect::<Vec<_>>()
+            };
+            // The same masks with nothing to their tone: what a picture
+            // at `v` renders as under them, the reference each sum is
+            // held to, its locals' other passes the same.
+            let zeroed =
+                |masks: &[(f32, f32)]| masks.iter().map(|&(_, w)| (0.0, w)).collect::<Vec<_>>();
+            for highlights in [false, true] {
+                for s in [1.0f32, -1.0] {
+                    let what = format!("{source:?}, highlights {highlights}, sign {s}");
+                    // Past it: one mask, one in part, and several
+                    // overlapping, over the picture or over nothing.
+                    for (picture, masks) in [
+                        (1.5, vec![(1.5, 1.0)]),
+                        (1.5, vec![(2.0, 1.0)]),
+                        (2.0, vec![(2.0, 0.75)]),
+                        (1.0, vec![(1.0, 1.0), (1.0, 1.0)]),
+                        (2.0, vec![(2.0, 1.0), (2.0, 0.5), (1.0, 1.0)]),
+                        (0.0, vec![(1.5, 1.0), (1.5, 1.0)]),
+                    ] {
+                        let masks: Vec<_> = masks.iter().map(|&(v, w)| (v * s, w)).collect();
+                        assert_eq!(
+                            render(highlights, picture * s, &masks),
+                            render(highlights, 2.0 * s, &zeroed(&masks)),
+                            "{what}: {picture} under {masks:?}"
+                        );
+                    }
+                    // At it, the sum is the limit's own.
+                    for masks in [vec![(2.0 * s, 0.5)], vec![(0.5 * s, 1.0), (0.5 * s, 1.0)]] {
+                        assert_eq!(
+                            render(highlights, s, &masks),
+                            render(highlights, 2.0 * s, &zeroed(&masks)),
+                            "{what}: {masks:?}"
+                        );
+                    }
+                    // Just under it, the sum, and not the limit.
+                    let masks = [(0.875 * s, 1.0)];
+                    let under = render(highlights, s, &masks);
+                    assert_eq!(
+                        under,
+                        render(highlights, 1.875 * s, &zeroed(&masks)),
+                        "{what}"
+                    );
+                    assert_ne!(
+                        under,
+                        render(highlights, 2.0 * s, &zeroed(&masks)),
+                        "{what}"
+                    );
+                    // Against each other, the sum.
+                    let masks = [(-1.5 * s, 1.0), (-s, 0.5)];
+                    assert_eq!(
+                        render(highlights, 2.0 * s, &masks),
+                        render(highlights, 0.0, &zeroed(&masks)),
+                        "{what}"
+                    );
+                }
+            }
         }
     }
 
@@ -3505,7 +4141,11 @@ mod tests {
                 profile_tone: None,
                 white: None,
                 detail: [0.0; 5],
+                output_share: 0.0,
+                output_radius: None,
+                output_threshold: None,
                 output_sharpen: OutputSharpen::default(),
+                vignette_shown: false,
             };
             let mut last = -1.0;
             for i in 0..=1400 {
@@ -4185,7 +4825,11 @@ mod tests {
             profile_tone: None,
             white: None,
             detail: [0.0; 5],
+            output_share: 0.0,
+            output_radius: None,
+            output_threshold: None,
             output_sharpen: OutputSharpen::default(),
+            vignette_shown: false,
         };
         let g = guide.map(|g| (g.at(x as f32 + 0.5, y as f32 + 0.5), g.range));
         let px = image.pixel(x, y);
@@ -4220,6 +4864,65 @@ mod tests {
                 assert!((g.at(x, y) - stops).abs() < 1e-4);
             }
         }
+    }
+
+    /// The guide's cells read a pixel at a time are the plane's, to the
+    /// bit, and made again where some pixels changed they are the
+    /// cells of the changed picture, every other cell kept.
+    #[test]
+    fn the_guide_cells_are_the_planes_and_redo_only_what_changed() {
+        let (w, h) = (2100, 900);
+        let mut image = WorkingImage::new(w, h);
+        for (i, px) in image.pixels_mut().enumerate() {
+            let (x, y) = ((i % w) as f32, (i / w) as f32);
+            *px = [
+                0.02 + x / 2000.0,
+                0.05 + y / 1500.0,
+                0.1 + (x * y) % 7.0 / 50.0,
+            ];
+        }
+        let read = |image: &WorkingImage| {
+            let data = image.data.clone();
+            move |x: usize, y: usize| {
+                let p = 3 * (y * w + x);
+                [data[p], data[p + 1], data[p + 2]]
+            }
+        };
+        let plane = guide_plane(&image);
+        let mut cells = GuideCells::of(w, h, &read(&image));
+        assert_eq!(cells.scale, plane.scale);
+        assert!(cells.filtered() == plane.data);
+        assert_eq!(cells.range(), plane.range);
+
+        // A bright block, as a fill would leave.
+        let changed = |x: usize, y: usize| (1500..1700).contains(&x) && (100..160).contains(&y);
+        for (i, px) in image.pixels_mut().enumerate() {
+            if changed(i % w, i / w) {
+                *px = [4.0, 4.0, 4.0];
+            }
+        }
+        let before = cells.clone();
+        cells.redo(
+            &read(&image),
+            &|xs: std::ops::Range<usize>, ys: std::ops::Range<usize>| {
+                xs.clone().any(|x| ys.clone().any(|y| changed(x, y)))
+            },
+        );
+        let fresh = GuideCells::of(w, h, &read(&image));
+        assert!(cells.data == fresh.data);
+        assert_eq!(cells.range(), guide_plane(&image).range);
+        let kept = (0..cells.height)
+            .flat_map(|gy| (0..cells.width).map(move |gx| (gx, gy)))
+            .filter(|&(gx, gy)| {
+                let (xs, ys) = cells.span(gx, gy);
+                !xs.clone().any(|x| ys.clone().any(|y| changed(x, y)))
+            })
+            .all(|(gx, gy)| {
+                let i = gy * cells.width + gx;
+                cells.data[i].to_bits() == before.data[i].to_bits()
+            });
+        assert!(kept);
+        assert!(cells.data != before.data);
     }
 
     #[test]
@@ -5225,7 +5928,11 @@ mod tests {
             profile_tone: None,
             white: None,
             detail: [0.0; 5],
+            output_share: 0.0,
+            output_radius: None,
+            output_threshold: None,
             output_sharpen: OutputSharpen::default(),
+            vignette_shown: false,
         };
         let m = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
         let out = finish_pixel(px, &global, &[], &m);
@@ -5268,7 +5975,11 @@ mod tests {
             profile_tone: None,
             white: None,
             detail: [0.0; 5],
+            output_share: 0.0,
+            output_radius: None,
+            output_threshold: None,
             output_sharpen: OutputSharpen::default(),
+            vignette_shown: false,
         };
         let bare = Baked {
             tint: idle,
@@ -5353,7 +6064,11 @@ mod tests {
             profile_tone: None,
             white: None,
             detail: [0.0; 5],
+            output_share: 0.0,
+            output_radius: None,
+            output_threshold: None,
             output_sharpen: OutputSharpen::default(),
+            vignette_shown: false,
         };
         let local = Baked {
             tint,
@@ -6508,7 +7223,12 @@ mod tests {
         // The same through the finish with Blacks crushing and lifting,
         // Contrast either way, the exposure either way, and the whites
         // carried by a mask over a picture at zero and at plus one: a
-        // pixel never encodes brighter as the whites goes further down.
+        // pixel never encodes brighter as the whites goes further down,
+        // but by UP: a channel of a color the
+        // gamut op brings in (its edge held to the chord by the spring)
+        // may rise by a hundredth of a level of 255 as the color
+        // darkens (an orange light, 5.8e-5 measured).
+        const UP: f32 = 1e-4;
         let to_out = crate::export::Space::Srgb.matrix();
         for (headroom, range) in [(0.0f32, [-1.7f32, 1.1f32]), (2.0, [-1.0, 6.5])] {
             let source = Source::Scene(Baseline::DEFAULT.with_headroom(headroom));
@@ -6562,7 +7282,7 @@ mod tests {
                                         );
                                         for k in 0..3 {
                                             assert!(
-                                                o[k] <= last[k] + 1e-5,
+                                                o[k] <= last[k] + UP,
                                                 "{range:?} {curve:?} {blacks} {contrast} {exposure} \
                                                  mask {by_mask:?}: pixel {x} region {g:?}: {} after {}",
                                                 o[k],

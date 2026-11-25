@@ -11,11 +11,13 @@
 //! does anything compared or stored; only what is shown is translated.
 //! A test sets no language, so the tests read English.
 
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::LazyLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+pub mod face;
 mod plural;
 // Read by the build script, which includes it by its path, and by the
 // tests' own catalogs.
@@ -125,9 +127,16 @@ static CATALOGS: LazyLock<Vec<Catalog>> =
 /// place in [`CATALOGS`]. Set once, at the start.
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
 
+std::thread_local! {
+    /// A language held by one thread over [`CURRENT`], as [`CURRENT`]
+    /// counts them: a test's, whose window runs on its thread beside
+    /// the other tests' in English. The window never sets one.
+    static HERE: Cell<Option<usize>> = const { Cell::new(None) };
+}
+
 fn current() -> Option<&'static Catalog> {
-    CURRENT
-        .load(Ordering::Relaxed)
+    HERE.with(Cell::get)
+        .unwrap_or_else(|| CURRENT.load(Ordering::Relaxed))
         .checked_sub(1)
         .and_then(|i| CATALOGS.get(i))
 }
@@ -177,13 +186,18 @@ pub fn own_name(tag: &'static str) -> &'static str {
 
 /// The catalog's tag for a language asked for (a setting, or the
 /// system's locale such as `fr-CA` or `fr_FR.UTF-8`): the catalog of
-/// the whole tag, else of its language part; empty for English, which
-/// is also what a language with no catalog gets.
+/// the whole tag, else of its language part (for Chinese, one in the
+/// same written form first); empty for English, which is also what a
+/// language with no catalog gets.
 pub fn pick(wanted: &str) -> &'static str {
     pick_among(&TABLES.iter().map(|t| t.tag).collect::<Vec<_>>(), wanted).unwrap_or("")
 }
 
 fn pick_among<'a>(tags: &[&'a str], wanted: &str) -> Option<&'a str> {
+    // Chinese's two written forms are two catalogs: a region with no
+    // catalog of its own (`zh_HK`, `zh_SG`) takes its form's, not
+    // whichever of the language's sorts first.
+    let form = face::Region::of(wanted);
     // The encoding and the modifier are no part of the language.
     let wanted = wanted
         .split(['.', '@'])
@@ -215,6 +229,10 @@ fn pick_among<'a>(tags: &[&'a str], wanted: &str) -> Option<&'a str> {
     let base = |t: &str| t.split('_').next().unwrap_or("").to_ascii_lowercase();
     tags.iter()
         .find(|t| t.replace('-', "_").eq_ignore_ascii_case(&wanted))
+        .or_else(|| {
+            tags.iter()
+                .find(|t| base(t) == base(&wanted) && face::Region::of(t) == form)
+        })
         .or_else(|| tags.iter().find(|t| base(t) == base(&wanted)))
         .copied()
 }
@@ -236,6 +254,23 @@ pub fn select(tag: &str) {
         .position(|c| c.tag == tag)
         .map_or(0, |i| i + 1);
     CURRENT.store(index, Ordering::Relaxed);
+}
+
+/// [`select`] for the calling thread alone, over the language in
+/// force; `None` hands it back. For a test, whose window shares the
+/// process with others: what the window shows in a language is proved
+/// in that language without turning the words of the tests beside it.
+/// Only tests call it (the binary's, which reach the library from
+/// outside), so it is no part of the library's face.
+#[doc(hidden)]
+pub fn select_on_this_thread(tag: Option<&str>) {
+    let index = tag.map(|tag| {
+        CATALOGS
+            .iter()
+            .position(|c| c.tag == tag)
+            .map_or(0, |i| i + 1)
+    });
+    HERE.with(|here| here.set(index));
 }
 
 /// The tag in force, empty for English.
@@ -510,6 +545,19 @@ msgstr "\a\b\f\v\101\x42\t"
         assert_eq!(marked.forms, 2);
     }
 
+    /// A language selected on a thread is that thread's: another reads
+    /// the language in force, and so does the thread once it lets go.
+    #[test]
+    fn a_thread_holds_its_own_language() {
+        let process = std::thread::spawn(selected).join().expect("a thread reads");
+        select_on_this_thread(Some("fr"));
+        assert_eq!(selected(), "fr");
+        let beside = std::thread::spawn(selected).join().expect("a thread reads");
+        assert_eq!(beside, process);
+        select_on_this_thread(None);
+        assert_eq!(selected(), process);
+    }
+
     /// A message in a context is its own entry: found by the context
     /// and the English, the bare English not finding it, and English's
     /// forms for a context the catalog does not have.
@@ -660,6 +708,16 @@ msgstr "\a\b\f\v\101\x42\t"
         assert_eq!(pick_among(&chinese, "zh-Hant-TW"), Some("zh_TW"));
         assert_eq!(pick_among(&chinese, "zh_TW"), Some("zh_TW"));
         assert_eq!(pick_among(&chinese, "sr-Latn-RS"), Some("sr"));
+        // A region with no catalog takes its written form's.
+        assert_eq!(pick_among(&chinese, "zh_HK.UTF-8"), Some("zh_TW"));
+        assert_eq!(pick_among(&chinese, "zh-MO"), Some("zh_TW"));
+        assert_eq!(pick_among(&chinese, "zh-Hant-HK"), Some("zh_TW"));
+        assert_eq!(pick_among(&chinese, "zh_SG"), Some("zh_CN"));
+        assert_eq!(pick_among(&chinese, "zh-Hans-HK"), Some("zh_CN"));
+        assert_eq!(pick_among(&chinese, "zh"), Some("zh_CN"));
+        // Either form alone serves the whole language.
+        assert_eq!(pick_among(&["zh_TW"], "zh_CN"), Some("zh_TW"));
+        assert_eq!(pick_among(&["zh_CN"], "zh_HK"), Some("zh_CN"));
         // The build carries French, and nothing selected is English.
         assert_eq!(pick("fr-BE"), "fr");
         assert_eq!(pick("xx"), "");

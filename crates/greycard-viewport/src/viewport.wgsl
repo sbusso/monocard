@@ -204,17 +204,27 @@ struct Params {
     // luminance as the highlights and shadows are; `finish.rs` says
     // where it acts.
     tone: vec4<f32>,
-    // The output sharpen (`output_sharpen.rs`): its amount, the blur's
-    // standard deviation in target pixels (the radius at this zoom),
-    // its threshold, and in w the draw's part in it: 0 none, 1 the
-    // first pass, which writes the encoded luminance and stops, 2 the
-    // last, which reads its blur across (`osharp_across`) and sharpens.
+    // The output sharpen (`output_sharpen.rs`): the picture's amount
+    // (none while its section is off and a mask's share runs it) in x,
+    // and in w the draw's part in it: 0 none, 1 the first pass, which
+    // writes the encoded luminance and stops, 2 the last, which reads
+    // its blurs across (`osharp_across`) and sharpens.
     osharp: vec4<f32>,
-    // The blur's taps: their spacing in target pixels (a source pixel
-    // apart above 1:1, one target pixel below) in x, taps a side in y,
-    // and in z the margin the luminance is drawn with past each side
-    // of the target.
+    // The blurs' taps: their spacing in target pixels (a source pixel
+    // apart above 1:1, one target pixel below) in x, the blurs' count
+    // in y, in z the margin the luminance is drawn with past each side
+    // of the target (the widest blur's reach), and the terms' count in
+    // w (`output_sharpen::Plan`).
     osharp_taps: vec4<f32>,
+    // Each blur's standard deviation in target pixels (the radius,
+    // times the zoom past 1:1) and its taps a side, a layer of
+    // `osharp_across` a lane.
+    osharp_sigma: vec4<f32>,
+    osharp_n: vec4<f32>,
+    // Each term's threshold and the layer it reads, -1 for none: term
+    // 0 the picture's, then the masks' own settings.
+    osharp_threshold: vec4<f32>,
+    osharp_reads: vec4<f32>,
     // The camera profile's tone curve when it renders (curve 3): the
     // gain its offset puts on before it in x, and the working space to
     // linear ProPhoto and back, rows (`profile_tone.rs`).
@@ -225,6 +235,35 @@ struct Params {
     pro_out0: vec4<f32>,
     pro_out1: vec4<f32>,
     pro_out2: vec4<f32>,
+    // In x 1 where the vignette acts on the picture as shown, after
+    // the look table, rather than in the exposure (`vignette::Place`).
+    vignette_place: vec4<f32>,
+    // The output's op (`Gamut`, `gamut_output`): the rail's on, knee,
+    // limit, and the bound's soft share; the bound's on, onset, and
+    // asymptote; the roll's knee and limit, the onset, and the early
+    // out's share.
+    g_rail: vec4<f32>,
+    g_bound: vec4<f32>,
+    g_roll: vec4<f32>,
+    // The working space to linear sRGB and back, rows: the rail's.
+    g_srgb0: vec4<f32>,
+    g_srgb1: vec4<f32>,
+    g_srgb2: vec4<f32>,
+    g_unsrgb0: vec4<f32>,
+    g_unsrgb1: vec4<f32>,
+    g_unsrgb2: vec4<f32>,
+    // The output back to the working space, and cone space to the
+    // output, rows.
+    g_from0: vec4<f32>,
+    g_from1: vec4<f32>,
+    g_from2: vec4<f32>,
+    g_lms0: vec4<f32>,
+    g_lms1: vec4<f32>,
+    g_lms2: vec4<f32>,
+    // Cone space to the look table's primaries, rows: its cube's.
+    g_cube0: vec4<f32>,
+    g_cube1: vec4<f32>,
+    g_cube2: vec4<f32>,
 };
 
 // A local adjustment: its look's parameters as the global ones are
@@ -267,7 +306,10 @@ struct Local {
     mix_lum0: vec4<f32>,
     mix_lum1: vec4<f32>,
     // Its own midtones, in x; its Opacity, in y, which scales the
-    // weight its look goes on by and not the mask the overlay shows.
+    // weight its look goes on by and not the mask the overlay shows;
+    // its share of the output sharpen's amount, in z, which under zero
+    // scales the picture's and over it adds: nothing while its Detail
+    // is off.
     tone: vec4<f32>,
 };
 
@@ -390,9 +432,9 @@ const LUMA: vec3<f32> = vec3<f32>(0.2627, 0.6780, 0.0593);
 // (`DetailPlanes::sample`). A texel of nothing when there is none.
 @group(0) @binding(15) var range_src: texture_2d<f32>;
 // The output sharpen's luminance blurred across, at the target's size
-// and a margin past each side, from the first pass (`osharp.w`). A
-// texel of nothing otherwise.
-@group(0) @binding(16) var osharp_across: texture_2d<f32>;
+// and a margin past each side, from the first pass (`osharp.w`): a
+// layer a blur's radius. A texel of nothing otherwise.
+@group(0) @binding(16) var osharp_across: texture_2d_array<f32>;
 // The camera profile's tone curve, as `ToneCurve::table`: 4096 steps
 // over 0..1, a sample at each end.
 @group(0) @binding(17) var<storage, read> profile_curve: array<f32>;
@@ -419,11 +461,11 @@ fn canvas_out() -> vec4<f32> {
 fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     // Frame pixel under this target pixel, then the source pixel under
     // that through the turn, as `to_source` in the edit crate.
-    let q = frame_at(pos.xy);
+    var q = frame_at(pos.xy);
     if (q.x < 0.0 || q.y < 0.0 || q.x >= p.frame_size.x || q.y >= p.frame_size.y) {
         return canvas_out();
     }
-    let at = source_of(q);
+    var at = source_of(q);
     // Below 1:1 the pixel covers a square of source pixels, and the
     // picture and the planes are its mean (`footprint_mean`); the
     // masks are read once, at its center, as the export reads them
@@ -435,6 +477,38 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         // the canvas, as outside the frame (the turned source's
         // corners, which crop mode shows).
         return canvas_out();
+    }
+    // Past 1:1 every target pixel of a picture pixel reads at that
+    // picture pixel's center, so the whole of what follows, the masks,
+    // the grain and the output sharpen among it, is one color a
+    // picture pixel: a block (`magnify`). Whether a target pixel is
+    // picture or canvas was settled above, at its own center, so the
+    // picture's edges stay where they were. `here` is the center of
+    // the target pixel holding that center, one of the block's own,
+    // for the output sharpen to read its blur at: a pixel's center,
+    // so its taps never lean past the picture's edge onto the mark of
+    // the canvas beside it.
+    //
+    // A block straddling a turned or perspective source's edge is
+    // part canvas, where its pixels' own centers are past the edge,
+    // and part the edge's color, read clamped at the block's center.
+    //
+    // Where nothing resamples, the frame's pixels are the source's
+    // whole pixels, the frame's origin wherever the crop put it: the
+    // export takes the source pixel its position falls in, the floor
+    // (`frame_of` in the render crate's `geometry.rs`), and so does
+    // the block, at that pixel's center. Quarter turns and mirrors
+    // take a whole pixel to a whole pixel, so the floor is the same
+    // pixel either side of them.
+    var here = pos.xy;
+    let side = p.minify.z;
+    if (side > 0.0) {
+        q = (floor(q / side) + 0.5) * side;
+        at = source_of(q);
+        if (p.cubic.x < 0.5) {
+            at = (floor(at / side) + 0.5) * side;
+        }
+        here = floor((q - p.center) * p.zoom + p.view * 0.5 + p.tile.xy) + 0.5;
     }
     // The picture, and in its alpha the sharpen's blend mask. The
     // texture is read where it holds this source position; everything
@@ -467,8 +541,14 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     // in `finish.rs` does it.
     var look: Look;
     look.exposure = p.exposure;
+    // The vignette's stops here: in the exposure, or on the picture
+    // as shown after the look table (`vignette_shown`).
+    var vignette_stops = 0.0;
     if (p.vignette.x != 0.0) {
-        look.exposure = look.exposure + p.vignette.x * vignette_at(q / p.frame_size, p.frame_size.x / p.frame_size.y);
+        vignette_stops = p.vignette.x * vignette_at(q / p.frame_size, p.frame_size.x / p.frame_size.y);
+        if (p.vignette_place.x < 0.5) {
+            look.exposure = look.exposure + vignette_stops;
+        }
     }
     look.contrast = p.contrast;
     look.highlights = p.highlights;
@@ -546,6 +626,11 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     // `detail::amounts` sums them.
     var detail_k = vec4<f32>(0.0);
     var detail_s = 0.0;
+    // The output sharpen's amounts here, as `Plan::amounts_at` makes
+    // them: the masks' takes scale the picture's, their additions sum
+    // on top, each into its term (the local's `tone.w`).
+    var osharp_scale = 1.0;
+    var osharp_add = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
     for (var k = 0u; k < count; k = k + 1u) {
         let l = locals[k];
         let m = mask_at(l, uv, sample);
@@ -556,6 +641,13 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
             detail_k = detail_k + w * l.detail;
         }
         detail_s = detail_s + w * l.sharpen;
+        let osharp_share = w * l.tone.z;
+        if (osharp_share < 0.0) {
+            osharp_scale = osharp_scale * max(1.0 + osharp_share, 0.0);
+        } else {
+            let term = clamp(i32(l.tone.w + 0.5), 0, 3);
+            osharp_add[term] = osharp_add[term] + osharp_share;
+        }
         if (l.white0.w > 0.5) {
             wm0 = wm0 + w * (l.white0.xyz - p.w0.xyz);
             wm1 = wm1 + w * (l.white1.xyz - p.w1.xyz);
@@ -700,7 +792,12 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     } else if (p.curve > 0.5) {
         c = clamp(shaped, vec3<f32>(0.0), vec3<f32>(1.0));
     } else {
-        c = tone(shaped);
+        c = tone(gamut_floor(shaped, p.white.x));
+    }
+    // A profile's curve can leave the working cube under zero; its lower
+    // faces take the clamp's place there.
+    if (p.curve > 2.5) {
+        c = gamut_into_working(c);
     }
     // The point curves, on the encoded working-space value, before the
     // matrix, as `finish.rs` does; then the color curves.
@@ -724,9 +821,19 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         c = shade(c, count, weights);
     }
     // The look table, last before the output transform, as
-    // `finish_pixel_with` has it.
+    // `finish_pixel_with` has it: read at its cube for the gamut op,
+    // clipped at its entry under AgX's rail (`Baked::agx_railed`).
     if (p.look.x > 0.0) {
-        c = look_at(c);
+        if (p.curve > 1.5 && p.curve < 2.5) {
+            c = look_at(c);
+        } else {
+            c = look_kept(c);
+        }
+    }
+    // The vignette on the picture as shown, as `finish_pixel_display`
+    // puts it on: after the look table, before the output sharpen.
+    if (p.vignette_place.x > 0.5 && vignette_stops != 0.0) {
+        c = vignette_shown(c, vignette_stops);
     }
     // The output sharpen, here between the look table and the output
     // transform, as `finish_reaching` puts it: the first pass leaves
@@ -736,20 +843,69 @@ fn fs_main(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         if (p.osharp.w < 1.5) {
             return vec4<f32>(l, l, l, 1.0);
         }
-        let blurred = osharp_down(pos.xy);
-        if (!osharp_past(blurred)) {
-            c = osharp_apply(c, l, blurred);
+        // Each blur down, the picture's edge found once for all of
+        // them (every layer marks the canvas alike); then each term's
+        // amount and delta, summed as `sharpen_plan_rows` sums them.
+        let pt = here + vec2<f32>(p.osharp_taps.z);
+        let centre = vec2<i32>(floor(pt));
+        if (!osharp_past(osharp_load(centre, 0))) {
+            let reach = i32(p.osharp_taps.z + 0.5);
+            let lo = pt.y - osharp_edge(centre, vec2<i32>(0, -1), reach);
+            let hi = pt.y + osharp_edge(centre, vec2<i32>(0, 1), reach);
+            var blurred = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+            let blurs = i32(p.osharp_taps.y + 0.5);
+            for (var b = 0; b < blurs; b = b + 1) {
+                blurred[b] = osharp_down(pt, lo, hi, b);
+            }
+            // Each term's amount, as `Plan::amounts_at` makes them: the
+            // picture's scaled by the takes, each held at the top, and
+            // with terms of the masks' own their sum held there too,
+            // every term scaled alike.
+            let terms = i32(p.osharp_taps.w + 0.5);
+            var amounts = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+            amounts[0] = clamp(p.osharp.x * osharp_scale + osharp_add[0], 0.0, OSHARP_AMOUNT_MAX);
+            var sum = amounts[0];
+            for (var t = 1; t < terms; t = t + 1) {
+                amounts[t] = clamp(osharp_add[t], 0.0, OSHARP_AMOUNT_MAX);
+                sum = sum + amounts[t];
+            }
+            if (terms > 1 && sum > OSHARP_AMOUNT_MAX) {
+                let held = OSHARP_AMOUNT_MAX / sum;
+                for (var t = 0; t < terms; t = t + 1) {
+                    amounts[t] = amounts[t] * held;
+                }
+            }
+            var amount = 0.0;
+            var delta = 0.0;
+            for (var t = 0; t < terms; t = t + 1) {
+                let a = amounts[t];
+                let reads = i32(p.osharp_reads[t] + 0.5);
+                if (a > 0.0 && p.osharp_reads[t] > -0.5) {
+                    amount = amount + a;
+                    delta = delta + a * osharp_soft(l - blurred[reads], p.osharp_threshold[t]);
+                }
+            }
+            if (amount > 0.0) {
+                c = osharp_apply(c, l, delta, amount);
+            }
         }
     }
     // The proof's gamut mark is looked up at the working-space color,
-    // before the output matrix clamps it into its space.
+    // before the gamut op brings it into the output: the mark is where
+    // the proof's profile cannot hold the color the edit made, which is
+    // where the op moves it, so an sRGB output proofed for sRGB still
+    // warns.
     let wide = encode(clamp(c, vec3<f32>(0.0), vec3<f32>(1.0)));
     var s = vec3<f32>(dot(p.m0.xyz, c), dot(p.m1.xyz, c), dot(p.m2.xyz, c));
     // Under AgX the output's guard rail in place of the clip's zeroing,
     // its luminance weights in the output rows' fourth lane, as
     // `finish_pixel_with` has it.
+    // AgX keeps its own; every other curve's output goes through the
+    // gamut op.
     if (p.curve > 1.5 && p.curve < 2.5) {
         s = agx_output_rail(s, vec3<f32>(p.m0.w, p.m1.w, p.m2.w));
+    } else {
+        s = gamut_unclamped(gamut_output(), c);
     }
     var e = encode(clamp(s, vec3<f32>(0.0), vec3<f32>(1.0)));
     if (p.grain0.x > 0.0) {
@@ -916,6 +1072,17 @@ fn grain_apply(noise: vec3<f32>, e: vec3<f32>) -> vec3<f32> {
     return clamp(e + noise * w, vec3<f32>(0.0), vec3<f32>(1.0));
 }
 
+// The vignette on a display-referred color, as `Vignette::shown` in
+// `vignette.rs`: toward black by its stops going down; going up, as
+// many stops in the shadows, rolled off toward white.
+fn vignette_shown(c: vec3<f32>, stops: f32) -> vec3<f32> {
+    let k = exp2(-abs(stops));
+    if (stops < 0.0) {
+        return c * k;
+    }
+    return select(c / k, c / (k + c * (1.0 - k)), c > vec3<f32>(0.0));
+}
+
 // How much of the vignette acts at a fraction of the frame, as
 // `Vignette::at` in `vignette.rs`.
 fn vignette_at(uv: vec2<f32>, aspect: f32) -> f32 {
@@ -1022,7 +1189,7 @@ fn shape_at(sh: Shape, uv: vec2<f32>, sample: vec3<f32>) -> f32 {
         let d = sh.a.zw - sh.a.xy;
         let len2 = dot(d, d);
         if (len2 >= 1e-12) {
-            s = 1.0 - clamp(dot(uv - sh.a.xy, d) / len2, 0.0, 1.0);
+            s = 1.0 - step_up(0.0, 1.0, dot(uv - sh.a.xy, d) / len2);
         }
     } else if (sh.kind == 2u) {
         s = raster_at(sh.wide, sh.layer, sh.b.yz, uv.x, uv.y / sh.b.x);
@@ -1164,6 +1331,10 @@ const MIDTONES_PEAK: f32 = 0.4375;
 const MIDTONES_UNDER_FOOT: f32 = 0.5;
 const MIDTONES_REACH: f32 = 1.75;
 const MIDTONES_LIMIT: f32 = 2.0;
+// What the summed shadows and highlights are held to, as `finish.rs`
+// has it: the sliders' own limit, as the midtones is.
+const SHADOWS_LIMIT: f32 = 2.0;
+const HIGHLIGHTS_LIMIT: f32 = 2.0;
 
 // The foot of the highlights ramp's span and the span, in stops over
 // mid grey as `shape` reads a region, as `highlights_span` in
@@ -1311,23 +1482,24 @@ fn whites_roll(c: vec3<f32>, whites: f32) -> vec3<f32> {
 fn shape(x: vec3<f32>, look: Look, g: f32, has_guide: bool, span: vec2<f32>, kept: vec4<f32>) -> vec3<f32> {
     let c = MID_GREY * pow(max(x, vec3<f32>(0.0)) / MID_GREY, vec3<f32>(look.contrast));
     let l = select(log2(max(dot(LUMA, c), 1e-6) / MID_GREY), g, has_guide);
-    var lifted = l + look.shadows * (1.0 - smoothstep(SHADOWS_RAMP.x, SHADOWS_RAMP.y, l));
+    var lifted = l + clamp(look.shadows, -SHADOWS_LIMIT, SHADOWS_LIMIT) * (1.0 - smoothstep(SHADOWS_RAMP.x, SHADOWS_RAMP.y, l));
     // The middle on the frame's own span, as the whites' pivot is.
     if (look.midtones != 0.0) {
         lifted = lifted + clamp(look.midtones, -MIDTONES_LIMIT, MIDTONES_LIMIT) * midtones_weight(lifted, span);
     }
     // A merge's kept range pulled under display white first, the ramp
     // then on its span as pulled; the whites' pivot stays on `span`.
+    let highlights = clamp(look.highlights, -HIGHLIGHTS_LIMIT, HIGHLIGHTS_LIMIT);
     var read = lifted;
     var ramp_span = span;
-    if (kept.w > 0.0 && look.highlights < 0.0) {
-        let share = clamp(-look.highlights / HIGHLIGHTS_TRAVEL, 0.0, 1.0);
+    if (kept.w > 0.0 && highlights < 0.0) {
+        let share = clamp(-highlights / HIGHLIGHTS_TRAVEL, 0.0, 1.0);
         read = kept_pull(kept, lifted, share);
         let top = kept_pull(kept, kept.y, share);
         let width = clamp(top - kept_pull(kept, kept.x, share), HIGHLIGHTS_SPAN.x, HIGHLIGHTS_SPAN.y);
         ramp_span = vec2<f32>(top - width, width);
     }
-    let shifted = read + look.highlights * highlights_weight(read, ramp_span);
+    let shifted = read + highlights * highlights_weight(read, ramp_span);
     let pivot = clamp(span.x, WHITES_PIVOT.x, WHITES_PIVOT.y);
     return black_point(whites_roll(white_point(c * exp2(shifted - l), look.whites, pivot), look.whites), look.blacks);
 }
@@ -1678,10 +1850,11 @@ fn sample_cubic(tex: texture_2d<f32>, s: vec2<f32>) -> vec4<f32> {
     return out;
 }
 
-// The output sharpen's weight of a tap `d` target pixels out, as
-// `output_sharpen::kernel` has it before it is summed to one.
-fn osharp_weight(d: f32) -> f32 {
-    let s = max(p.osharp.y, 1e-3);
+// The output sharpen's weight of a tap `d` target pixels out in a blur
+// of standard deviation `sigma`, as `output_sharpen::kernel` has it
+// before it is summed to one.
+fn osharp_weight(d: f32, sigma: f32) -> f32 {
+    let s = max(sigma, 1e-3);
     return exp(-(d * d) / (2.0 * s * s));
 }
 
@@ -1700,64 +1873,59 @@ fn osharp_past(v: f32) -> bool {
     return v < -0.5;
 }
 
-fn osharp_load(i: vec2<i32>) -> f32 {
+fn osharp_load(i: vec2<i32>, layer: i32) -> f32 {
     let limit = vec2<i32>(textureDimensions(osharp_across)) - vec2<i32>(1, 1);
-    return textureLoad(osharp_across, clamp(i, vec2<i32>(0), limit), 0).r;
+    return textureLoad(osharp_across, clamp(i, vec2<i32>(0), limit), layer, 0).r;
 }
 
-// `osharp_across` at a position in pixels, bilinear between the texel
-// centers about it, its edges clamped, read by load: as `tap` in
-// `osharp.wgsl`.
-fn osharp_tap(at: vec2<f32>) -> f32 {
+// `osharp_across`'s `layer` at a position in pixels, bilinear between
+// the texel centers about it, its edges clamped, read by load: as
+// `tap` in `osharp.wgsl`.
+fn osharp_tap(at: vec2<f32>, layer: i32) -> f32 {
     let u = at - vec2<f32>(0.5);
     let base = floor(u);
     let f = u - base;
     let i = vec2<i32>(base);
     var acc = 0.0;
-    if (f.x < 1.0 && f.y < 1.0) { acc = acc + (1.0 - f.x) * (1.0 - f.y) * osharp_load(i); }
-    if (f.x > 0.0 && f.y < 1.0) { acc = acc + f.x * (1.0 - f.y) * osharp_load(i + vec2<i32>(1, 0)); }
-    if (f.x < 1.0 && f.y > 0.0) { acc = acc + (1.0 - f.x) * f.y * osharp_load(i + vec2<i32>(0, 1)); }
-    if (f.x > 0.0 && f.y > 0.0) { acc = acc + f.x * f.y * osharp_load(i + vec2<i32>(1, 1)); }
+    if (f.x < 1.0 && f.y < 1.0) { acc = acc + (1.0 - f.x) * (1.0 - f.y) * osharp_load(i, layer); }
+    if (f.x > 0.0 && f.y < 1.0) { acc = acc + f.x * (1.0 - f.y) * osharp_load(i + vec2<i32>(1, 0), layer); }
+    if (f.x < 1.0 && f.y > 0.0) { acc = acc + (1.0 - f.x) * f.y * osharp_load(i + vec2<i32>(0, 1), layer); }
+    if (f.x > 0.0 && f.y > 0.0) { acc = acc + f.x * f.y * osharp_load(i + vec2<i32>(1, 1), layer); }
     return acc;
 }
 
 // Texels of picture from `c` toward `dir` before the first past the
-// edge, `reach` at most: as `edge` in `osharp.wgsl`.
+// edge, `reach` at most: as `edge` in `osharp.wgsl`. Every layer marks
+// the canvas alike, so the first is read.
 fn osharp_edge(c: vec2<i32>, dir: vec2<i32>, reach: i32) -> f32 {
-    if (!osharp_past(osharp_load(c + dir * reach))) {
+    if (!osharp_past(osharp_load(c + dir * reach, 0))) {
         return f32(reach);
     }
     var k = 0;
-    while (k < reach && !osharp_past(osharp_load(c + dir * (k + 1)))) {
+    while (k < reach && !osharp_past(osharp_load(c + dir * (k + 1), 0))) {
         k = k + 1;
     }
     return f32(k);
 }
 
-// The first pass's blur across, blurred down about target pixel `pt`:
-// the taps held at the last texel the first pass drew as picture, edge
+// The first pass's blur across in `layer`, blurred down about `pt` (a
+// point of the margined target) by that layer's blur: the taps held to
+// `lo` and `hi`, the last texels the first pass drew as picture, edge
 // pixels standing in for what is past it, as `output_sharpen::blur`
-// clamps. `OSHARP_PAST` where the pixel itself is past the edge.
-fn osharp_down(target_pt: vec2<f32>) -> f32 {
-    let pt = target_pt + vec2<f32>(p.osharp_taps.z);
-    let c = vec2<i32>(floor(pt));
-    if (osharp_past(osharp_load(c))) {
-        return OSHARP_PAST;
-    }
-    let n = i32(p.osharp_taps.y + 0.5);
+// clamps.
+fn osharp_down(pt: vec2<f32>, lo: f32, hi: f32, layer: i32) -> f32 {
+    let n = i32(p.osharp_n[layer] + 0.5);
+    let sigma = p.osharp_sigma[layer];
     let step = p.osharp_taps.x;
-    let reach = i32(p.osharp_taps.z + 0.5);
-    let lo = pt.y - osharp_edge(c, vec2<i32>(0, -1), reach);
-    let hi = pt.y + osharp_edge(c, vec2<i32>(0, 1), reach);
     var acc = 0.0;
     var sum = 0.0;
     for (var i = -n; i <= n; i = i + 1) {
         let d = f32(i) * step;
-        let v = osharp_tap(vec2<f32>(pt.x, clamp(pt.y + d, lo, hi)));
+        let v = osharp_tap(vec2<f32>(pt.x, clamp(pt.y + d, lo, hi)), layer);
         // A tap that is not a number gives nothing, as
         // `output_sharpen::blur` leaves it out.
         if (abs(v) <= 1e30) {
-            let w = osharp_weight(d);
+            let w = osharp_weight(d, sigma);
             acc = acc + w * v;
             sum = sum + w;
         }
@@ -1769,21 +1937,45 @@ fn osharp_down(target_pt: vec2<f32>) -> f32 {
 // `output_sharpen::BLACK`.
 const OSHARP_BLACK: f32 = 1e-6;
 
-// `c` sharpened against its luminance's blur, as
-// `output_sharpen::apply`: the soft knee on the difference, the
-// encoded luminance moved by it, and the linear color scaled by what
-// that does to the linear luminance; black stays black, and a
-// brightening stops where the largest channel reaches white.
-fn osharp_apply(c_in: vec3<f32>, l: f32, blurred: f32) -> vec3<f32> {
-    // Every pixel held at zero from below, moved or not.
-    let c = max(c_in, vec3<f32>(0.0));
-    let d = l - blurred;
-    let t = p.osharp.z;
-    var k = d;
+// The top of a term's amount, which the picture's and the masks'
+// shares summed into it are held to, and the terms' sum too, as
+// `output_sharpen::AMOUNT_MAX`.
+const OSHARP_AMOUNT_MAX: f32 = 2.0;
+
+// The amount over which the channels under zero are held at zero
+// whole under AgX's rail, under it by the amount's share, as
+// `output_sharpen::HOLD_RAMP` (`output_sharpen::held`).
+const OSHARP_HOLD_RAMP: f32 = 0.01;
+
+// The share of a difference `d` from the blur that is sharpened under
+// threshold `t`: the soft knee, as `output_sharpen::soft`.
+fn osharp_soft(d: f32, t: f32) -> f32 {
     if (t > 0.0 && d != 0.0) {
-        k = d * d * d / (d * d + t * t);
+        return d * d * d / (d * d + t * t);
     }
-    let delta = p.osharp.x * k;
+    return d;
+}
+
+// `c` with encoded luminance `l` moved by `delta`, the terms' deltas
+// summed, at `amount`, their amounts summed (over none; at none the
+// pixel is not sharpened and stays as it came), as
+// `output_sharpen::apply`: the linear color scaled by what the move does
+// to the linear luminance; black stays black, a channel under zero is
+// scaled as any other for the gamut op (held at zero under AgX's rail,
+// as `output_sharpen::Params::hold`, by the amount), and a brightening
+// stops where the largest channel reaches white.
+fn osharp_apply(c_in: vec3<f32>, l: f32, delta: f32, amount: f32) -> vec3<f32> {
+    // Under AgX's rail every pixel held at zero from below, moved or
+    // not: whole from the ramp's top, by the amount's share of it under
+    // that.
+    var c = c_in;
+    if (p.curve > 1.5 && p.curve < 2.5) {
+        c = max(c_in, vec3<f32>(0.0));
+        if (amount < OSHARP_HOLD_RAMP) {
+            let f = clamp(amount / OSHARP_HOLD_RAMP, 0.0, 1.0);
+            c = select(c_in, c_in - f * c_in, c_in < vec3<f32>(0.0));
+        }
+    }
     if (delta == 0.0 || !(abs(delta) <= 1e30)) {
         return c;
     }
@@ -1927,7 +2119,8 @@ fn look_sample(e: vec3<f32>) -> vec3<f32> {
 // on the CPU: into the table's primaries, clipped into them (an sRGB
 // table has nothing to say about a Rec.2020 green, and the clip is
 // the gamut map), encoded, looked up, decoded, back, and blended with
-// what came in by the strength.
+// what came in by the strength. Under AgX's rail alone (`look_kept`
+// where the gamut op follows).
 fn look_at(c: vec3<f32>) -> vec3<f32> {
     let l = vec3<f32>(dot(p.look_in0.xyz, c), dot(p.look_in1.xyz, c), dot(p.look_in2.xyz, c));
     let e = look_encode(clamp(l, vec3<f32>(0.0), vec3<f32>(1.0)));
@@ -2203,4 +2396,348 @@ fn tone_agx(scene: vec3<f32>) -> vec3<f32> {
         return agx_form_inset(inset, l);
     }
     return agx_form(back);
+}
+
+// The output's gamut op (`greycard_render::gamut`), the same arithmetic:
+// the rail under sRGB's top, the bound, and the roll at held Oklab hue,
+// each the identity under its threshold. An output is its matrix from
+// the working space, its inverse, and cone space (cubed) to it.
+struct Gamut {
+    to: mat3x3<f32>,
+    back: mat3x3<f32>,
+    lms: mat3x3<f32>,
+    // On, knee, limit.
+    rail: vec3<f32>,
+    // On, onset, asymptote.
+    bound: vec3<f32>,
+    roll: vec2<f32>,
+    onset: f32,
+    early: f32,
+    soft: f32,
+};
+const GAMUT_POWER: f32 = 1.2;
+const GAMUT_SPRING: f32 = 0.1;
+const GAMUT_BISECT: u32 = 20u;
+const GAMUT_FLOOR: f32 = 0.0166;
+const WORKING_LUMA: vec3<f32> = vec3<f32>(0.2627, 0.6780, 0.0593);
+// Oklab with a cone response under zero held at zero (`Op::lab`).
+fn gamut_lab(c: vec3<f32>) -> vec3<f32> {
+    let lms = vec3<f32>(dot(p.ok_in0.xyz, c), dot(p.ok_in1.xyz, c), dot(p.ok_in2.xyz, c));
+    return LMS_TO_LAB * pow(max(lms, vec3<f32>(0.0)), vec3<f32>(1.0 / 3.0));
+}
+fn rows3(a: vec4<f32>, b: vec4<f32>, c: vec4<f32>) -> mat3x3<f32> {
+    return transpose(mat3x3<f32>(a.xyz, b.xyz, c.xyz));
+}
+fn gamut_roll_at(r: f32, knee: f32, limit: f32) -> f32 {
+    if (r <= knee) {
+        return r;
+    }
+    if (knee >= 1.0 || limit <= 1.0 + 1e-6) {
+        return min(r, 1.0);
+    }
+    if (r >= limit) {
+        return 1.0;
+    }
+    let x = (r - knee) / (1.0 - knee);
+    let xl = (limit - knee) / (1.0 - knee);
+    let s = xl / pow(pow(xl, GAMUT_POWER) - 1.0, 1.0 / GAMUT_POWER);
+    return min(knee + (1.0 - knee) * x / pow(1.0 + pow(x / s, GAMUT_POWER), 1.0 / GAMUT_POWER), 1.0);
+}
+fn gamut_bound_at(r: f32, a: f32, b: f32) -> f32 {
+    if (r <= a) {
+        return r;
+    }
+    let x = (r - a) / (b - a);
+    return a + (b - a) * x / pow(1.0 + pow(x, GAMUT_POWER), 1.0 / GAMUT_POWER);
+}
+fn gamut_soft_max0(v: f32, w: f32) -> f32 {
+    if (v <= -w) {
+        return 0.0;
+    }
+    if (v >= w) {
+        return v;
+    }
+    return (v + w) * (v + w) / (4.0 * w);
+}
+// Each output channel along a color's ray from grey, a cubic in the
+// share of its chroma: its four terms (`Ray`).
+struct Ray {
+    p0: vec3<f32>,
+    p1: vec3<f32>,
+    p2: vec3<f32>,
+    p3: vec3<f32>,
+};
+fn gamut_ray(g: Gamut, lab: vec3<f32>) -> Ray {
+    let u = LAB_TO_LMS * vec3<f32>(lab.x, 0.0, 0.0);
+    let v = LAB_TO_LMS * vec3<f32>(0.0, lab.y, lab.z);
+    return Ray(g.lms * (u * u * u), g.lms * (3.0 * u * u * v), g.lms * (3.0 * u * v * v), g.lms * (v * v * v));
+}
+// The output's channels a share `t` of the way out.
+fn ray_at(r: Ray, t: f32) -> vec3<f32> {
+    return ((r.p3 * t + r.p2) * t + r.p1) * t + r.p0;
+}
+// A cubic, lowest power first, at u.
+fn cubic_at(h: vec4<f32>, u: f32) -> f32 {
+    return ((h.w * u + h.z) * u + h.y) * u + h.x;
+}
+// 0, where a cubic turns in (0, len), and len, ascending, in the first
+// n of the four (`gamut::turns`).
+struct Turns {
+    cuts: array<f32, 4>,
+    n: i32,
+};
+fn gamut_turns(h: vec4<f32>, len: f32) -> Turns {
+    var t = Turns(array<f32, 4>(0.0, len, len, len), 1);
+    let qa = 3.0 * h.w;
+    let qb = 2.0 * h.z;
+    let qc = h.y;
+    var r0 = -1.0;
+    var r1 = -1.0;
+    if (qa != 0.0) {
+        let disc = qb * qb - 4.0 * qa * qc;
+        if (disc > 0.0) {
+            let q = -0.5 * (qb + select(-1.0, 1.0, qb >= 0.0) * sqrt(disc));
+            let x0 = q / qa;
+            let x1 = select(0.0, qc / q, q != 0.0);
+            r0 = min(x0, x1);
+            r1 = max(x0, x1);
+        }
+    } else if (qb != 0.0) {
+        r0 = -qc / qb;
+    }
+    if (r0 > 0.0 && r0 < len) {
+        t.cuts[t.n] = r0;
+        t.n = t.n + 1;
+    }
+    if (r1 > 0.0 && r1 < len) {
+        t.cuts[t.n] = r1;
+        t.n = t.n + 1;
+    }
+    t.cuts[t.n] = len;
+    t.n = t.n + 1;
+    return t;
+}
+// The channels as cubics in the share of the way out, and where each
+// turns to the span (`gamut::depth`).
+struct Chans {
+    h: array<vec4<f32>, 3>,
+    t: array<Turns, 3>,
+};
+// How far the ray is out of the cube at e, counted from t0: past t0 the
+// deepest any channel has been under zero since, short of it the least
+// any one channel has been under zero all the way (`gamut::depth`).
+fn gamut_depth(c: Chans, t0: f32, e: f32) -> f32 {
+    let a = min(t0, e);
+    let b = max(t0, e);
+    var d = -1e30;
+    for (var k = 0; k < 3; k++) {
+        let h = c.h[k];
+        let t = c.t[k];
+        let va = cubic_at(h, a);
+        let vb = cubic_at(h, b);
+        var low = min(va, vb);
+        var high = max(va, vb);
+        for (var i = 1; i < t.n - 1; i++) {
+            let u = t.cuts[i];
+            if (u > a && u < b) {
+                let v = cubic_at(h, u);
+                low = min(low, v);
+                high = max(high, v);
+            }
+        }
+        d = max(d, select(-high, -low, e >= t0));
+    }
+    return d;
+}
+// A color's chroma over the edge's along its ray, the lower faces
+// alone, read out to the op's onset: zero nearer the axis than that.
+// The edge where the ray's depth past the faces meets a spring to the
+// chord from grey through the color (`Op::reach_of`).
+fn gamut_reach(g: Gamut, r: Ray, lab: vec3<f32>) -> f32 {
+    if (!(lab.x > 0.0 && length(lab.yz) > 1e-7)) {
+        return 0.0;
+    }
+    let span = 1.0 / g.onset;
+    let grey = r.p0.x;
+    if (!(grey > 0.0)) {
+        return 0.0;
+    }
+    let o = ray_at(r, 1.0);
+    var chord = 1e30;
+    for (var k = 0; k < 3; k++) {
+        if (o[k] < grey) {
+            chord = min(chord, grey / (grey - o[k]));
+        }
+    }
+    chord = min(chord, span);
+    let t0 = min(chord, 1.0);
+    let at = ray_at(r, t0);
+    let n = max(max(at.x, max(at.y, at.z)), grey);
+    var c: Chans;
+    for (var k = 0; k < 3; k++) {
+        c.h[k] = vec4<f32>(r.p0[k], r.p1[k], r.p2[k], r.p3[k]);
+        c.t[k] = gamut_turns(c.h[k], span);
+    }
+    if (gamut_depth(c, t0, span) / n + GAMUT_SPRING * (span - chord) <= 0.0) {
+        return 0.0;
+    }
+    var lo = 0.0;
+    var hi = span;
+    for (var i = 0u; i < GAMUT_BISECT; i++) {
+        let mid = 0.5 * (lo + hi);
+        if (gamut_depth(c, t0, mid) / n + GAMUT_SPRING * (mid - chord) > 0.0) {
+            hi = mid;
+        } else {
+            lo = mid;
+        }
+    }
+    let edge = 0.5 * (lo + hi);
+    if (edge >= span) {
+        return 0.0;
+    }
+    return 1.0 / edge;
+}
+// The rail, its channels' rise over the luminance rolled in sRGB; the
+// color, and in w whether it moved.
+fn gamut_rail(g: Gamut, c: vec3<f32>) -> vec4<f32> {
+    if (g.rail.x < 0.5) {
+        return vec4<f32>(c, 0.0);
+    }
+    // The luminance held a hair under white (`Op::rail`).
+    let y = clamp(dot(WORKING_LUMA, c), 0.0, 1.0 - 1e-4);
+    let head = 1.0 - y;
+    let to_srgb = rows3(p.g_srgb0, p.g_srgb1, p.g_srgb2);
+    let r = to_srgb * c;
+    var moved = false;
+    var q = 1.0;
+    var o = r;
+    for (var k = 0; k < 3; k++) {
+        let e = (r[k] - y) / head;
+        if (e > g.rail.y) {
+            o[k] = y + head * gamut_roll_at(e, g.rail.y, g.rail.z);
+            if (r[k] > 0.0) {
+                q = min(q, o[k] / r[k]);
+            }
+            moved = true;
+        }
+    }
+    if (!moved) {
+        return vec4<f32>(c, 0.0);
+    }
+    o = select(o, o * q, o < vec3<f32>(0.0));
+    return vec4<f32>(rows3(p.g_unsrgb0, p.g_unsrgb1, p.g_unsrgb2) * o, 1.0);
+}
+// A working-space color into the output, linear, before the final
+// clamp (`Op::unclamped`).
+fn gamut_unclamped(g: Gamut, c0: vec3<f32>) -> vec3<f32> {
+    let railed = gamut_rail(g, c0);
+    var c = railed.xyz;
+    let o = g.to * c;
+    let lo = min(o.x, min(o.y, o.z));
+    let hi = max(o.x, max(o.y, o.z));
+    if (railed.w < 0.5 && lo >= g.early * hi && hi <= 1.0) {
+        return o;
+    }
+    var lab = gamut_lab(c);
+    var ray = gamut_ray(g, lab);
+    var rho = gamut_reach(g, ray, lab);
+    if (g.bound.x > 0.5 && rho > g.bound.y) {
+        let q = (gamut_bound_at(rho, g.bound.y, g.bound.z) - 1.0) / (rho - 1.0);
+        var b = o;
+        if (g.soft > 0.0) {
+            let w = g.soft * max(hi, 1e-6);
+            for (var k = 0; k < 3; k++) {
+                b[k] = q * o[k] + (1.0 - q) * gamut_soft_max0(o[k], w);
+            }
+        } else {
+            b = select(o, o * q, o < vec3<f32>(0.0));
+        }
+        c = g.back * b;
+        lab = gamut_lab(c);
+        ray = gamut_ray(g, lab);
+        rho = gamut_reach(g, ray, lab);
+    }
+    if (rho > g.roll.x) {
+        let pt = ray_at(ray, gamut_roll_at(rho, g.roll.x, g.roll.y) / rho);
+        // What the spring leaves past a face, in to it along the line to
+        // grey (`Op::unclamped`).
+        let grey = ray.p0.x;
+        var back = 1.0;
+        for (var k = 0; k < 3; k++) {
+            if (pt[k] < 0.0) {
+                back = min(back, grey / (grey - pt[k]));
+            }
+        }
+        if (back < 1.0) {
+            return vec3<f32>(grey) + back * (pt - vec3<f32>(grey));
+        }
+        return pt;
+    }
+    return g.to * c;
+}
+// The output's op, as the CPU hands it over (`gamut::Op::shader`).
+fn gamut_output() -> Gamut {
+    return Gamut(
+        rows3(p.m0, p.m1, p.m2),
+        rows3(p.g_from0, p.g_from1, p.g_from2),
+        rows3(p.g_lms0, p.g_lms1, p.g_lms2),
+        p.g_rail.xyz,
+        p.g_bound.xyz,
+        p.g_roll.xy,
+        p.g_roll.z,
+        p.g_roll.w,
+        p.g_rail.w,
+    );
+}
+// Thresholds of one on the lower faces alone, into a cube whose cone
+// space to it is `lms`: a look table's, or the working space's.
+fn gamut_cube(to: mat3x3<f32>, lms: mat3x3<f32>) -> Gamut {
+    return Gamut(to, to, lms, vec3<f32>(0.0), vec3<f32>(0.0), vec2<f32>(1.0, 1.0), 1.0, 0.0, 0.0);
+}
+// The working cube's lower faces at held hue, after a profile's curve
+// (`gamut::into_working`).
+fn gamut_into_working(c: vec3<f32>) -> vec3<f32> {
+    if (all(c >= vec3<f32>(0.0))) {
+        return c;
+    }
+    let id = mat3x3<f32>(vec3<f32>(1.0, 0.0, 0.0), vec3<f32>(0.0, 1.0, 0.0), vec3<f32>(0.0, 0.0, 1.0));
+    let g = gamut_cube(id, rows3(p.ok_out0, p.ok_out1, p.ok_out2));
+    return max(gamut_unclamped(g, c), vec3<f32>(0.0));
+}
+// The floor before the display curve per channel (`gamut::floor`).
+fn gamut_floor(s: vec3<f32>, white: f32) -> vec3<f32> {
+    let sq = max(s, vec3<f32>(0.0));
+    let den = dot(sq, sq);
+    if (den <= 0.0) {
+        return s;
+    }
+    let n = dot(sq * sq, sq) / den;
+    let kappa = GAMUT_FLOOR * smoothstep(-1.0, 2.0, log2(n / white));
+    if (kappa <= 0.0) {
+        return s;
+    }
+    let third = 1.0 / 3.0;
+    let w0 = vec3<f32>(1.1 * third, third, 0.9 * third);
+    let w1 = vec3<f32>(third, 0.9 * third, 1.1 * third);
+    let w2 = vec3<f32>(third, third, third);
+    return vec3<f32>(
+        s.x + kappa * dot(w0, s - vec3<f32>(s.x)),
+        s.y + kappa * dot(w1, s - vec3<f32>(s.y)),
+        s.z + kappa * dot(w2, s - vec3<f32>(s.z)),
+    );
+}
+// The look table as the finish reads it (`gamut::look_kept`): read at the
+// color brought to its cube, its change added to the color as it came.
+fn look_kept(c: vec3<f32>) -> vec3<f32> {
+    let to = rows3(p.look_in0, p.look_in1, p.look_in2);
+    let unlut = rows3(p.look_out0, p.look_out1, p.look_out2);
+    let r = to * c;
+    var g = r;
+    if (any(r < vec3<f32>(0.0)) || any(r > vec3<f32>(1.0))) {
+        let top = unlut * min(r, vec3<f32>(1.0));
+        let cube = gamut_cube(to, rows3(p.g_cube0, p.g_cube1, p.g_cube2));
+        g = clamp(gamut_unclamped(cube, top), vec3<f32>(0.0), vec3<f32>(1.0));
+    }
+    let o = look_decode(look_sample(look_encode(g)));
+    return c + p.look.x * (unlut * o - unlut * g);
 }

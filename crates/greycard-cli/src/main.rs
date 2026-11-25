@@ -124,8 +124,9 @@ enum Command {
         #[arg(long, value_name = "DIR")]
         dir: Option<PathBuf>,
     },
-    /// Import RawTherapee's .pp3 profiles: for each raw, the profile
-    /// beside it (IMG_0001.CR3.pp3, or IMG_0001.pp3) read, its rank,
+    /// Import RawTherapee's .pp3 profiles, and ART's .arp: for each raw,
+    /// the profile beside it (IMG_0001.CR3.pp3, or IMG_0001.pp3; an .arp
+    /// by the same names is taken first) read, its rank,
     /// color label and trash mark carried into the meta exactly, and
     /// its white balance, exposure, geometry and lens settings, as near
     /// as this engine has them, laid over the edit as one state named
@@ -260,6 +261,8 @@ fn main() -> std::process::ExitCode {
     // By the program, not the feature: the mono build's tests also run the
     // one named greycard, on color files.
     greycard_library::monochrome::only(env!("CARGO_BIN_NAME").starts_with("monocard"));
+    // The off-card record keys on the build, its commit too.
+    greycard_ai::runtime::set_build_label(greycard_version::KEY);
     let code = match run() {
         Ok(code) => code,
         Err(e) => {

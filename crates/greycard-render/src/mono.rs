@@ -152,10 +152,15 @@ pub struct Beside<'a> {
 /// (`Geometry::with_camera_frame`), as the file `settings` asks for: the
 /// geometry, the resize, the sharpen for the screen, the finish. No
 /// border and no mark.
-pub fn render(frame: &MonoFrame, edit: &Edit, settings: &Settings, with: &Beside) -> Rendered {
+pub fn render(
+    frame: &MonoFrame,
+    edit: &Edit,
+    settings: &Settings,
+    with: &Beside,
+) -> Result<Rendered, geometry::TooLarge> {
     let mono = section(edit);
     let (sw, sh) = (frame.base.width as f32, frame.base.height as f32);
-    let framed = geometry_of(frame, &edit.geometry);
+    let framed = geometry_of(frame, &edit.geometry)?;
     let framed_width = framed.base.width as f32;
     let (iw, ih) = (framed.base.width, framed.base.height);
     let size = with
@@ -254,11 +259,11 @@ pub fn render(frame: &MonoFrame, edit: &Edit, settings: &Settings, with: &Beside
             _ => Pixels::Eight(rows(w, h, |x, y| out(pixel(x, y)))),
         }
     };
-    Rendered {
+    Ok(Rendered {
         width: w as u32,
         height: h as u32,
         pixels,
-    }
+    })
 }
 
 /// What a range mask reads of a grey pixel: its Oklab lightness at the
@@ -290,27 +295,37 @@ fn rows<T: Channel + Send, const N: usize>(
 
 /// Every plane of `frame` through `f`.
 pub fn map_planes(frame: &MonoFrame, f: impl Fn(&Plane) -> Plane + Sync) -> MonoFrame {
-    let of = |p: &Option<Arc<Plane>>| p.as_ref().map(|p| Arc::new(f(p)));
-    MonoFrame {
-        base: Arc::new(f(&frame.base)),
-        guide: of(&frame.guide),
-        detail: of(&frame.detail),
-        local: of(&frame.local),
+    match try_map_planes(frame, |p| Ok::<_, std::convert::Infallible>(f(p))) {
+        Ok(frame) => frame,
+    }
+}
+
+/// [`map_planes`], of a step that may refuse one.
+fn try_map_planes<E>(
+    frame: &MonoFrame,
+    f: impl Fn(&Plane) -> Result<Plane, E>,
+) -> Result<MonoFrame, E> {
+    let of = |p: &Option<Arc<Plane>>| p.as_ref().map(|p| f(p).map(Arc::new)).transpose();
+    Ok(MonoFrame {
+        base: Arc::new(f(&frame.base)?),
+        guide: of(&frame.guide)?,
+        detail: of(&frame.detail)?,
+        local: of(&frame.local)?,
         clip: None,
         iso: frame.iso,
         white: frame.white,
         rendered: frame.rendered,
-    }
+    })
 }
 
-fn geometry_of(frame: &MonoFrame, g: &Geometry) -> MonoFrame {
+fn geometry_of(frame: &MonoFrame, g: &Geometry) -> Result<MonoFrame, geometry::TooLarge> {
     let (w, h) = (frame.base.width as f32, frame.base.height as f32);
     if g.is_identity_on(w, h, None) {
-        return frame.clone();
+        return Ok(frame.clone());
     }
-    map_planes(frame, |p| {
-        let (data, w, h) = geometry::apply_plane(&p.data, p.width, p.height, g);
-        Plane::new(w, h, data)
+    try_map_planes(frame, |p| {
+        let (data, w, h) = geometry::apply_plane(&p.data, p.width, p.height, g)?;
+        Ok(Plane::new(w, h, data))
     })
 }
 
@@ -680,7 +695,7 @@ mod tests {
     fn a_picture_is_one_channel_until_it_is_toned() {
         let mut edit = Edit::default();
         let mut settings = Settings::default();
-        let render = |e: &Edit, s: &Settings| render(&frame(), e, s, &Beside::default());
+        let render = |e: &Edit, s: &Settings| render(&frame(), e, s, &Beside::default()).unwrap();
         let Pixels::Eight(grey) = render(&edit, &settings).pixels else {
             panic!("eight bits")
         };
@@ -751,7 +766,7 @@ mod tests {
         m.basic.exposure = -2.0;
         m.tone_eq.zones[2] = 1.0;
         let light = |s: &Settings| {
-            let r = render(&frame, &edit, s, &Beside::default());
+            let r = render(&frame, &edit, s, &Beside::default()).unwrap();
             let Pixels::Sixteen(p) = r.pixels else {
                 panic!("sixteen bits")
             };

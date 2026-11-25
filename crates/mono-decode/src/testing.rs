@@ -21,6 +21,7 @@ pub fn frame_of(width: usize, height: usize, f: impl Fn(usize, usize) -> u16) ->
             black: LevelPattern::uniform(0.0, 1),
             white: LevelPattern::uniform(65535.0, 1),
             black_deltas: None,
+            saturation: None,
         },
         as_shot_coefficients: Some([1.0; 3]),
         calibrations: Vec::new(),

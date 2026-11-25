@@ -47,6 +47,8 @@ export component ArchiveSheet inherits Rectangle {
         // never reaches the window's keys: Escape is taken here, as the
         // root sheet takes it.
         FocusScope {
+            // No stop of its own: Tab goes round the card's controls.
+            focus-on-tab-navigation: false;
             key-pressed(e) => {
                 if (e.text == Key.Escape) {
                     root.answered(false);
@@ -76,12 +78,14 @@ export component ArchiveSheet inherits Rectangle {
                     color: Theme.text-muted;
                     wrap: word-wrap;
                 }
-                Text {
+                to-folder-words := Text {
+                    accessible-role: none;
                     text: @tr("To this folder:");
                     font-size: Theme.font-xs;
                     color: Theme.text-secondary;
                 }
                 LineEdit {
+                    accessible-label: to-folder-words.text;
                     text <=> root.dest;
                     accepted(t) => { root.look-again(); }
                 }

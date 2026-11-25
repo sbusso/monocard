@@ -18,19 +18,16 @@
 #![cfg_attr(all(windows, not(test)), windows_subsystem = "windows")]
 
 mod adapter;
+mod capture;
 mod carry;
 mod cells;
 mod chooser;
 mod clipboard;
-mod cull;
 mod edited;
 mod entry;
-mod export_queue;
 mod finder;
-mod focus_points;
 mod gpu_errors;
 mod gpu_lost;
-mod grid;
 mod headless;
 mod keys;
 mod library;
@@ -39,11 +36,12 @@ mod lightbox;
 mod mono;
 #[cfg(test)]
 mod name_tips;
+#[cfg(test)]
+mod newer_tests;
 mod open_note;
 mod owners;
 mod panel;
 mod panes;
-mod placeholder;
 mod preparing;
 mod report;
 mod roots;
@@ -52,9 +50,10 @@ mod runners;
 mod scope;
 mod settings;
 mod shared;
-mod sort;
+mod sidecars;
+#[cfg(test)]
+mod spoken_names;
 mod stacks;
-mod strip;
 mod sync;
 #[cfg(test)]
 pub(crate) mod testing;
@@ -69,9 +68,9 @@ mod window_fit;
 // The modules with no window in them, in the library beside this
 // binary; named here as they were when they were the binary's own.
 pub(crate) use greycard_ui::{
-    archive, carried, collections, delete, display, edit_in, export_name, files, filter,
-    gpu_marker, i18n, import, instance, log, naming, outline, preset_fit, rejects, scrolling,
-    selection, tags, wheel, zoom,
+    archive, carried, collections, cull, delete, display, edit_in, export_name, export_queue,
+    files, filter, focus_points, gpu_marker, grid, i18n, import, instance, log, naming, outline,
+    placeholder, preset_fit, scrolling, selection, sort, strip, tags, wheel, zoom,
 };
 
 // The window's words: `crate::tr!` here as in the library, and the
@@ -426,8 +425,8 @@ struct Cli {
     /// opens it), help (the Help menu, open), zoom (the Fit
     /// button's menu of zooms, open), or wb-presets (the white
     /// balance's presets, open off Auto)
-    #[arg(long, value_name = "NAME", value_parser = panel::viewport::Shown::sheet, conflicts_with = "tool")]
-    sheet: Option<panel::viewport::Shown>,
+    #[arg(long, value_name = "NAME", value_parser = capture::Shown::sheet, conflicts_with = "tool")]
+    sheet: Option<capture::Shown>,
     /// Open the frame menu over this row of the strip (from 0), or of
     /// the grid with --grid, once the picture is up, for a snapshot
     #[arg(long, value_name = "ROW", conflicts_with_all = ["sheet", "tool"])]
@@ -445,15 +444,15 @@ struct Cli {
     keys: Option<String>,
     /// Put this Crop-tab tool in hand once the picture is up, for a
     /// snapshot: crop, level or guide
-    #[arg(long, value_name = "NAME", value_parser = panel::viewport::Shown::tool)]
-    tool: Option<panel::viewport::Shown>,
+    #[arg(long, value_name = "NAME", value_parser = capture::Shown::tool)]
+    tool: Option<capture::Shown>,
     /// Choose this part from the masks panel's People menu (its label,
     /// as Iris or Top) once the picture is up, into the mask
     /// --show-mask chooses on the Masks tab, for a snapshot of what
     /// follows it: the part made, or the people to pick among
-    #[arg(long, value_name = "LABEL", value_parser = panel::viewport::Shown::part,
+    #[arg(long, value_name = "LABEL", value_parser = capture::Shown::part,
         conflicts_with_all = ["sheet", "tool", "menu"])]
-    part: Option<panel::viewport::Shown>,
+    part: Option<capture::Shown>,
     /// Paint the capture sharpening's mask over the picture, for a
     /// screenshot
     #[arg(long)]
@@ -494,6 +493,12 @@ struct Cli {
     /// them, for checking the one against the other
     #[arg(long)]
     cpu_ops: bool,
+    /// Started again after a model lost the GPU: a loss in this run
+    /// starts no other. Read from the arguments themselves by
+    /// `gpu_lost::start_again`, which hands them on; here so the
+    /// parser takes it.
+    #[arg(long = "after-model-loss", hide = true)]
+    _after_model_loss: bool,
     /// Once the first develop is on screen, move the sharpen's radius
     /// this many times, logging the time from each move to its frame,
     /// then quit with the mean
@@ -873,6 +878,7 @@ impl State {
                 merge_edits: HashMap::new(),
                 sync: sync::Sync::default(),
                 saves: Default::default(),
+                unsaved: Default::default(),
             },
             culling: owners::Culling {
                 cull: None,
@@ -901,7 +907,8 @@ impl State {
                 lightbox_fetch: None,
                 compare_tiles: Rc::new(VecModel::default()),
                 drawn: None,
-                drawn_owed: false,
+                owed: None,
+                laid: None,
             },
             views: owners::Views {
                 companions: HashMap::new(),
@@ -991,6 +998,7 @@ impl State {
                 zoom: 0.0,
                 mat: false,
                 center: (0.0, 0.0),
+                laid: None,
                 zoom_back: None,
                 stood_view: None,
                 zoom_free: false,
@@ -1045,6 +1053,8 @@ impl State {
                 patch_shape: None,
                 lit_shape: None,
                 fills_pending: Vec::new(),
+                highlight_pending: false,
+                fill_takes: None,
                 pending_shapes: HashMap::new(),
                 guiding: Guiding::default(),
                 guide_kept: Rc::new(VecModel::default()),
@@ -1059,6 +1069,7 @@ impl State {
                 store: None,
                 lens: LensReport::NoDatabase,
                 lens_options: Vec::new(),
+                lens_options_held: None,
                 lens_frame: None,
                 profiles: Vec::new(),
                 profiles_kept: Default::default(),

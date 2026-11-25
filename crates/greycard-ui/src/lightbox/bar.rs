@@ -333,20 +333,14 @@ fn escape_lets_go_of_the_set_then_leaves() {
 fn the_bar_says_the_selection_and_the_count() {
     let (app, _state) = session(12);
     into_lightbox(&app);
-    let words = |app: &App| {
-        ElementHandle::find_by_element_type_name(app, "Text")
-            .filter_map(|e| e.accessible_label())
-            .find(|l| l.ends_with("12 frames"))
-            .map(|l| l.to_string())
-    };
-    assert_eq!(words(&app).as_deref(), Some("f00.CR3 · 12 frames"));
+    let words = |app: &App| crate::testing::label_of(app, "GridSheet::bar-words");
+    let count = crate::tr!("{n} frame" | "{n} frames" % 12);
+    assert_eq!(words(&app), format!("f00.CR3 · {count}"));
     app.invoke_frame_clicked(2, true, false);
     app.invoke_frame_clicked(3, true, false);
     move_to(&app, 710.0, 500.0);
-    assert_eq!(
-        words(&app).as_deref(),
-        Some("f00.CR3 and 2 others · 12 frames")
-    );
+    let set = crate::tr!("{} and {n} other" | "{} and {n} others" % 2, "f00.CR3");
+    assert_eq!(words(&app), format!("{set} · {count}"));
 }
 
 /// In the lightbox the slider is the tiles across: plus, minus, and
@@ -559,25 +553,27 @@ fn the_surround_is_the_canvas_shade() {
 
 /// The grid's header keeps every word it had beside its new slider at
 /// the narrowest window the editor is made for, with the left pane at
-/// each width it allows, in English and in French: each label as wide
-/// as on a wide window. The selection's name and the status line are
-/// the ones meant to give.
+/// each width it allows, in English, Spanish, and French: each label is not
+/// cut, as wide as the same words on a wide window, and inside the
+/// header. The selection's name and the status line are the ones meant
+/// to give.
 #[test]
 fn the_header_keeps_its_words_beside_the_slider_at_1366() {
-    for lang in ["", "fr"] {
+    for lang in ["", "es", "fr"] {
         let (app, _state) = session(24);
         slint::select_bundled_translation(lang).expect("bundled");
         key(&app, "g");
         // Everything the header row can carry.
         app.invoke_frame_clicked(2, true, false);
         // The size in the count's line, which the cap changes: its
-        // number as N, the same width in the test's fixed font.
+        // number as N, to know the line whatever it says.
         let sized = |l: &str| match l.rfind("\u{b7} ") {
             Some(p) if l.ends_with(" px") => format!("{}\u{b7} N px", &l[..p]),
             _ => l.to_string(),
         };
-        // The header's top row's words, right of the left pane.
-        let header_texts = |app: &App| -> Vec<(String, f32)> {
+        // The header's top row's words, right of the left pane: each
+        // as `sized` names it, its words, its left, and its width.
+        let header_texts = |app: &App| -> Vec<(String, String, f32, f32)> {
             crate::testing::settle(app);
             let sheet = app.window().size().to_logical(1.0).width - app.get_grid_w();
             ElementHandle::find_by_element_type_name(app, "Text")
@@ -586,15 +582,39 @@ fn the_header_keeps_its_words_beside_the_slider_at_1366() {
                     p.y < 40.0 && p.x >= sheet - 0.5
                 })
                 .filter_map(|e| {
-                    e.accessible_label()
-                        .map(|l| (sized(l.as_str()), e.size().width))
+                    e.accessible_label().map(|l| {
+                        (
+                            sized(l.as_str()),
+                            l.to_string(),
+                            e.absolute_position().x,
+                            e.size().width,
+                        )
+                    })
                 })
                 // The selection's name and the status, which take the
                 // row's slack and are cut short by design.
-                .filter(|(l, _)| {
+                .filter(|(l, ..)| {
                     !l.is_empty() && !l.contains(".CR3") && *l != app.get_status_shown().as_str()
                 })
                 .collect()
+        };
+        // The width the same words take on a wide window, where nothing
+        // is short of room: the size, which the narrow sheet caps, set
+        // to the one they say. The count's line is as wide as its
+        // number, and digits are not all one width.
+        let natural = |app: &App, words: &str| -> f32 {
+            let cell = words
+                .strip_suffix(" px")
+                .and_then(|l| l.rsplit("\u{b7} ").next())
+                .and_then(|n| n.parse::<f32>().ok())
+                .unwrap_or(512.0);
+            app.set_grid_cell(cell);
+            app.window()
+                .set_size(slint::LogicalSize::new(2560.0, 1000.0));
+            app.set_left_size(200.0);
+            let wide = header_texts(app);
+            let found = wide.iter().find(|(_, w, ..)| w == words).map(|t| t.3);
+            found.unwrap_or_else(|| panic!("{lang}: {words:?} not on the wide window: {wide:?}"))
         };
         // The largest size, which the narrow sheets hold.
         app.set_grid_cell(512.0);
@@ -604,32 +624,46 @@ fn the_header_keeps_its_words_beside_the_slider_at_1366() {
         let wide = header_texts(&app);
         assert_eq!(app.get_tile_cell(), 512.0);
         // The words checked: the count and the size, and the buttons.
-        let (count, rejects, lightbox) = if lang == "fr" {
-            ("24 photos", "Photos rejetées", "Table lumineuse")
-        } else {
-            ("24 frames", "Rejects", "Lightbox")
+        let (count, rejects, lightbox) = match lang {
+            "es" => ("24 fotos", "Rechazadas", "Mesa de luz"),
+            "fr" => ("24 photos", "Photos rejetées", "Table lumineuse"),
+            _ => ("24 frames", "Rejects", "Lightbox"),
         };
         for word in [count, rejects, lightbox] {
             assert!(
-                wide.iter().any(|(l, _)| l.starts_with(word)),
+                wide.iter().any(|(l, ..)| l.starts_with(word)),
                 "{lang}: {word:?} in {wide:?}"
             );
         }
-        app.window()
-            .set_size(slint::LogicalSize::new(1366.0, 768.0));
         for left in [200.0, 240.0, 455.0] {
-            app.set_left_size(left);
+            let at_1366 = |app: &App| {
+                app.set_grid_cell(512.0);
+                app.window()
+                    .set_size(slint::LogicalSize::new(1366.0, 768.0));
+                app.set_left_size(left);
+            };
+            at_1366(&app);
             let narrow = header_texts(&app);
-            for (label, width) in &wide {
-                let at = narrow.iter().find(|(l, _)| l == label);
-                let Some((_, w)) = at else {
+            let sheet = 1366.0 - app.get_grid_w();
+            for (label, ..) in &wide {
+                let Some((_, words, x, w)) = narrow.iter().find(|(l, ..)| l == label).cloned()
+                else {
                     panic!("{lang} at {left}: {label:?} gone from {narrow:?}");
                 };
+                // Inside the header, right of the left pane.
                 assert!(
-                    (w - width).abs() < 0.5,
-                    "{lang} at {left}: {label:?} cut to {w} from {width}"
+                    x >= sheet - 0.5 && x + w <= 1366.0 + 0.5,
+                    "{lang} at {left}: {words:?} at {x}+{w}, the header {sheet}..1366"
+                );
+                // Not cut: as wide as the same words with room to spare.
+                let whole = natural(&app, &words);
+                at_1366(&app);
+                assert!(
+                    (w - whole).abs() < 0.5,
+                    "{lang} at {left}: {words:?} cut to {w} from {whole}"
                 );
             }
+            header_texts(&app);
             let s = slider(&app);
             assert!(s.size().width >= 96.0, "{lang} at {left}: the slider whole");
             // Two across at the largest size, as laid out, the pane at
@@ -660,11 +694,11 @@ fn capped_grid() -> (App, std::rc::Rc<crate::Shared>) {
 
 /// The size the header says, in its count's line.
 fn header_px(app: &App) -> String {
-    ElementHandle::find_by_element_type_name(app, "Text")
-        .filter_map(|e| e.accessible_label())
-        .find(|l| l.ends_with(" px"))
-        .map(|l| l.rsplit("\u{b7} ").next().unwrap_or_default().to_string())
-        .expect("the count's line")
+    crate::testing::label_of(app, "GridSheet::count-line")
+        .rsplit("\u{b7} ")
+        .next()
+        .unwrap_or_default()
+        .to_string()
 }
 
 /// The slider's right end on a sheet that holds the size keeps the

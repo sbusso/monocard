@@ -374,6 +374,21 @@ impl Worker {
         }
     }
 
+    /// The profile folder walked again behind the open frame, off the
+    /// window's thread, as the LENS section opens: on a file system whose
+    /// folders keep their clock when a file is added (FAT, exFAT, a
+    /// share's cache), only a walk finds it. Another list than the one
+    /// shown comes as [`Outcome::LensOptions`], with `chosen` among it:
+    /// always, since this look may take the place of one asked for the
+    /// open that has not run, whose list the window has not had.
+    /// Nothing for no frame open.
+    pub fn look_at_lens_profiles(&self, chosen: &greycard_edit::LensChoice) {
+        let look = self.queue.0.lock().expect("worker queue").lens_look.clone();
+        if let Some(look) = look {
+            look.ask(chosen, None, true, &self.deliver);
+        }
+    }
+
     /// Whether the worker's thread is still there to take a job: a
     /// panic outside any job's guard ends it, and whoever waits on an
     /// outcome would otherwise wait for ever.
@@ -499,14 +514,13 @@ impl Worker {
                                 .expect("thumbnail cache")
                                 .as_mut()
                                 .and_then(|c| {
-                                    c.get(
-                                        &hash,
-                                        size,
-                                        Tag {
-                                            recipe: THUMB_RECIPE,
-                                            stamp,
-                                        },
-                                    )
+                                    let at = |recipe| Tag { recipe, stamp };
+                                    c.get(&hash, size, at(super::thumbs::thumb_recipe(&frame.path)))
+                                        .or_else(|| {
+                                            let earlier =
+                                                super::thumbs::earlier_recipe(&frame.path)?;
+                                            c.get(&hash, size, at(earlier))
+                                        })
                                 })
                                 .map(|t| {
                                     super::thumbs::cut_to_camera(
@@ -813,6 +827,23 @@ impl Worker {
         q.free_by_test = Some((free, freed));
         q.elsewhere_by_test = elsewhere;
         cv.notify_one();
+    }
+
+    /// A UNet held for a queue of fills at `side`, holding `bytes` of
+    /// the card until it is let go.
+    #[cfg(test)]
+    pub(super) fn unet_by_test(&self, side: usize, bytes: u64) {
+        let (lock, cv) = &*self.queue;
+        lock.lock().expect("worker queue").unet_by_test = Some((side, bytes));
+        cv.notify_one();
+    }
+
+    /// Each of the open frame's fills begun so far, by name, and the
+    /// side it ran at.
+    #[cfg(test)]
+    pub(super) fn ran_at_by_test(&self) -> Vec<(String, usize)> {
+        let (lock, _) = &*self.queue;
+        lock.lock().expect("worker queue").ran_at_by_test.clone()
     }
 
     /// How many times the worker has given the card back.

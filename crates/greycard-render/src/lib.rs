@@ -14,8 +14,10 @@ pub mod border;
 pub mod detail;
 pub mod export;
 pub mod finish;
+pub mod gamut;
 pub mod geometry;
 pub mod halves;
+pub mod lanczos;
 #[cfg(feature = "mono")]
 pub mod mono;
 pub mod output_sharpen;

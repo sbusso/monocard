@@ -111,6 +111,10 @@ pub(crate) struct Develop {
     pub(crate) mat: bool,
     /// The image pixel at the view's center.
     pub(crate) center: (f32, f32),
+    /// The frame as the render last laid it out, which `center` is a
+    /// point of: a change of the geometry carries the center through
+    /// it (`viewport::frame_on_show`).
+    pub(crate) laid: Option<Laid>,
     /// Where a middle click's 200% came from, until any other change
     /// of the zoom.
     pub(crate) zoom_back: Option<ZoomBack>,
@@ -130,10 +134,10 @@ pub(crate) struct Develop {
     /// develop to land on the status line once, since that develop's
     /// "developing..." covers it at once.
     pub(crate) start_note: Option<String>,
-    /// The curve editor's last histogram and where in the look it was
-    /// taken: drawn only behind a curve that reads there
-    /// (`curve::backdrop`).
-    pub(crate) bins: Option<(greycard_viewport::render::Tap, Vec<u32>)>,
+    /// The curve editor's last histogram, where in the look it was
+    /// taken, and the mask it was weighed by: drawn only behind a curve
+    /// that reads there under that weighing (`curve::backdrop`).
+    pub(crate) bins: Option<(greycard_viewport::render::Tap, Option<usize>, Vec<u32>)>,
     /// Which scope the panel shows.
     pub(crate) scope: scope::Scope,
     /// The pointer on the view, logical pixels, while it is there:
@@ -284,6 +288,14 @@ pub(crate) struct Develop {
     /// after it, by id, until a develop lands with none: their outlines
     /// are drawn, dimmed, while they wait; and their rings, by id.
     pub(crate) fills_pending: Vec<u64>,
+    /// The last develop of the open frame came without the learned
+    /// highlight fill, which its next round brings
+    /// (`FillReport::highlight_pending`): the status line says so until
+    /// a develop lands without it, fails, or another frame opens.
+    pub(crate) highlight_pending: bool,
+    /// Whether the frame chosen takes the highlight fill, as its open
+    /// said; none until it says. The switch is free while none.
+    pub(crate) fill_takes: Option<bool>,
     pub(crate) pending_shapes: HashMap<u64, Option<PatchShape>>,
     /// The perspective guide's first stroke, while it waits for the
     /// second.
@@ -327,6 +339,10 @@ pub(crate) struct Develop {
     pub(crate) lens: LensReport,
     /// The lenses the LENS picker offers for it.
     pub(crate) lens_options: Vec<greycard_engine::lens::LensOption>,
+    /// Another list of them come from a look at the profile folder
+    /// while Find a lens is being typed in: held, so its rows do not
+    /// move under the typing, and shown when the field lets go.
+    pub(crate) lens_options_held: Option<Vec<greycard_engine::lens::LensOption>>,
     /// The frame the LENS filter and Maker row were last set for: a
     /// filter typed is kept while it stays open.
     pub(crate) lens_frame: Option<crate::versions::Key>,
@@ -427,9 +443,10 @@ pub(crate) struct Develop {
     /// old picture.
     pub(crate) held: Option<Edit>,
     pub(crate) status_kept: Option<slint::SharedString>,
-    /// The view (the frame's size and the center) before a peek, put
-    /// back after it: a hover over a row is not to lose a zoomed place.
-    pub(crate) view_kept: Option<((u32, u32), (f32, f32))>,
+    /// The view (the frame's size, the center, and the frame laid out)
+    /// before a peek, put back after it: a hover over a row is not to
+    /// lose a zoomed place.
+    pub(crate) view_kept: Option<ViewKept>,
     /// The mask toggle as it was before a tool went in hand; the mask
     /// shows while a shape is placed, and the toggle comes back after,
     /// unless it was thrown meanwhile.
@@ -513,6 +530,26 @@ pub(crate) struct StoodView {
     /// What the picture standing in shows of the frame.
     pub(crate) shows: Stood,
 }
+
+/// The frame on show as the render laid it out: the frame (the file
+/// and the version) whose develop was drawn, none for no develop, the
+/// geometry it was drawn under, the size of the source drawn and the
+/// frame's own quarter turns clockwise it stands at (`Sidecar::turn`),
+/// and the frame on the leveled plane, so a point of the frame can be
+/// taken to the source and onto the next frame laid out of the same
+/// picture.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct Laid {
+    pub(crate) of: Option<(PathBuf, Option<Arc<str>>)>,
+    pub(crate) geometry: greycard_edit::geometry::Geometry,
+    pub(crate) source: (f32, f32),
+    pub(crate) turn: u8,
+    pub(crate) frame: greycard_edit::geometry::Frame,
+}
+
+/// A view kept across a peek: the frame's size, the center, and the
+/// frame laid out.
+pub(crate) type ViewKept = ((u32, u32), (f32, f32), Option<Laid>);
 
 /// What a picture standing in for a develop shows.
 #[derive(Clone, Copy, Debug, PartialEq)]

@@ -155,6 +155,8 @@ must give, and the list is made from its `Facts`.
 | `Bin` | In place of the demosaic, for the reduced develop | core, `develop/reduced.rs` | none |
 | `Learned` | In place of the demosaic: the learned denoiser's network and a plain demosaic beside it | ai, through the walk's `Models` (`worker/base.rs`) | ONNX Runtime's own providers |
 | `Denoise` | The profiled denoise on camera RGB | core, `develop/denoise.rs` | none |
+| `HighlightFill` | The learned highlight fill, where the edit names a version this build has, on a Bayer raw of the camera's own: fields made from the plain picture through the matrix, applied to it and a learned pair's other half, in the mosaic's frame; at a bin, look-scaled. The frame's range is carried to `Tap::Guide` as a shift from before the fill. The fields are kept (`KeptFill`, in `Kept`, counted in its bytes and shelved only with a filled picture) and applied again by a walk of the same steps in the same places; the walk asks its hold between the fill's parts whether to give way | core, `develop/highlight_fill/camera.rs`; weights from ai's `highlight`; the stage in the engine's `highlight_fill.rs` and `walk::fill_op` | none |
+| `HighlightStandIn` | The window's alone, never in a list an edit makes: the last fields applied through this walk's white balance, standing in for `HighlightFill` while a white balance or the profiled denoise's strength moves (`stages::stands_in_for`); walked on a copy of the frame's kept points, which keep none of it | engine, `highlight_fill::stand_in` over core's `CameraFill::through` | none |
 | `Warp` | A DNG's own lens warps, on the camera's geometry | core, `develop/warp.rs` | none |
 | `IntoWorking` | The matrix into linear Rec.2020, the camera profile's map, the orientation | core, `develop::finish` | none |
 | `Blend` | The learned pair blended by strength | engine, `walk::blend` | none |
@@ -178,7 +180,7 @@ its name for the move into the working space; §454 had it renamed,
 but only its other half landed: dehaze and sharpen left it and are
 stages after the lens.
 
-**Kept points.** A list carries `Keep` marks (`Pair`, `Base`,
+**Kept points.** A list carries `Keep` marks (`Camera`, `Pair`, `Base`,
 `Patched`, `PreSharpen`, `Developed`); at each, a walk stores the
 picture, what it measured, its taps, its steps, and where each ran, in
 a `walk::Kept`. The next walk resumes from the last point whose steps
@@ -190,6 +192,24 @@ device touched (an export runs under the device when one is lent,
 shelf and the prefetch hold the same. The open file's export resumes
 from a copy of it that shares every picture by `Arc`, so the window's
 device points survive the export (§501, §505, §506).
+
+**The highlight fill's rounds** (§719 §3, `worker/develop.rs`). A
+window's first round whose walk would make the fill delivers its
+picture without it: the list without the fill (`Steps::without_fill`),
+or with the last fields standing in, the camera picture kept where the
+fill would run (`Keep::Camera`, `Steps::kept_before_fill`; the
+stand-in's walk hands that one point to the frame). The frame says the
+fill-off edit until the next round (the masks' edit and print, the
+develop delivered), and its edit's pictures wait (`filling`). The next
+round (`Job::Fill`, `walk::walk_fill_round`) walks from the camera
+picture, gives way to a newer open or develop until the fill is made,
+leaving the frame as it was. It takes the frame's picture without the
+fill (its kept points, base, bands, and guide) into the round and lets
+go of all of it once the fill is made, before the filled base is; a
+round that fails after that leaves the frame only its fields, so the
+next develop makes the base anew. Through, it lets go of the camera
+picture. Exports, the prefetch, and the reduced develops make the fill
+in their one walk.
 
 **The reduced develop is the same list.** `Purpose::Reduced` (the
 edit's pictures of a frame not open) bins the mosaic by its cell
@@ -274,12 +294,14 @@ beside it as the placement setting says: JSON of the edit, its
 history, its versions, its meta, and its exports (`Sidecar` in
 `crates/greycard-edit/src/sidecar.rs`). The schema version is
 `VERSION` in `crates/greycard-edit/src/lib.rs`; every field has a
-default, a changed meaning bumps the version, and a newer sidecar is
-refused. The migrations are greycard-edit's (`migration.rs`); the step
+default and is left out of a state at it, no default changes within
+a version, and a changed meaning bumps the version. A newer sidecar
+is refused only past its read floor; past its write floor it opens
+read-only (§734). The migrations are greycard-edit's (`migration.rs`); the step
 that waits on the frame's shape runs at an open, in edit-io's
 `on_disk.rs`, which also merges an `.xmp` beside the frame (§16,
-§463, §464). Revisions and the join of two machines' copies are §243
-and §244.
+§463, §464). Revisions and the join of two machines' copies are §243,
+§244, and §734.
 
 **The index.** `library.sqlite` under the data folder, owned by
 greycard-library, a cache the files can rebuild (§72). Its version is

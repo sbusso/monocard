@@ -619,6 +619,8 @@ pub fn render_framed(
     white: Option<&greycard_edit::WhiteShift>,
     detail: Option<(&crate::detail::BandImages, &crate::detail::DetailMeta)>,
 ) -> Rendered {
+    let settings = settings.for_edit(edit);
+    let settings = &*settings;
     // The picture from before the Detail section, when it came with
     // the bands: what the range masks read, through the resize with
     // the picture.
@@ -648,7 +650,8 @@ pub fn render_framed(
                 "the export",
             )
         });
-    let detail_fitted = detail.and_then(|(d, _)| d.fit(settings.long_edge, sample.is_some()));
+    let mut detail_fitted = detail
+        .and_then(|(d, meta)| d.fit(settings.long_edge, sample.is_some(), image, meta.sharpened));
     let sample_fitted = match &detail_fitted {
         Some(d) => d.sample.clone(),
         None => sample.and_then(|s| fit(s, settings.long_edge).map(std::sync::Arc::new)),
@@ -666,7 +669,20 @@ pub fn render_framed(
                     unsharpened = f.clone();
                     sampled = Some(&unsharpened);
                 }
+                // The picture on the sharpen's other side, output
+                // sharpened alike, so the masks' Sharpen of one reaches
+                // it after this step as before it.
+                let sharpened = detail.is_some_and(|(_, m)| m.sharpened);
+                let other = detail_fitted
+                    .as_ref()
+                    .and_then(|d| d.sharpen.as_ref())
+                    .filter(|d| (d.width, d.height) == (f.width, f.height))
+                    .map(|d| crate::detail::other_side(&f, d, sharpened));
                 sharpen::sharpen(&mut f, &options, None, clip_level);
+                if let (Some(mut other), Some(d)) = (other, detail_fitted.as_mut()) {
+                    sharpen::sharpen(&mut other, &options, None, clip_level);
+                    d.sharpen = Some(crate::detail::delta_between(&f, &other, sharpened));
+                }
             }
             fitted = f;
             &fitted
@@ -944,6 +960,61 @@ pub(crate) fn fit(image: &WorkingImage, long_edge: Option<u32>) -> Option<Workin
     fit_exact(image, w, h)
 }
 
+/// The size a frame of `size`, too large to hold within `limit`
+/// pixels, is cut at instead for an export of `long_edge`: twice the
+/// size [`fit`] would take it to, or as near that as `limit` allows,
+/// and always larger than it, so the fit still takes it the rest of
+/// the way, sharpening after it as ever, to the same size it would
+/// have taken the whole frame to. None when the export asks for no
+/// smaller size or for one that cannot be held either.
+pub fn reduced_frame(
+    size: (usize, usize),
+    long_edge: Option<u32>,
+    limit: usize,
+) -> Option<(usize, usize)> {
+    let edge = long_edge? as usize;
+    let fitted = fit_size(size.0, size.1, long_edge)?;
+    let (tw, th) = (fitted.0 as usize, fitted.1 as usize);
+    let room = (limit as f64 / (tw as f64 * th as f64)).sqrt().min(2.0);
+    let (w, h) = (
+        (tw as f64 * room).floor() as usize,
+        (th as f64 * room).floor() as usize,
+    );
+    // The floor may land the fit a pixel off the whole frame's on
+    // the short side; the nearest a pixel either way on each that
+    // lands on it, the floor itself first.
+    let near = |n: usize| [n, n.saturating_sub(1), n + 1];
+    let fits = |(w, h): (usize, usize)| {
+        w.min(h) >= 1
+            && w.max(h) > edge
+            && w * h <= limit
+            && fit_size(w, h, long_edge) == Some(fitted)
+    };
+    near(w)
+        .into_iter()
+        .flat_map(|w| near(h).map(|h| (w, h)))
+        .find(|&c| fits(c))
+        .or_else(|| {
+            // None of those: where the limit is tight and the short
+            // side narrow, the one short side that rounds to the fit's
+            // at a long side may not be held with it. So each long side
+            // down from there to just past the export's, the largest
+            // short side held with it, among the few that round to the
+            // fit's: at most `edge` long sides, four short ones each.
+            let (long, short) = (tw.max(th), tw.min(th));
+            let wide = size.0 >= size.1;
+            let top = (long as f64 * room).floor() as usize + 1;
+            (edge + 1..=top).rev().find_map(|l| {
+                let most = (limit / l)
+                    .min((l as f64 * (short as f64 + 0.5) / edge as f64).ceil() as usize);
+                (most.saturating_sub(3)..=most)
+                    .rev()
+                    .map(|s| if wide { (l, s) } else { (s, l) })
+                    .find(|&c| fits(c))
+            })
+        })
+}
+
 /// The size [`fit`] takes a picture of this size to, or none when it
 /// already fits.
 pub(crate) fn fit_size(width: usize, height: usize, long_edge: Option<u32>) -> Option<(u32, u32)> {
@@ -958,19 +1029,18 @@ pub(crate) fn fit_size(width: usize, height: usize, long_edge: Option<u32>) -> O
     Some((w, h))
 }
 
-/// `image` resampled to `w` by `h` as [`fit`] resamples it, up or down;
-/// `None` when it is that size already.
+/// `image` resampled to `w` by `h` as [`fit`] resamples it, up or down,
+/// by our Lanczos3 ([`crate::lanczos`]), which keeps light over one and
+/// values under zero; `None` when it is that size already.
 pub fn fit_exact(image: &WorkingImage, w: u32, h: u32) -> Option<WorkingImage> {
     if (image.width as u32, image.height as u32) == (w, h) {
         return None;
     }
-    let src: image::ImageBuffer<image::Rgb<f32>, &[f32]> =
-        image::ImageBuffer::from_raw(image.width as u32, image.height as u32, &image.data[..])?;
-    let out = image::imageops::resize(&src, w, h, image::imageops::FilterType::Lanczos3);
+    let (w, h) = (w as usize, h as usize);
     Some(WorkingImage {
-        width: w as usize,
-        height: h as usize,
-        data: out.into_raw(),
+        width: w,
+        height: h,
+        data: crate::lanczos::resize(&image.data, image.width, image.height, 3, w, h),
     })
 }
 
@@ -986,10 +1056,9 @@ pub fn fit_exact_plane(
     if (width as u32, height as u32) == (w, h) {
         return None;
     }
-    let src: image::ImageBuffer<image::Luma<f32>, &[f32]> =
-        image::ImageBuffer::from_raw(width as u32, height as u32, data)?;
-    let out = image::imageops::resize(&src, w, h, image::imageops::FilterType::Lanczos3);
-    Some(out.into_raw())
+    Some(crate::lanczos::resize(
+        data, width, height, 1, w as usize, h as usize,
+    ))
 }
 
 /// What an export says about itself beyond the source's tags: where
@@ -1003,6 +1072,23 @@ pub struct Origin {
 }
 
 impl Settings {
+    /// The sheet as a frame under `edit` is exported by it: with the
+    /// sheet's Sharpen off where the edit's Output sharpen acts (the
+    /// picture's on, or a mask adding to it), since that sharpen is in
+    /// the pixels of the picture made and a second after the resize
+    /// stacks on it. A mask's take alone does not act. Per frame, so a
+    /// set mixes both.
+    pub fn for_edit(&self, edit: &greycard_edit::Edit) -> std::borrow::Cow<'_, Settings> {
+        if self.sharpen != Sharpen::Off && edit.output_sharpens() {
+            std::borrow::Cow::Owned(Settings {
+                sharpen: Sharpen::Off,
+                ..self.clone()
+            })
+        } else {
+            std::borrow::Cow::Borrowed(self)
+        }
+    }
+
     /// What the sheet asked for, in words, for the export's XMP.
     pub fn describe(&self) -> String {
         let mut s = self.format.name().to_string();
@@ -1190,6 +1276,62 @@ fn software() -> String {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// A frame too large to hold is cut at twice the export's size, or
+    /// as near it as the limit allows, always larger than the export
+    /// and fitting to the very size the whole frame would; never for an
+    /// export at full size, or one as large as the frame, or one that
+    /// cannot be held itself.
+    #[test]
+    fn a_frame_too_large_is_cut_near_the_size_asked() {
+        let limit = 200_000_000;
+        let frame = (22_917, 15_311);
+        let at = reduced_frame(frame, Some(2048), limit).unwrap();
+        let fitted = fit_size(frame.0, frame.1, Some(2048)).unwrap();
+        assert_eq!(at, (2 * fitted.0 as usize, 2 * fitted.1 as usize));
+        for (edge, frame) in [
+            (13_000, (22_917, 15_311)),
+            (15_000, (15_311, 22_917)),
+            (16_000, (24_001, 16_003)),
+            (9_999, (17_001, 12_997)),
+        ] {
+            let at = reduced_frame(frame, Some(edge), limit).unwrap();
+            assert!(at.0 * at.1 <= limit, "{at:?}");
+            assert!(at.0.max(at.1) > edge as usize, "{at:?}");
+            assert_eq!(
+                fit_size(at.0, at.1, Some(edge)),
+                fit_size(frame.0, frame.1, Some(edge)),
+                "{frame:?} at {edge}"
+            );
+        }
+        assert_eq!(reduced_frame(frame, None, limit), None);
+        assert_eq!(reduced_frame(frame, Some(22_917), limit), None);
+        assert_eq!(reduced_frame(frame, Some(20_000), limit), None);
+    }
+
+    /// Where the limit is tight and the short side narrow, the one
+    /// short side that rounds to the fit's beside the long side a
+    /// pixel either way of the room the limit leaves is not held with
+    /// it; a long side further down still finds a cut, the one of
+    /// the longest long side, held and fitting to the whole frame's
+    /// size.
+    #[test]
+    fn a_frame_too_large_is_cut_further_down_where_it_must_be() {
+        for (frame, edge, limit, want) in [
+            ((4388, 417), 2968, 884_014, (3048, 290)),
+            ((164, 4013), 137, 1412, (8, 176)),
+            ((3746, 267), 1414, 277_652, (1969, 141)),
+            ((214_077, 12_961), 53_419, 200_000_000, (57_474, 3479)),
+        ] {
+            let at = reduced_frame(frame, Some(edge), limit);
+            assert_eq!(at, Some(want), "{frame:?} at {edge}");
+            assert!(want.0 * want.1 <= limit && want.0.max(want.1) > edge as usize);
+            assert_eq!(
+                fit_size(want.0, want.1, Some(edge)),
+                fit_size(frame.0, frame.1, Some(edge))
+            );
+        }
+    }
 
     /// A synthetic camera profile with a tone curve, a look table fitted
     /// under per channel, and a general one, by name.
@@ -1807,6 +1949,239 @@ mod tests {
         crate::testing::remove_dir_retry(&dir);
     }
 
+    /// A smaller export keeps the light over one: a grey ramp to scene
+    /// 1.9, exported at full size and at half under exposure -1.5,
+    /// reads the same at each scene value, where the resize used to hold
+    /// everything over one at one and the half-size export went flat
+    /// past scene 1.0 (56856 from 1.14 to 1.80, against 58445 to 62871
+    /// at full size).
+    #[test]
+    fn a_smaller_export_keeps_the_light_over_one() {
+        let (w, h) = (240usize, 60usize);
+        let mut image = WorkingImage::new(w, h);
+        for (i, px) in image.data.chunks_mut(3).enumerate() {
+            px.fill(1.9 * (i % w) as f32 / w as f32);
+        }
+        let mut edit = greycard_edit::Edit::default();
+        edit.light.exposure = -1.5;
+        let at = |long_edge| {
+            let settings = Settings {
+                format: Format::Tiff,
+                sharpen: Sharpen::Off,
+                long_edge,
+                ..Settings::default()
+            };
+            let rendered = render(
+                &image,
+                &edit,
+                &greycard_edit::NoStores,
+                (w as u32, h as u32),
+                &settings,
+                &Default::default(),
+                2.0,
+                None,
+                finish::Source::SCENE,
+                None,
+                None,
+            );
+            let Pixels::Sixteen(p) = rendered.pixels else {
+                panic!("a TIFF is sixteen bits")
+            };
+            (rendered.width as usize, p)
+        };
+        let (fw, full) = at(None);
+        let (hw, half) = at(Some(120));
+        assert_eq!((fw, hw), (w, w / 2));
+        let row = h / 4;
+        let mut last = 0;
+        for x in (70..115).step_by(5) {
+            // Half-size pixel x covers full-size pixels 2x and 2x + 1.
+            let small = half[(row / 2 * hw + x) * 3];
+            let large = (u32::from(full[(row * fw + 2 * x) * 3])
+                + u32::from(full[(row * fw + 2 * x + 1) * 3]))
+                / 2;
+            let scene = 1.9 * (2 * x + 1) as f32 / w as f32;
+            assert!(small > last, "flat at scene {scene}: {small}");
+            assert!(
+                (i64::from(small) - i64::from(large)).abs() < 40,
+                "scene {scene}: {small} at half, {large} at full"
+            );
+            last = small;
+        }
+    }
+
+    /// The output sharpen's edge gain on a hard grey step, encoded 0.3
+    /// to 0.7: what the sharpen adds to the step's span from its darkest
+    /// to its lightest pixel near it, over the step, the same export with
+    /// the output sharpen off taken away, so the resize's own ring is
+    /// not counted. Sixteen bits, no sheet sharpening.
+    fn edge_gain(
+        image: &WorkingImage,
+        output: greycard_edit::OutputSharpen,
+        long_edge: Option<u32>,
+    ) -> f32 {
+        let span = |output| {
+            let edit = greycard_edit::Edit {
+                output_sharpen: output,
+                ..Default::default()
+            };
+            let settings = Settings {
+                format: Format::Tiff,
+                sharpen: Sharpen::Off,
+                long_edge,
+                ..Settings::default()
+            };
+            let (w, h) = (image.width as u32, image.height as u32);
+            let rendered = render(
+                image,
+                &edit,
+                &greycard_edit::NoStores,
+                (w, h),
+                &settings,
+                &Default::default(),
+                f32::INFINITY,
+                None,
+                finish::Source::Display,
+                None,
+                None,
+            );
+            let Pixels::Sixteen(p) = rendered.pixels else {
+                panic!("a TIFF is sixteen bits")
+            };
+            let (rw, rh) = (rendered.width as usize, rendered.height as usize);
+            // The middle row, twenty pixels of this picture either side
+            // of the step, past the widest blur's reach and the ring's.
+            let row = &p[(rh / 2) * rw * 3..(rh / 2 + 1) * rw * 3];
+            let near = (rw / 2 - 20..rw / 2 + 20).map(|x| f32::from(row[x * 3]) / 65535.0);
+            let (lo, hi) = near.fold((f32::MAX, f32::MIN), |(lo, hi), v| (lo.min(v), hi.max(v)));
+            hi - lo
+        };
+        let off = greycard_edit::OutputSharpen {
+            amount: 0.0,
+            ..output
+        };
+        (span(output) - span(off)) / 0.4
+    }
+
+    /// A hard grey step across the middle of a frame 6144 wide, 3
+    /// times 2048, so the step falls on a pixel's edge at 2048 too.
+    fn hard_step() -> WorkingImage {
+        let (w, h) = (6144usize, 24usize);
+        let mut image = WorkingImage::new(w, h);
+        let (dark, light) = (finish::decode(0.3), finish::decode(0.7));
+        for (i, px) in image.data.chunks_mut(3).enumerate() {
+            px.fill(if i % w < w / 2 { dark } else { light });
+        }
+        image
+    }
+
+    /// The radius is in the pixels of the picture made: an export at 2048
+    /// of a frame 6144 wide gives a grating as much gain at a frequency
+    /// of its own pixels as the full-size export of a frame 2048 wide
+    /// gives the same grating, within a fifth of a percent (1e-4
+    /// measured). The old radius, a third of a pixel there, gave radius
+    /// 3 a gain of 1.43 at a period of 6 against the full size's 2.00,
+    /// and radius 1 about none. A grating and not a step, because a
+    /// step's own edge is not the same at the two sizes: Lanczos spreads
+    /// a hard step over two of the smaller picture's pixels, and the
+    /// sharpen reads that softer edge (the hard step's added span,
+    /// printed: 0.21 at full size and 0.05 at 2048 at radius 0.5, 0.60
+    /// and 0.30 at 1, 0.87 and 0.68 at 3; before, at 2048, 0.00, 0.00,
+    /// and 0.30).
+    #[test]
+    fn the_same_radius_gives_the_same_edge_gain_at_any_size() {
+        let image = hard_step();
+        for radius in [0.5f32, 1.0, 2.0, 3.0] {
+            let output = greycard_edit::OutputSharpen {
+                amount: 1.0,
+                radius,
+                threshold: 0.0,
+                ..Default::default()
+            };
+            let full = edge_gain(&image, output, None);
+            let small = edge_gain(&image, output, Some(2048));
+            eprintln!(
+                "radius {radius}: a hard step's added span {full:.3} at full size, \
+                 {small:.3} at 2048"
+            );
+            assert!(small > 0.04, "radius {radius}: {small} at 2048");
+            for period in [4.0f32, 6.0, 12.0] {
+                let a = grating_gain(2048, period, output, None);
+                let b = grating_gain(6144, 3.0 * period, output, Some(2048));
+                eprintln!("  period {period}: gain {a:.4} full size, {b:.4} at 2048");
+                assert!(a > 1.02, "radius {radius}, period {period}: {a}");
+                assert!(
+                    (a - b).abs() < 2e-3 * a,
+                    "radius {radius}, period {period}: {a} full size, {b} at 2048"
+                );
+            }
+        }
+    }
+
+    /// The output sharpen's gain on a grey grating `period` pixels of a
+    /// frame `w` wide, encoded 0.5 ± 0.15, exported at `long_edge`: the
+    /// grating's amplitude at its own frequency in the export, sharpened
+    /// over unsharpened, in the middle row's middle half.
+    fn grating_gain(
+        w: usize,
+        period: f32,
+        output: greycard_edit::OutputSharpen,
+        long_edge: Option<u32>,
+    ) -> f32 {
+        let h = 12usize;
+        let mut image = WorkingImage::new(w, h);
+        for (i, px) in image.data.chunks_mut(3).enumerate() {
+            let x = (i % w) as f32 + 0.5;
+            let v = 0.5 + 0.15 * (std::f32::consts::TAU * x / period).sin();
+            px.fill(finish::decode(v));
+        }
+        let amplitude = |output| {
+            let edit = greycard_edit::Edit {
+                output_sharpen: output,
+                ..Default::default()
+            };
+            let settings = Settings {
+                format: Format::Tiff,
+                sharpen: Sharpen::Off,
+                long_edge,
+                ..Settings::default()
+            };
+            let rendered = render(
+                &image,
+                &edit,
+                &greycard_edit::NoStores,
+                (w as u32, h as u32),
+                &settings,
+                &Default::default(),
+                f32::INFINITY,
+                None,
+                finish::Source::Display,
+                None,
+                None,
+            );
+            let Pixels::Sixteen(p) = rendered.pixels else {
+                panic!("a TIFF is sixteen bits")
+            };
+            let (rw, rh) = (rendered.width as usize, rendered.height as usize);
+            let out_period = period * rw as f32 / w as f32;
+            let row = &p[(rh / 2) * rw * 3..(rh / 2 + 1) * rw * 3];
+            let (mut re, mut im) = (0.0f64, 0.0f64);
+            let (a, b) = (rw / 4, 3 * rw / 4);
+            for x in a..b {
+                let v = f64::from(row[x * 3]) / 65535.0;
+                let t = std::f64::consts::TAU * (x as f64 + 0.5) / f64::from(out_period);
+                re += v * t.cos();
+                im += v * t.sin();
+            }
+            (2.0 * (re * re + im * im).sqrt() / (b - a) as f64) as f32
+        };
+        let off = greycard_edit::OutputSharpen {
+            amount: 0.0,
+            ..output
+        };
+        amplitude(output) / amplitude(off)
+    }
+
     /// A mask with every section of a look moved, over a feathered
     /// linear shape, the picture's planes and guide made from it: the
     /// export, sixteen bits, at an opacity.
@@ -1935,6 +2310,9 @@ mod tests {
             structure: -0.4,
             dehaze: 0.4,
             sharpen: 0.0,
+            output_sharpen: 0.0,
+            output_sharpen_radius: None,
+            output_sharpen_threshold: None,
         };
         let off = opacity_render(&image, &look, 1.0, false);
         assert_eq!(opacity_render(&image, &look, 0.0, true), off, "none is off");
@@ -3167,3 +3545,8 @@ mod tests {
         crate::testing::remove_dir_retry(&dir);
     }
 }
+
+#[cfg(test)]
+mod output_sharpen_tests;
+#[cfg(test)]
+mod vignette_tests;

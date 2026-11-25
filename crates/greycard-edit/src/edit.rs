@@ -18,6 +18,11 @@ use crate::{
 pub struct Edit {
     /// Schema version of the struct as written.
     pub version: u32,
+    /// The rendering the state was made under ([`crate::PROCESS`]):
+    /// one with none was made before schema 10, under the first. Never
+    /// changed once made, by a read, a migration, a join, or a save.
+    #[serde(default = "first_process")]
+    pub process: u32,
     /// Version 4's step still waits on the frame's shape
     /// ([`Edit::needs_frame`]). Kept apart from `version`, so an edit
     /// written back meanwhile is at this build's version and no other
@@ -29,6 +34,7 @@ pub struct Edit {
     /// been, or AgX. Global, as the curve is; left out of a sidecar at its
     /// default, so a picture nobody switched writes what it always wrote.
     #[serde(skip_serializing_if = "DisplayCurve::is_channels")]
+    #[serde(deserialize_with = "crate::meta::newer_loose")]
     pub display_curve: DisplayCurve,
     pub white_balance: WhiteBalance,
     pub noise: Noise,
@@ -74,7 +80,16 @@ pub struct Edit {
     pub vignette: vignette::Vignette,
     /// The grain over the frame as shown.
     pub grain: grain::Grain,
+    #[serde(deserialize_with = "crate::meta::newer_loose")]
     pub demosaic: Demosaic,
+    /// The learned highlight fill, by the name of the version the edit
+    /// was made with (`"hl-1"`); absent, off. A name and not an enum,
+    /// so a sidecar naming a version this build lacks still reads,
+    /// develops without the fill ([`Edit::highlight_fill`]), and is
+    /// written back as it was. Left out of a sidecar when off, so every
+    /// sidecar and develop key written before it is unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub highlight_fill: Option<String>,
     /// The camera profile the sensor's color is taken through: the
     /// file's own calibrations, or a DCP from the profile directory.
     pub camera: Camera,
@@ -89,6 +104,30 @@ pub struct Edit {
     #[cfg(feature = "mono")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mono: Option<Box<mono_core::MonoEdit>>,
+    /// The frame's turn ([`crate::Sidecar::turn`]) this edit's
+    /// positions were placed under: the crop, the keystone, a held
+    /// aspect, the masks and the repair patches are in the frame that
+    /// turn made (§724). A state as written carries it; a copy shown
+    /// is already in the sidecar's turn, and has 0. Left out at 0, read
+    /// loosely, and last, so a state written with it reads the same in
+    /// any order.
+    #[serde(
+        default,
+        skip_serializing_if = "is_unturned",
+        deserialize_with = "crate::meta::loose_turn"
+    )]
+    pub placed_under: u8,
+    /// A copy shown with its masks or patches still where they were
+    /// placed under another turn, for want of the frame's shape
+    /// ([`crate::Line::current_waits`], §724), and every edit made from
+    /// it by a clone: whatever is done to it, it is not the picture.
+    /// Never recorded ([`crate::Line::record_as`]) and never written.
+    #[serde(skip)]
+    pub unturned: bool,
+}
+
+fn is_unturned(turn: &u8) -> bool {
+    *turn == 0
 }
 
 /// The part of an edit that is a look: what the viewport and the
@@ -291,6 +330,19 @@ impl Edit {
         [Self::default(), Self::raw_without_lens()]
     }
 
+    /// Whether this is `other` but for the process each was made under
+    /// ([`Edit::process`]): what a state develops, not the rendering it
+    /// was made for. The rule for a default: a state an earlier process
+    /// made at the defaults is still no develop.
+    pub fn develops_as(&self, other: &Edit) -> bool {
+        if self.process == other.process {
+            return self == other;
+        }
+        let mut same = self.clone();
+        same.process = other.process;
+        same == *other
+    }
+
     /// A raw's default with the lens section off: a fresh edit's start
     /// with lens corrections off for new edits.
     pub fn raw_without_lens() -> Self {
@@ -408,6 +460,30 @@ impl Edit {
                 .any(|a| a.look.light.tone.midtones != 0.0)
     }
 
+    /// Whether the output sharpen acts, whose radius
+    /// [`crate::key::OUTPUT_SHARPEN`] versions: the picture's own, or a
+    /// mask's positive share of it, which sharpens with the picture's
+    /// off, at the mask's own radius or the picture's.
+    pub fn output_sharpens(&self) -> bool {
+        self.output_sharpen.acting().is_some()
+            || self.adjustments.iter().any(|a| {
+                a.enabled
+                    && a.strength() > 0.0
+                    && !a.mask.is_empty()
+                    && a.look.detail.enabled
+                    && a.look.detail.output_sharpen > 0.0
+            })
+    }
+
+    /// Whether some mask holds a linear gradient, whose ramp
+    /// [`crate::key::LINEAR_RAMP`] versions.
+    pub fn has_linear_gradient(&self) -> bool {
+        self.adjustments
+            .iter()
+            .flat_map(|a| &a.mask.components)
+            .any(|c| matches!(c.shape, crate::mask::Shape::Linear { .. }))
+    }
+
     /// Whether the range masks read a picture of their own, the one
     /// from before the Detail section: some mask has a Luminance or
     /// Color shape and the section does something. Switched off or on,
@@ -461,10 +537,39 @@ impl Edit {
     }
 }
 
+/// The process of a state written with none: every one before schema 10.
+fn first_process() -> u32 {
+    1
+}
+
+impl Edit {
+    /// The edit as compact JSON, every field written but `process`: what
+    /// was made of an edit before it had one, a state's id at 9 and a
+    /// picture's key, which the process is not in while one exists.
+    pub(crate) fn json_but_process(&self) -> String {
+        let text = serde_json::to_string(self).expect("an edit serializes");
+        // `process` follows `version`, the first field: serde writes a
+        // struct's fields in their order.
+        let head = format!("{{\"version\":{},", self.version);
+        let process = format!("\"process\":{},", self.process);
+        let rest = text
+            .strip_prefix(&head)
+            .and_then(|t| t.strip_prefix(&process));
+        // A field moved ahead of `process` would leave it in, and change
+        // every id at 9 and every picture's key with it.
+        debug_assert!(rest.is_some(), "`process` is not second: {text:.80}");
+        match rest {
+            Some(rest) => format!("{head}{rest}"),
+            None => text,
+        }
+    }
+}
+
 impl Default for Edit {
     fn default() -> Self {
         Self {
             version: VERSION,
+            process: crate::process_now(),
             frame_pending: false,
             light: Light::default(),
             display_curve: DisplayCurve::default(),
@@ -486,15 +591,30 @@ impl Default for Edit {
             grain: grain::Grain::default(),
             adjustments: Vec::new(),
             demosaic: Demosaic::default(),
+            highlight_fill: None,
             camera: Camera::default(),
             retouch: retouch::Retouch::default(),
             #[cfg(feature = "mono")]
             mono: None,
+            placed_under: 0,
+            unturned: false,
         }
     }
 }
 
 impl Edit {
+    /// The highlight fill's version this edit asks for, when this
+    /// build has it ([`crate::key::HIGHLIGHT_FILLS`]); `None` when the
+    /// fill is off or names a version this build lacks, which develops
+    /// as off.
+    pub fn highlight_fill(&self) -> Option<&'static str> {
+        let name = self.highlight_fill.as_deref()?;
+        crate::key::HIGHLIGHT_FILLS
+            .iter()
+            .copied()
+            .find(|&v| v == name)
+    }
+
     /// The engine's settings for this edit, with the camera profile it
     /// names read through `loader`. Exposure and the tone curve are not
     /// the engine's; see [`Light`].
@@ -646,11 +766,57 @@ pub fn overlay_changes(before: &Edit, touched: &Edit, onto: &Edit) -> Result<Edi
 }
 
 #[cfg(test)]
+mod process_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::{Learned, Tone};
     use greycard_core::color::WhitePoint;
     use greycard_core::develop::dehaze::DehazeOptions;
+
+    /// The highlight fill came in with no new version: off, it is not
+    /// written, so an edit serializes as it did before it, byte for
+    /// byte; on, it is written and read back; a version this build
+    /// lacks reads, develops as off, and is written back as it was,
+    /// through the sidecar too.
+    #[test]
+    fn the_highlight_fill_is_written_only_when_on_and_kept_when_unknown() {
+        let old = r#"{"version": 9, "light": {"exposure": 0.5}, "demosaic": "rcd-vng4"}"#;
+        let e = Edit::from_json(old).unwrap();
+        assert_eq!(e.highlight_fill, None);
+        assert_eq!(e.highlight_fill(), None);
+        let json = e.to_json();
+        assert!(!json.contains("highlight_fill"), "{json}");
+        let mut set = e.clone();
+        set.highlight_fill = Some("hl-1".into());
+        let mut bare: serde_json::Value = serde_json::from_str(&set.to_json()).unwrap();
+        assert_eq!(bare["highlight_fill"], "hl-1");
+        bare.as_object_mut().unwrap().remove("highlight_fill");
+        assert_eq!(
+            bare,
+            serde_json::from_str::<serde_json::Value>(&json).unwrap(),
+            "the field is all it adds"
+        );
+        assert_eq!(Edit::from_json(&set.to_json()).unwrap(), set);
+        assert_eq!(set.highlight_fill(), Some("hl-1"));
+
+        let newer = r#"{"version": 9, "highlight_fill": "hl-9"}"#;
+        let e = Edit::from_json(newer).unwrap();
+        assert_eq!(e.highlight_fill.as_deref(), Some("hl-9"));
+        assert_eq!(e.highlight_fill(), None, "develops as off");
+        assert_eq!(Edit::from_json(&e.to_json()).unwrap(), e);
+
+        let mut sidecar = crate::Sidecar::default();
+        sidecar.record(e);
+        let read = crate::Sidecar::from_json(&sidecar.to_json(), &crate::Edit::default()).unwrap();
+        assert_eq!(read.current.highlight_fill.as_deref(), Some("hl-9"));
+        assert!(
+            !crate::Sidecar::default()
+                .to_json()
+                .contains("highlight_fill")
+        );
+    }
 
     fn masked(detail: Detail) -> Edit {
         let mut edit = Edit::default();
@@ -974,6 +1140,33 @@ mod tests {
         assert_eq!(overlay_changes(&before, &before, &frame).unwrap(), frame);
     }
 
+    /// The highlight fill's switch reached in culling goes over each
+    /// frame as the one change, a frame whose own fill is another
+    /// version or none alike; turned off, it comes off; untouched, each
+    /// frame keeps its own.
+    #[test]
+    fn the_highlight_fill_goes_over_a_frame_as_its_switch_alone() {
+        let before = Edit::default();
+        let mut on = before.clone();
+        on.highlight_fill = Some("hl-1".into());
+        let mut exposed = before.clone();
+        exposed.light.exposure = 0.4;
+        let mut older = before.clone();
+        older.highlight_fill = Some("hl-9".into());
+        for frame in [before.clone(), exposed.clone(), older.clone()] {
+            let merged = overlay_changes(&before, &on, &frame).unwrap();
+            assert_eq!(merged.highlight_fill.as_deref(), Some("hl-1"));
+            assert_eq!(merged.light, frame.light);
+            let off = overlay_changes(&on, &before, &merged).unwrap();
+            assert_eq!(off.highlight_fill, None);
+            assert_eq!(off.light, frame.light);
+            let mut moved = before.clone();
+            moved.light.exposure = 1.0;
+            let kept = overlay_changes(&before, &moved, &frame).unwrap();
+            assert_eq!(kept.highlight_fill, frame.highlight_fill);
+        }
+    }
+
     /// A field left out of the file at its default and set back to it
     /// in culling (a double-click, a step to zero) goes over the frame's
     /// own value, as any other change does; a field neither side
@@ -1171,8 +1364,15 @@ mod tests {
         let json = sharpened.to_json();
         assert!(json.contains("\"output_sharpen\""), "{json}");
         assert_eq!(Edit::from_json(&json).unwrap(), sharpened);
-        // An empty document is the default edit; unknown fields are ignored.
-        assert_eq!(Edit::from_json("{}").unwrap(), Edit::default());
+        // An empty document is the default edit, made under the first
+        // process; unknown fields are ignored.
+        assert_eq!(
+            Edit::from_json("{}").unwrap(),
+            Edit {
+                process: 1,
+                ..Edit::default()
+            }
+        );
         let partial = r#"{"light": {"exposure": -1}, "future_field": 3}"#;
         let e = Edit::from_json(partial).unwrap();
         assert_eq!(e.light.exposure, -1.0);

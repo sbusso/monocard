@@ -17,12 +17,7 @@ pub(super) fn left_out_of(outcome: &Outcome, base: Option<&FrameKept>) -> Vec<St
     };
     let stood_in = base
         .and_then(|b| b.meta.stood_in.as_ref())
-        .map(|why| match why {
-            crate::walk::NoLearned::Missing(model) => LearnedReport::Missing(model),
-            crate::walk::NoLearned::Failed(why) | crate::walk::NoLearned::Short(why) => {
-                LearnedReport::Failed(why.clone())
-            }
-        });
+        .map(super::develop::stood_in_report);
     let learned = match (learned, stood_in.as_ref()) {
         (LearnedReport::Kept, Some(stood_in)) => stood_in,
         (report, _) => report,
@@ -91,7 +86,14 @@ pub(super) fn run(
     let (lock, cv) = &*queue;
     let mut ai = Ai::new();
     match greycard_ai::Store::user() {
-        Ok(store) => tracing::info!("model store {}", store.root().display()),
+        Ok(store) => {
+            tracing::info!("model store {}", store.root().display());
+            // Before the first develop: a learned denoiser that lost
+            // this card on an earlier run is skipped from the start (the
+            // read logs it, with the record's path).
+            crate::ai::off_card_seam();
+            greycard_ai::runtime::read_denoisers_off_card(store.root(), crate::ai::providers);
+        }
         Err(e) => tracing::warn!("no model store: {e}"),
     }
     let mut lenses: Option<Arc<greycard_lens::Database>> = greycard_lens::Store::user()
@@ -99,6 +101,11 @@ pub(super) fn run(
         .and_then(|s| s.load())
         .map(|(db, _)| Arc::new(db));
     set_lenses(lenses.clone());
+    // The Adobe lens profiles listed ahead, off this thread, so an open
+    // lists them from the listing held and never waits on the walk.
+    if let Some(dir) = greycard_edit_io::profiles::store_dir() {
+        greycard_lens::lcp::look_in(&dir, false, Box::new(|_| {}));
+    }
     // The learned models for the masks of frames not open
     // (`Job::MasksFor`), made on the first such frame and dropped when
     // none is waiting, as `set_ai` is for a set's frames.
@@ -179,6 +186,9 @@ pub(super) fn run(
     let mut gpu_gone = false;
     // A job panicked with wgpu's words for a lost device.
     let mut lost_seen = false;
+    // A fill round in hand: the develop to make again on the CPU should
+    // the device be lost in it.
+    let mut fill_redo: Option<Job> = None;
     // The open frame's develop landed with fills still to make: its
     // edit, turn, and generation, how far its fills have got, and how
     // many are left. A develop asked for gives them up; leaving the
@@ -205,7 +215,8 @@ pub(super) fn run(
         if !gpu_gone && (told.is_some() || lost_seen || gpu.as_ref().is_some_and(|c| c.is_lost())) {
             gpu_gone = true;
             let again = told.unwrap_or(true);
-            let redo = lose_gpu(&mut gpu, &mut base, &mut shown, again);
+            let redo = lose_gpu(&mut gpu, &mut base, &mut shown, again)
+                .or_else(|| fill_redo.take().filter(|_| again));
             if let Some(job) = redo {
                 lock.lock()
                     .expect("worker queue")
@@ -214,6 +225,9 @@ pub(super) fn run(
             }
         }
         lost_seen = false;
+        // A fill round that ended, whatever its end, leaves nothing to
+        // develop again.
+        fill_redo = None;
         let job = {
             let mut q = lock.lock().expect("worker queue");
             loop {
@@ -253,6 +267,10 @@ pub(super) fn run(
                         greycard_ai::Provider::WebGpu,
                         greycard_ai::Provider::Cpu,
                     ]);
+                }
+                #[cfg(test)]
+                if let Some(unet) = q.unet_by_test.take() {
+                    ai.unet_by_test = Some(unet);
                 }
                 if let Some(check) = q.remote_check.take() {
                     peeks.set_remote(check);
@@ -629,8 +647,11 @@ pub(super) fn run(
         }
         // The frame is about to be left, or its picture replaced: a save
         // still waiting on it is made from what is in hand now, or let go.
-        if let Some(keep) = pending.take()
-            && matches!(job, Job::Open { .. } | Job::Develop { .. })
+        // Any other job leaves it waiting (the kind is asked first: a
+        // `take` ahead of it would drop the save on a fill's round or the
+        // masks' picture, which it does not wait on).
+        if matches!(job, Job::Open { .. } | Job::Develop { .. })
+            && let Some(keep) = pending.take()
         {
             let leaving = match &job {
                 Job::Open { .. } => true,
@@ -765,8 +786,11 @@ pub(super) fn run(
                         // again, or in a set whose frame before met a short.
                         let fall = tried_again || failed_sets.contains(&set);
                         ai.set_cpu_fallback(fall);
+                        // A removal at 1024 falls to 512 likewise.
+                        ai.set_fill_fallback(fall);
                         if let Some(o) = set_ai.as_mut() {
                             o.set_cpu_fallback(fall);
+                            o.set_fill_fallback(fall);
                         }
                         // As the window's jobs: a removal, a mask, or the
                         // learned denoiser short of the card has the engine
@@ -838,6 +862,7 @@ pub(super) fn run(
                                 let other = set_ai.get_or_insert_with(Ai::new);
                                 other.set_patience(Some(patience.clone()));
                                 other.set_cpu_fallback(fall);
+                                other.set_fill_fallback(fall);
                                 other.set_card_release(gpu.as_ref().map(card_release));
                                 ai.lend_parts(other);
                                 let written = export_other(
@@ -876,21 +901,29 @@ pub(super) fn run(
                             && !failed_sets.contains(&set)
                             && short
                             && matches!(held, Ok(crate::queue::Done::Failed { .. }))
-                            && give_back(
+                        {
+                            let gave = give_back(
                                 &mut ai,
                                 [&mut people_ai, &mut set_ai, &mut masks_ai],
                                 true,
                                 lock,
-                            )
-                        {
-                            tried_again = true;
-                            retried = true;
-                            ai.retry_patiently();
-                            if let Some(o) = set_ai.as_mut() {
-                                o.retry_patiently();
+                            );
+                            // Tried again too where nothing was given back
+                            // but a removal at 1024 was refused: in the
+                            // frame tried again it runs at 512 where 1024
+                            // is still short. Not for a canceled set.
+                            let large = ai.card_given_back()
+                                | set_ai.as_mut().is_some_and(Ai::card_given_back);
+                            if gave || (large && !set.is_canceled()) {
+                                tried_again = true;
+                                retried = true;
+                                ai.retry_patiently();
+                                if let Some(o) = set_ai.as_mut() {
+                                    o.retry_patiently();
+                                }
+                                tracing::info!("the card given back; the frame tried again");
+                                continue;
                             }
-                            tracing::info!("the card given back; the frame tried again");
-                            continue;
                         }
                         break held;
                     };
@@ -921,9 +954,11 @@ pub(super) fn run(
                 ai.take_mask_short() | set_ai.as_mut().is_some_and(Ai::take_mask_short);
             ai.set_patience(None);
             ai.set_cpu_fallback(false);
+            ai.set_fill_fallback(false);
             if let Some(o) = set_ai.as_mut() {
                 o.set_patience(None);
                 o.set_cpu_fallback(false);
+                o.set_fill_fallback(false);
             }
             if hit {
                 short_sets.insert(&set);
@@ -1007,6 +1042,22 @@ pub(super) fn run(
         // A panic in a job is the hook's to write, with its
         // backtrace; here it becomes the failure the UI is waiting
         // on, and the develop state is dropped rather than trusted.
+        // The develop on screen, should the device be lost in a fill
+        // round: the window's picture is its first round's texture,
+        // which `shown` let go of.
+        fill_redo = match (&job, &fills_due) {
+            (Job::Fill { generation }, Some(due))
+                if due.generation == *generation && due.highlight =>
+            {
+                Some(Job::Develop {
+                    edit: due.edit.clone(),
+                    generation: *generation,
+                    turn: due.turn,
+                    of: None,
+                })
+            }
+            _ => None,
+        };
         let held = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match job {
             Job::Open {
                 path,
@@ -1143,19 +1194,27 @@ pub(super) fn run(
                             }
                             Input::Picture { .. } => None,
                         };
+                        let (lens_options, lens_look, used) = {
+                            let (make, model, shot) = opened.identity();
+                            let identity = (make, model, shot, opened.is_raw());
+                            let (options, used) = crate::lens::options(
+                                lenses.as_deref(),
+                                identity,
+                                &edit.lens.chosen,
+                            );
+                            (
+                                options,
+                                LensLook::of(lenses.clone(), identity, generation),
+                                used,
+                            )
+                        };
                         deliver(Outcome::Opened {
                             generation,
                             as_shot,
                             frame,
                             profile,
                             lens: lens_report(lenses.as_deref(), &opened),
-                            lens_options: {
-                                let (make, model, shot) = opened.identity();
-                                crate::lens::options(
-                                    lenses.as_deref(),
-                                    (make, model, shot, opened.is_raw()),
-                                )
-                            },
+                            lens_options,
                             kind,
                             shot: {
                                 let (make, model, shot) = opened.identity();
@@ -1164,6 +1223,11 @@ pub(super) fn run(
                             taken,
                             blend,
                         });
+                        // The look behind the open, asked once its list is
+                        // out, so another list it finds lands after it; kept
+                        // for the window to ask again.
+                        lock.lock().expect("worker queue").lens_look = Some(lens_look.clone());
+                        lens_look.ask(&edit.lens.chosen, used, false, &deliver);
                         // The base in hand is shelved for a return to its
                         // file, and this file's taken back if it is there:
                         // a raw's base on the shelf was made from the same
@@ -1178,7 +1242,7 @@ pub(super) fn run(
                             &mut base,
                             shelf.get_or_insert_with(Shelf::user),
                             (opened_file.take(), coming.as_ref().map(|k| (k, &opened))),
-                            (&edit, turn, &|e: &Edit| stands_in(&ai, e)),
+                            (&edit, turn, &|e: &Edit, x| stands_in(&ai, e, x)),
                             gpu.as_ref(),
                             lenses.as_deref(),
                         );
@@ -1212,6 +1276,7 @@ pub(super) fn run(
                             &mut gpu,
                             &deliver,
                             &mut round,
+                            &Newer(lock),
                         );
                         ai.set_card_release(None);
                         fills_due =
@@ -1304,6 +1369,7 @@ pub(super) fn run(
                         &mut gpu,
                         &deliver,
                         &mut round,
+                        &Newer(lock),
                     );
                     ai.set_card_release(None);
                     fills_due =
@@ -1362,6 +1428,10 @@ pub(super) fn run(
                     ai.fills_queued(due.left > 1);
                     let mut round = Round::next(due.round.ahead);
                     ai.clear_shorts();
+                    // Asked again after the card was given back across
+                    // the models, a removal still short of 1024 runs at
+                    // 512 in this round; cleared after, as below.
+                    ai.set_fill_fallback(asked_again);
                     // A removal short of the card may have the engine
                     // let go of what a develop makes again, as the open
                     // frame's masks may; cleared after, and after a
@@ -1382,8 +1452,21 @@ pub(super) fn run(
                         &mut gpu,
                         &deliver,
                         &mut round,
+                        &Newer(lock),
                     );
                     ai.set_card_release(None);
+                    ai.set_fill_fallback(false);
+                    #[cfg(test)]
+                    lock.lock()
+                        .expect("worker queue")
+                        .ran_at_by_test
+                        .append(&mut ai.ran_at_by_test);
+                    // Given way to a newer develop in the making of its
+                    // highlight fill: nothing kept, nothing delivered,
+                    // and the newer develop's rounds take over.
+                    if round.gave_way {
+                        return;
+                    }
                     // The fills still ahead, before a queue that ends
                     // stuck lets them go: what one asked again has left.
                     let ahead = match &outcome {
@@ -1425,6 +1508,7 @@ pub(super) fn run(
                             generation,
                             round: Round::next(round.ahead),
                             left: ahead.max(1),
+                            highlight: false,
                         },
                     );
                     if !gave && ended {
@@ -1627,6 +1711,9 @@ pub(super) fn run(
                 )
             }
         }));
+        if held.is_ok() {
+            fill_redo = None;
+        }
         if let Err(payload) = held {
             fills_due = None;
             ai.release_fills();
@@ -1683,6 +1770,76 @@ pub(super) fn run(
     }
 }
 
+/// The open frame's body and shot, for a look at the profile folder
+/// behind its open ([`LensLook::ask`]): kept on the queue so the window
+/// can ask one again ([`super::Worker::look_at_lens_profiles`]).
+#[derive(Clone)]
+pub(super) struct LensLook {
+    lenses: Option<Arc<greycard_lens::Database>>,
+    make: String,
+    model: String,
+    shot: greycard_core::raw::Shot,
+    raw: bool,
+    /// The open's generation, which the window takes the list for.
+    generation: u64,
+}
+
+impl LensLook {
+    pub(super) fn of(
+        lenses: Option<Arc<greycard_lens::Database>>,
+        (make, model, shot, raw): crate::lens::Identity,
+        generation: u64,
+    ) -> Self {
+        Self {
+            lenses,
+            make: make.to_string(),
+            model: model.to_string(),
+            shot: shot.clone(),
+            raw,
+            generation,
+        }
+    }
+
+    /// A look at the profile folder off the caller's thread, walking it
+    /// again when `force` is set: the rows shown came from the listing
+    /// of generation `used` (none for none held), so a look ending with
+    /// another (a profile added, removed, or rewritten since, or the
+    /// start's walk landing after the open) is another list, said as
+    /// [`Outcome::LensOptions`] for the open, with `chosen` among them.
+    pub(super) fn ask(
+        self,
+        chosen: &greycard_edit::LensChoice,
+        used: Option<u64>,
+        force: bool,
+        deliver: &Deliver,
+    ) {
+        let Some(dir) = greycard_edit_io::profiles::store_dir() else {
+            return;
+        };
+        let (chosen, deliver, profiles) = (chosen.clone(), deliver.clone(), dir.clone());
+        greycard_lens::lcp::look_in(
+            &dir,
+            force,
+            Box::new(move |listing| {
+                if used == Some(listing.generation) {
+                    return;
+                }
+                let options = crate::lens::options_from(
+                    self.lenses.as_deref(),
+                    (&self.make, &self.model, &self.shot, self.raw),
+                    Some(&profiles),
+                    &listing.entries,
+                    &chosen,
+                );
+                deliver(Outcome::LensOptions {
+                    generation: self.generation,
+                    options,
+                });
+            }),
+        );
+    }
+}
+
 /// A develop sent for another file than the one in hand, which the
 /// window does not send (`edit::develops_here`): made, it would be a
 /// picture of the wrong file under this one's name, so it is left.
@@ -1694,15 +1851,45 @@ fn not_held(of: Option<&super::DevelopOf>, opened: Option<&std::path::Path>) {
     );
 }
 
+/// A newer open or develop of the window's, which a round making the
+/// highlight fill gives way to. A develop aside does not: it leaves the
+/// fills due as they are.
+struct Newer<'a>(&'a Mutex<Queue>);
+
+impl Newer<'_> {
+    fn asked(&self) -> bool {
+        #[allow(unused_mut)]
+        let mut q = self.0.lock().expect("worker queue");
+        // A test's develop, sent as the round asks its first.
+        #[cfg(test)]
+        if let Some(job) = q.develop_on_fill_ask.take() {
+            q.develop = Some(job);
+        }
+        q.stopping || matches!(q.develop, Some(Job::Open { .. } | Job::Develop { .. }))
+    }
+}
+
+impl crate::walk::Hold for Newer<'_> {
+    fn give_way(&self, _next: &crate::stages::Stage) -> bool {
+        self.asked()
+    }
+
+    fn give_way_inside(&self, _stage: &crate::stages::Stage) -> bool {
+        self.asked()
+    }
+}
+
 /// The fills the open frame's develop left to make after its picture
 /// landed: what the next round walks.
-struct FillsDue {
+pub(super) struct FillsDue {
     edit: Edit,
     turn: u8,
     generation: u64,
     round: Round,
     /// How many are left to make.
     left: usize,
+    /// The highlight fill is among them.
+    highlight: bool,
 }
 
 impl FillsDue {
@@ -1713,8 +1900,12 @@ impl FillsDue {
     /// that will not load fails the same fill each round). Rounds ended
     /// with fills left say none to come, so the window drops their
     /// outlines and its bar, and the frame's pictures are not kept for
-    /// the edit's without them.
-    fn after(
+    /// the edit's without them. Nor is its patched picture: a fill
+    /// still to come may have had a stand-in there
+    /// (`Models::stand_in`), which a later develop resuming from it
+    /// would show for good; let go, the next walk asks again and shows
+    /// the patch as it was.
+    pub(super) fn after(
         outcome: &mut Outcome,
         edit: &Edit,
         turn: u8,
@@ -1745,9 +1936,10 @@ impl FillsDue {
             if let Some(h) = base {
                 h.filling = false;
                 h.left_out.extend(left);
+                h.kept.drop_unmade();
             }
         }
-        if fills.pending.is_empty() {
+        if fills.pending.is_empty() && !fills.highlight_pending {
             return None;
         }
         Some(Self {
@@ -1756,6 +1948,7 @@ impl FillsDue {
             generation: *generation,
             round,
             left: fills.pending.len(),
+            highlight: fills.highlight_pending,
         })
     }
 }
@@ -1874,8 +2067,20 @@ pub(super) fn drop_changed(
 }
 
 /// Whether the engine's own path would stand in for the learned
-/// denoiser an edit asks for ([`stands_in`]).
-pub(super) type StandsIn<'a> = &'a dyn Fn(&Edit) -> bool;
+/// denoiser an edit asks for on a frame, X-Trans or not ([`stands_in`]).
+pub(super) type StandsIn<'a> = &'a dyn Fn(&Edit, bool) -> bool;
+
+/// Whether a frame opened is an X-Trans raw, whose tier is its own
+/// network.
+fn input_xtrans(input: &Input) -> bool {
+    matches!(input, Input::Raw(f)
+        if matches!(&f.layout, greycard_core::raw::SensorLayout::Cfa(p) if p.is_xtrans()))
+}
+
+/// Whether the frame a base was made of is an X-Trans raw.
+fn facts_xtrans(facts: &crate::stages::Facts) -> bool {
+    matches!(&facts.input, crate::stages::InputKind::Raw { pattern: Some(p), .. } if p.is_xtrans())
+}
 
 /// The open frame's base set aside for the frame `coming` to be
 /// opened under `edit` at `turn`: what the frame in hand kept put on
@@ -1907,12 +2112,18 @@ pub(super) fn swap_base(
             gpu.release();
         }
         if let Some(file) = leaving {
-            let standing = stands_in(&b.edit);
+            let standing = stands_in(&b.edit, facts_xtrans(&b.facts));
             shelf.put(file, b, standing);
         }
     }
     if let Some((file, opened)) = coming
-        && let Some(mut b) = shelf.take(file, edit, turn, (gpu.is_some(), stands_in(edit)), lenses)
+        && let Some(mut b) = shelf.take(
+            file,
+            edit,
+            turn,
+            (gpu.is_some(), stands_in(edit, input_xtrans(opened))),
+            lenses,
+        )
     {
         // The shelf matched the file's path, stat, and decode: the
         // frame opened is the one the base was made from, read again.
@@ -1935,15 +2146,16 @@ pub(super) fn swap_base(
 }
 
 /// Whether the learned denoiser `edit` asks for is not to be had as a
-/// walk of it starts, so the engine's own path stands in from the
-/// first step: its model is not in the store, or there is no runtime
+/// walk of it starts on a frame, X-Trans where `xtrans`, so the
+/// engine's own path stands in from the first step: the tier's model
+/// for that mosaic is not in the store, or there is no runtime
 /// ([`Ai::denoiser_there`], what the walk asks first). A stand-in the
 /// walk falls to later, for the card's memory or a failed run, is not
 /// this: the next walk asks the card again.
-pub(super) fn stands_in(ai: &Ai, edit: &Edit) -> bool {
+pub(super) fn stands_in(ai: &Ai, edit: &Edit, xtrans: bool) -> bool {
     edit.noise
         .tier()
-        .and_then(greycard_ai::denoiser)
+        .and_then(|t| greycard_ai::denoiser_for(t, xtrans))
         .is_some_and(|model| ai.denoiser_there(model).is_err())
 }
 
@@ -2034,6 +2246,7 @@ fn open_frame_masks(
 /// fallen to again until the next, and nothing of it is left to call.
 fn open_frame_masks_done(ai: &mut Ai) {
     ai.set_cpu_fallback(false);
+    ai.set_fill_fallback(false);
     ai.set_card_release(None);
     ai.set_on_cpu(None);
 }
@@ -2141,9 +2354,10 @@ impl ShortSets {
 }
 
 /// After a develop round: a fill the card was short of gives the card
-/// back across the worker's models, and when that let anything go the
-/// fills are asked for again with `again`, once a develop. True when
-/// the card was given back.
+/// back across the worker's models, and when that let anything go, or
+/// a removal at 1024 was refused, which now runs at 512 where 1024 is
+/// still short ([`Ai::card_given_back`]), the fills are asked for again
+/// with `again`, once a develop. True when the card was given back.
 fn ask_fills_again(
     ai: &mut Ai,
     others: [&mut Option<Ai>; 3],
@@ -2156,7 +2370,8 @@ fn ask_fills_again(
         return false;
     }
     let gave = give_back(ai, others, true, lock);
-    if gave && fills_due.is_none() && !*asked_again {
+    let large = ai.card_given_back();
+    if (gave || large) && fills_due.is_none() && !*asked_again {
         *asked_again = true;
         *fills_due = Some(again);
     }

@@ -208,9 +208,9 @@ nikon-he`. It is off in the published builds because JPEG XS is
 licensed by its patent holders per copy of a decoder.
 
 A build from a git checkout shows its commit after the version
-(`0.12.0 (95de0a0)`) in `--version`, the log, Settings' About, and
-a problem report, unless HEAD
-is the release's tag and the tree is clean. A `+` marks a tree with
+(`0.12.0 (95de0a0)`), and in a full clone the commits since the
+release's tag before it (`0.12.0+135 (95de0a0)`), in `--version`,
+the log, Settings' About, and a problem report, unless HEAD is the release's tag and the tree is clean. A `+` marks a tree with
 uncommitted changes at the first build after HEAD last moved; a later
 edit does not add it. A packager can set `GREYCARD_COMMIT` at build
 time to name the commit, or to empty for the plain version, and
@@ -310,10 +310,10 @@ powershell -File scripts/windows-setup.ps1
 ```
 
 It finds `ISCC.exe` through `-Iscc`, `$env:ISCC`, the Path, or Inno
-Setup 7's own install directories. Both stay unsigned unless
-`WINDOWS_SIGN_SCRIPT` holds the Windows path of a PowerShell script
-that signs the files it is given, as the release's signing step will
-once it has a service.
+Setup 7's own install directories. Both stay unsigned: the release
+signs them through SignPath, which signs only what a GitHub workflow
+built (`scripts/signpath.sh` and the release workflow's Windows
+signing step).
 `scripts/windows-setup-check.ps1` installs the setup into your own
 profile, checks it, and uninstalls it, which is what the release runs
 on its runner.

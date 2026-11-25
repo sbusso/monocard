@@ -10,8 +10,9 @@ import { Tips, TipArea, Section, EditSlider, Steps, Toggle, PanelButton, Segment
 
 // The list: Global, then each mask with its switch, the chosen one
 // with its bin; then New mask. It never scrolls with the sections
-// under it, and holds at most six rows before it scrolls inside
-// itself, so a long list leaves the sections their room. Folded, its
+// under it, and holds at most six rows, and fewer in a short window,
+// before it scrolls inside itself, so a long list or a short window
+// leaves the sections their room. Folded, its
 // header names the chosen row. A right-click on a mask offers a copy
 // of it below, or the mask clipboard; on any row, once the clipboard
 // holds a mask, its paste.
@@ -54,11 +55,11 @@ export component AdjustmentsList inherits Section {
 
     // The height between the panel's tab bar and its footer. How many
     // rows show before the list scrolls follows it: as many as leave
-    // the sections a view of at least 150 px, from one to six, so the
-    // list gives up rows before the sections' view and the footer are
-    // squeezed. Set by handlers, not bound: the window's height itself
-    // answers to what is laid out in it, this list among it, and a
-    // binding would be a loop.
+    // the sections a view of at least 214 px, about six sliders, from
+    // one to six. On a window 800 px high that is one row, a view of
+    // 214 px where three rows left 154 (issue 157); from 1000 px up,
+    // six. The list gives up rows before the sections' view and the
+    // footer are squeezed.
     in property <length> room: 1000px;
     property <int> max-rows: 6;
     // What the list takes besides its rows: its block's padding (8 +
@@ -67,7 +68,10 @@ export component AdjustmentsList inherits Section {
     // border (2), and New mask (28), right under it: 95 px.
     property <length> chrome: Theme.space-2 * 2 + 1px + Theme.space-2 + Theme.icon + Theme.space-2 + Theme.space-2 * 2 + 2px + Theme.control-height;
     // The least view of the sections a row is given up for.
-    property <length> sections-view: 150px;
+    property <length> sections-view: 214px;
+    // Set when the room changes, not bound: the window's height itself
+    // answers to what is laid out in it, this list among it, and a
+    // binding would be a loop.
     function fit-rows() {
         root.max-rows = clamp(floor((root.room - root.chrome - root.sections-view) / root.pitch), 1, 6);
     }
@@ -149,9 +153,17 @@ export component AdjustmentsList inherits Section {
                 width: list.visible-width;
                 padding: 1px;
                 spacing: 2px;
-                for name[i] in root.adjustment-names: Rectangle {
+                for name[i] in root.adjustment-names: mask-item := Rectangle {
                     accessible-role: button;
                     accessible-label: name;
+                    // Its key, for automation: its place, 0 Global.
+                    accessible-id: i;
+                    // A press while a menu is up is nothing, as a
+                    // click then only closes it: Slint's menu leaves
+                    // the window's other controls in reach.
+                    accessible-action-default => {
+                        if (!root.menu-shown()) { root.target-changed(i); }
+                    }
                     property <bool> on: i == root.target;
                     property <bool> lit: i == 0 || root.adjustment-on[i - 1];
                     // The pointer is on the row's switch: the row's
@@ -203,6 +215,14 @@ export component AdjustmentsList inherits Section {
                             padding-right: Theme.space-1 + Theme.scrollbar-band;
                             spacing: Theme.space-2;
                             if i > 0: Rectangle {
+                                // To a screen reader the mask's switch,
+                                // named by the mask, as a section's is
+                                // by its title.
+                                accessible-role: switch;
+                                accessible-label: name;
+                                accessible-checkable: true;
+                                accessible-checked: lit;
+                                accessible-action-default => { root.adjustment-toggled(i - 1); }
                                 width: 14px;
                                 Rectangle {
                                     width: 8px;
@@ -223,6 +243,8 @@ export component AdjustmentsList inherits Section {
                                 }
                             }
                             Text {
+                                // Said by the control it names.
+                                accessible-role: none;
                                 text: name;
                                 color: !lit ? Theme.text-secondary : on ? Theme.text : Theme.text-secondary;
                                 font-size: Theme.font-xs;
@@ -231,7 +253,7 @@ export component AdjustmentsList inherits Section {
                                 horizontal-stretch: 1;
                                 overflow: elide;
                             }
-                            if on && i > 0: Rectangle {
+                            if on && i > 0: mask-bin := Rectangle {
                                 width: Theme.control-height - 4px;
                                 accessible-role: button;
                                 accessible-label: @tr("Remove {}", name);
@@ -256,7 +278,7 @@ export component AdjustmentsList inherits Section {
             }
         }
     }
-    PanelButton {
+    new-mask-button := PanelButton {
         text: @tr("New mask");
         icon: @image-url("../icons/plus.svg");
         clicked => { root.new-mask(); }
@@ -320,6 +342,8 @@ export component AdjustmentsSection inherits Section {
     in-out property <[string]> landscape-offers;
     in-out property <[string]> landscape-kinds;
     in-out property <bool> landscape-menu-shown;
+    // Whether the menu raised is still the chosen mask's to open.
+    pure callback landscape-menu-wanted() -> bool;
     // The People or Landscape menu about to open: the window's keys
     // take the focus first, as Fit's menu does, so the click that
     // closes it is no click, and a pick leaves the keys with them, not
@@ -387,19 +411,19 @@ export component AdjustmentsSection inherits Section {
                 }
                 HorizontalLayout {
                     spacing: Theme.space-2;
-                    Toggle {
+                    show-mask-toggle := Toggle {
                         label: @tr("Show mask");
                         checked <=> root.show-mask;
                         toggled => { root.show-mask-toggled(); root.view-changed(); }
                     }
-                    Toggle {
+                    invert-toggle := Toggle {
                         label: @tr("Invert");
                         checked <=> root.mask-invert;
                         toggled => { root.view-changed(); }
                     }
                 }
                 // The whole mask's edge drawn onto the picture's.
-                EditSlider {
+                refine-slider := EditSlider {
                     label: @tr("Refine edge");
                     label-width: max(84px, LabelColumn.width);
                     minimum: 0;
@@ -414,7 +438,7 @@ export component AdjustmentsSection inherits Section {
                 }
                 // How much of the mask's look goes on, the overlay
                 // as it is.
-                EditSlider {
+                opacity-slider := EditSlider {
                     // Mask: the strength of its whole look
                     label: @tr("Opacity");
                     label-width: max(84px, LabelColumn.width);
@@ -461,6 +485,13 @@ export component AdjustmentsSection inherits Section {
                         background: on ? Theme.selection : (shape-row.has-hover ? Theme.hover : transparent);
                         animate background { duration: Theme.quick; }
                         shape-row := TouchArea {
+                            // To a screen reader a button, named by the
+                            // shape, chosen or not.
+                            accessible-role: button;
+                            accessible-label: name;
+                            accessible-item-selectable: true;
+                            accessible-item-selected: on;
+                            accessible-action-default => { root.component-changed(i); }
                             mouse-cursor: MouseCursor.pointer;
                             clicked => { root.component-changed(i); }
                         }
@@ -470,6 +501,11 @@ export component AdjustmentsSection inherits Section {
                             spacing: Theme.space-2;
                             // The shape's switch, as an adjustment's.
                             Rectangle {
+                                accessible-role: switch;
+                                accessible-label: name;
+                                accessible-checkable: true;
+                                accessible-checked: lit;
+                                accessible-action-default => { root.shape-toggled(i); }
                                 width: 14px;
                                 Rectangle {
                                     width: 8px;
@@ -485,6 +521,8 @@ export component AdjustmentsSection inherits Section {
                                 }
                             }
                             Text {
+                                // Said by the control it names.
+                                accessible-role: none;
                                 text: name;
                                 color: !lit ? Theme.text-secondary : on ? Theme.text : Theme.text-secondary;
                                 opacity: lit ? 1.0 : 0.5;
@@ -498,13 +536,19 @@ export component AdjustmentsSection inherits Section {
                             // whichever row happens to be chosen: a
                             // half-filled circle, which reads as
                             // invert rather than mirror.
-                            Rectangle {
+                            invert-button := Rectangle {
                                 width: Theme.control-height - 4px;
                                 border-radius: Theme.radius-sm;
                                 border-width: invert-focus.has-focus ? 2px : 0;
                                 border-color: Theme.focus-ring;
                                 accessible-role: button;
                                 accessible-label: @tr("Invert this shape");
+                                accessible-checkable: true;
+                                accessible-checked: inverted;
+                                accessible-action-default => {
+                                    invert-focus.focus();
+                                    root.invert-shape-toggled(i);
+                                }
                                 Image {
                                     source: @image-url("../icons/contrast.svg");
                                     colorize: inverted ? Theme.accent-text : (invert-hit.has-hover || invert-focus.has-focus ? Theme.text : Theme.text-secondary);
@@ -551,7 +595,7 @@ export component AdjustmentsSection inherits Section {
                             }
                             // The last one too: the mask stays, empty,
                             // as New mask leaves one.
-                            Rectangle {
+                            remove-shape-button := Rectangle {
                                 width: Theme.control-height - 4px;
                                 accessible-role: button;
                                 accessible-label: @tr("Remove this shape");
@@ -634,7 +678,7 @@ export component AdjustmentsSection inherits Section {
                         letter-spacing: 0.8px;
                         overflow: elide;
                     }
-                    if root.has-feather: EditSlider {
+                    if root.has-feather: feather-slider := EditSlider {
                         label: @tr("Feather");
                         minimum: 0;
                         maximum: 1;
@@ -650,7 +694,7 @@ export component AdjustmentsSection inherits Section {
                     // Low to High, and how far past each it fades to nothing.
                     if root.component-kind == "Luminance": VerticalLayout {
                         spacing: Theme.space-2;
-                        EditSlider {
+                        low-slider := EditSlider {
                             label: @tr("Low");
                             minimum: 0;
                             maximum: 1;
@@ -666,7 +710,7 @@ export component AdjustmentsSection inherits Section {
                                 root.view-changed();
                             }
                         }
-                        EditSlider {
+                        low-fade-slider := EditSlider {
                             // Luminance range: the fade at the dark end
                             label: @tr("Low fade");
                             minimum: 0;
@@ -679,7 +723,7 @@ export component AdjustmentsSection inherits Section {
                             text: round(root.lum-low-feather * 100);
                             changed(v) => { root.view-changed(); }
                         }
-                        EditSlider {
+                        high-slider := EditSlider {
                             label: @tr("High");
                             minimum: 0;
                             maximum: 1;
@@ -694,7 +738,7 @@ export component AdjustmentsSection inherits Section {
                                 root.view-changed();
                             }
                         }
-                        EditSlider {
+                        high-fade-slider := EditSlider {
                             // Luminance range: the fade at the light end
                             label: @tr("High fade");
                             minimum: 0;
@@ -721,7 +765,8 @@ export component AdjustmentsSection inherits Section {
                                 primary: root.picking == "Range";
                                 clicked => { root.pick-started("Range"); }
                             }
-                            Text {
+                            sample-words := Text {
+                                accessible-role: none;
                                 // Color range: the button that reads a color off the picture
                                 text: @tr("Sample");
                                 color: Theme.text-secondary;
@@ -731,13 +776,16 @@ export component AdjustmentsSection inherits Section {
                                 horizontal-stretch: 1;
                             }
                             Segmented {
+                                // The panel's Tab is the window's: no stop here.
+                                tab-stop: false;
+                                name: sample-words.text;
                                 options: ["5", "11", "21", "41"];
                                 current: root.range-sample;
                                 picks: false;
                                 selected(v) => { root.range-sample = v.to-float(); }
                             }
                         }
-                        EditSlider {
+                        hue-slider := EditSlider {
                             label: @tr("Hue");
                             label-width: max(84px, LabelColumn.width);
                             tinted: true;
@@ -751,7 +799,7 @@ export component AdjustmentsSection inherits Section {
                             text: round(root.range-hue) + "\u{00b0}";
                             changed(v) => { root.view-changed(); }
                         }
-                        EditSlider {
+                        width-slider := EditSlider {
                             label: @tr("Width");
                             label-width: max(84px, LabelColumn.width);
                             minimum: 0;
@@ -763,7 +811,7 @@ export component AdjustmentsSection inherits Section {
                             text: round(root.range-width) + "\u{00b0}";
                             changed(v) => { root.view-changed(); }
                         }
-                        EditSlider {
+                        hue-fade-slider := EditSlider {
                             // Color range: the fade
                             label: @tr("Hue fade");
                             label-width: max(84px, LabelColumn.width);
@@ -776,7 +824,7 @@ export component AdjustmentsSection inherits Section {
                             text: round(root.range-hue-feather) + "\u{00b0}";
                             changed(v) => { root.view-changed(); }
                         }
-                        EditSlider {
+                        chroma-slider := EditSlider {
                             label: @tr("Chroma");
                             label-width: max(84px, LabelColumn.width);
                             minimum: 0;
@@ -793,7 +841,7 @@ export component AdjustmentsSection inherits Section {
                                 root.view-changed();
                             }
                         }
-                        EditSlider {
+                        chroma-fade-slider := EditSlider {
                             // Color range: the fade
                             label: @tr("Chroma fade");
                             label-width: max(84px, LabelColumn.width);
@@ -819,7 +867,7 @@ export component AdjustmentsSection inherits Section {
             // shape's own settings while a brush is chosen.
             if root.placing == "Brush": VerticalLayout {
                 spacing: Theme.space-2;
-                EditSlider {
+                brush-size-slider := EditSlider {
                     label: @tr("Size");
                     minimum: 0.002;
                     maximum: 0.5;
@@ -831,7 +879,7 @@ export component AdjustmentsSection inherits Section {
                     text: round(root.brush-size * 1000) / 10 + "%";
                     changed(v) => { }
                 }
-                EditSlider {
+                brush-feather-slider := EditSlider {
                     label: @tr("Feather");
                     minimum: 0;
                     maximum: 1;
@@ -843,7 +891,7 @@ export component AdjustmentsSection inherits Section {
                     text: round(root.brush-feather * 100) + "%";
                     changed(v) => { }
                 }
-                EditSlider {
+                brush-opacity-slider := EditSlider {
                     // Brush: the slider
                     label: @tr("Opacity");
                     minimum: 0;
@@ -857,6 +905,9 @@ export component AdjustmentsSection inherits Section {
                     changed(v) => { }
                 }
                 Segmented {
+                    // The panel's Tab is the window's: no stop here.
+                    tab-stop: false;
+                    name: @tr("Brush");
                     options: ["Add", "Subtract", "Erase"];
                     // Brush: what a stroke does
                     labels: [@tr("Add"), @tr("Subtract"), @tr("Erase")];
@@ -889,10 +940,11 @@ export component AdjustmentsSection inherits Section {
                     // always Add, so the row that picks among them for
                     // a second one is not shown to ask a question a
                     // first shape has no answer to.
-                    if root.component-names.length > 0: Segmented {
-                        accessible-role: button;
-                        // Spoken by a screen reader: the shape mode button
-                        accessible-label: @tr("Next shape mode");
+                    if root.component-names.length > 0: shape-mode-row := Segmented {
+                        // The panel's Tab is the window's: no stop here.
+                        tab-stop: false;
+                        // Spoken by a screen reader: the shape mode row
+                        name: @tr("Next shape mode");
                         options: ["Add", "Subtract", "Intersect"];
                         // Shape mode: the shape cuts the mask down to where both are
                         labels: [@tr("Add"), @tr("Subtract"), @tr("Intersect")];
@@ -924,14 +976,14 @@ export component AdjustmentsSection inherits Section {
                     }
                     HorizontalLayout {
                         spacing: Theme.space-2;
-                        PanelButton {
+                        shape-subject := PanelButton {
                             text: @tr("Subject");
                             icon: @image-url("../icons/user-round.svg");
                             clicked => { root.add-shape("Subject", root.shape-mode); }
                         }
                         // The Subject model's complement: everything a look
                         // should reach but the subject, with no shape drawn.
-                        PanelButton {
+                        shape-background := PanelButton {
                             text: @tr("Background");
                             icon: @image-url("../icons/image.svg");
                             clicked => { root.add-shape("Background", root.shape-mode); }
@@ -950,12 +1002,21 @@ export component AdjustmentsSection inherits Section {
                         // buildings, and its sky: only what the model
                         // found, the largest first.
                         landscape-button := PanelButton {
-                            property <bool> want: root.landscape-menu-shown;
-                            changed want => {
-                                if (self.want) {
+                            // Raised from Rust when the answer is in, and
+                            // opened a turn later from a timer, not from a
+                            // change handler: those run mid-update, even
+                            // inside a frame's draw, and a native menu
+                            // (macOS) runs its own loop while it is up.
+                            // Opened only if Rust still wants it then.
+                            Timer {
+                                interval: 1ms;
+                                running: root.landscape-menu-shown;
+                                triggered => {
                                     root.landscape-menu-shown = false;
-                                    root.menu-opening();
-                                    landscape-menu.show({ x: 0, y: self.height });
+                                    if (root.landscape-menu-wanted()) {
+                                        root.menu-opening();
+                                        landscape-menu.show({ x: 0, y: landscape-button.height });
+                                    }
                                 }
                             }
                             text: @tr("Landscape");

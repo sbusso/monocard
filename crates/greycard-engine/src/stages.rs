@@ -286,6 +286,34 @@ impl Facts {
             && !self.file_corrects().chromatic_aberration
     }
 
+    /// Why the frame takes no learned highlight fill (notes §719 §7),
+    /// for the log; none when it takes it: a 2x2 Bayer mosaic of the
+    /// camera's own. A rendered picture, a raw with no mosaic (a linear
+    /// DNG, sRAW, a demosaiced DNG, a monochrome sensor's), X-Trans,
+    /// which waits on a score of its own, any other pattern, and a merge
+    /// of ours, whose frames keep their own path, do not.
+    pub fn highlight_fill_skip(&self) -> Option<&'static str> {
+        let InputKind::Raw {
+            pattern,
+            merged,
+            monochrome,
+            ..
+        } = &self.input
+        else {
+            return Some("the highlight fill is a raw's, and this is a rendered picture");
+        };
+        match pattern {
+            _ if *merged => Some("the highlight fill does not run on a merge"),
+            None if *monochrome => Some("the highlight fill has no monochrome version"),
+            None => Some("the highlight fill needs a mosaic, and this file has none"),
+            Some(p) if p.is_xtrans() => Some("the highlight fill has no X-Trans version yet"),
+            Some(p) if !greycard_core::develop::rcd::is_bayer(p) => {
+                Some("the highlight fill needs a 2x2 Bayer mosaic")
+            }
+            Some(_) => None,
+        }
+    }
+
     /// Whether the input is a monochrome sensor's raw.
     pub fn is_monochrome(&self) -> bool {
         matches!(
@@ -425,6 +453,10 @@ pub struct PrepareOptions {
     /// Whether the samples are clipped at the ceiling after the gains:
     /// every develop but a merge's frames.
     pub clip: bool,
+    /// Whether a CA correction follows in a stage of its own: the
+    /// prepare then keeps the mosaic the correction is measured on
+    /// when it is not the samples (`Prepared::ca_reference`).
+    pub ca_follows: bool,
 }
 
 impl PartialEq for PrepareOptions {
@@ -444,6 +476,7 @@ impl PartialEq for PrepareOptions {
             denoise,
             hot_pixels,
             orientation,
+            clip_codes,
         } = &self.settings;
         let b = &other.settings;
         same_profile(profile, &b.profile)
@@ -458,8 +491,10 @@ impl PartialEq for PrepareOptions {
             && *denoise == b.denoise
             && *hot_pixels == b.hot_pixels
             && *orientation == b.orientation
+            && *clip_codes == b.clip_codes
             && self.measure_noise == other.measure_noise
             && self.clip == other.clip
+            && self.ca_follows == other.ca_follows
     }
 }
 
@@ -517,6 +552,18 @@ pub enum Stage {
     Learned(&'static greycard_ai::Model),
     /// The profiled denoise, on camera RGB.
     Denoise(DenoiseOptions),
+    /// The learned highlight fill (notes §719 §1a), on camera RGB before
+    /// the file's warp, by the name of the version this build has
+    /// (`greycard_ai::highlight::version`): fields made once from the
+    /// plain picture, applied to it and to a learned pair's network
+    /// half. At a bin, look-scaled.
+    HighlightFill(&'static str),
+    /// The last fields of the highlight fill applied through this
+    /// walk's white balance, standing in for the fill in the window's
+    /// first picture while a white balance moves (notes §719 §3): never
+    /// in a list an edit makes, and equal only to itself, so nothing a
+    /// walk of it keeps serves another list.
+    HighlightStandIn(crate::highlight_fill::StandIn),
     /// A DNG's own lens correction, on camera RGB: a resample, the
     /// camera's geometry before any turn, crop, or lens profile.
     Warp(Box<WarpOptions>),
@@ -553,8 +600,10 @@ pub enum Stage {
     /// on, the same size.
     Lens(Vec<LensCorrection>),
     Defringe(DefringeOptions),
-    /// The retouch, its fills made or refused.
-    Retouch(Retouch, Fills),
+    /// The retouch, its fills made or refused, and what the crop shows
+    /// of the picture where a Fill's window may reach past it
+    /// ([`crate::shown::Shown`]).
+    Retouch(Retouch, Fills, Option<crate::shown::Shown>),
     LocalContrast(LocalContrastOptions),
     Dehaze(DehazeOptions),
     /// The capture sharpen, and the delta beside it for the masks'
@@ -663,6 +712,9 @@ impl Stage {
             | Stage::Bin(_)
             | Stage::Learned(_)
             | Stage::Denoise(_)
+            // Before the turn, in the mosaic's own frame.
+            | Stage::HighlightFill(_)
+            | Stage::HighlightStandIn(_)
             | Stage::Warp(_)
             | Stage::IntoWorking { .. }
             | Stage::Blend { .. }
@@ -685,6 +737,8 @@ impl Stage {
             Stage::Bin(_) => "bin",
             Stage::Learned(_) => "learned denoiser",
             Stage::Denoise(_) => "denoise",
+            Stage::HighlightFill(_) => "highlight fill",
+            Stage::HighlightStandIn(_) => "highlight fill's stand-in",
             Stage::Warp(_) => "the file's warp",
             Stage::IntoWorking { .. } => "move into the working space",
             Stage::Blend { .. } => "blend",
@@ -785,6 +839,11 @@ pub enum Tap {
 /// Where a walk leaves what it has for the next to start from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Keep {
+    /// The camera picture just before the learned highlight fill, after
+    /// the demosaic, the bin, and the denoise: kept only by the window's
+    /// first round, which leaves the fill to the next, and let go once
+    /// the fill is made ([`Steps::kept_before_fill`]).
+    Camera,
     /// A monochrome raw's plane before its denoise.
     #[cfg(feature = "mono")]
     Prepared,
@@ -809,6 +868,26 @@ pub enum Step {
 
 /// The name a list's skips give the learned denoiser.
 pub const LEARNED_DENOISER: &str = "the learned denoiser";
+
+/// Why the learned denoiser is skipped on a card it lost
+/// (`greycard_ai::runtime::denoisers_off_card`): the status line's
+/// "no denoise: …" and an export's "the denoise: …; none ran". The
+/// same words as the model's refusal to load there
+/// (`greycard_ai::runtime::Error::OffCard`). WORDING PENDING the
+/// user's approval.
+pub const OFF_CARD: &str = "the learned denoiser is not on this graphics card";
+
+/// Why the learned denoiser is skipped on a merge's X-Trans frame: a
+/// merge takes it on Bayer frames only, though a single X-Trans frame
+/// takes its tier's X-Trans network.
+pub const NO_XTRANS: &str = "a merge takes the learned denoiser on Bayer frames only";
+
+/// The name a list's skips give the learned highlight fill.
+pub const HIGHLIGHT_FILL: &str = "the highlight fill";
+
+/// Why the highlight fill is skipped for an edit naming a version this
+/// build does not have, a newer build's; the edit keeps the name.
+pub const NO_SUCH_FILL: &str = "this build has no such version of the highlight fill";
 
 /// Why a stage the edit asks for is not in a list.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -868,13 +947,58 @@ impl Steps {
 
     /// Whether the picture this list makes is kept under the reduced
     /// recipe: the reduced develop or the models' left something of
-    /// the edit out. A stage the frame cannot take is not one: an
-    /// X-Trans frame's learned tier stands the full develop in, which
+    /// the edit out. A stage the frame cannot take is not one: a
+    /// learned tier on a card it lost stands the full develop in, which
     /// is the edit's picture.
     pub fn reduced_recipe(&self) -> bool {
         self.skipped
             .iter()
             .any(|(_, why)| matches!(why, Skip::Reduced | Skip::ModelsSee))
+    }
+
+    /// Where the list runs the learned highlight fill, if it does.
+    pub fn fill_at(&self) -> Option<usize> {
+        self.steps
+            .iter()
+            .position(|s| matches!(s, Step::Op(Stage::HighlightFill(_))))
+    }
+
+    /// The list with the camera picture kept just before its highlight
+    /// fill ([`Keep::Camera`]), for a round after to make the fill from;
+    /// as it is without a fill.
+    pub fn kept_before_fill(&self) -> Steps {
+        let mut out = self.clone();
+        if let Some(at) = self.fill_at() {
+            out.steps.insert(at, Step::Keep(Keep::Camera));
+        }
+        out
+    }
+
+    /// The list with its highlight fill's step taken out: the picture
+    /// without the fill, its cells still read for a fill after.
+    pub fn without_fill(&self) -> Steps {
+        let mut out = self.clone();
+        out.steps
+            .retain(|s| !matches!(s, Step::Op(Stage::HighlightFill(_))));
+        out
+    }
+
+    /// The list with the highlight fill's step given to the last fields
+    /// `kept` holds, standing in for it ([`Stage::HighlightStandIn`]).
+    pub fn with_stand_in(&self, kept: &Arc<crate::highlight_fill::KeptFill>) -> Steps {
+        Steps {
+            steps: self
+                .steps
+                .iter()
+                .map(|s| match s {
+                    Step::Op(Stage::HighlightFill(_)) => Step::Op(Stage::HighlightStandIn(
+                        crate::highlight_fill::StandIn(kept.clone()),
+                    )),
+                    s => s.clone(),
+                })
+                .collect(),
+            skipped: self.skipped.clone(),
+        }
     }
 
     /// The list a learned denoiser that is not to be had stands in
@@ -892,6 +1016,7 @@ impl Steps {
                     settings: p.settings.clone(),
                     measure_noise: p.measure_noise && !p.clip,
                     clip: p.clip,
+                    ca_follows: p.ca_follows,
                 }))),
                 Step::Op(Stage::Learned(_)) => {
                     let Some(Stage::Prepare(p)) = self.ops().next() else {
@@ -913,7 +1038,10 @@ impl Steps {
 /// What a develop must have before the decode.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Needs {
-    /// The learned denoiser's model.
+    /// The learned denoiser's model: the tier's Bayer network, since
+    /// the frame's mosaic is not known before the decode. An X-Trans
+    /// frame's list runs the tier's X-Trans network ([`stages`]); a
+    /// merge's frame names its own.
     pub denoiser: Option<&'static greycard_ai::Model>,
     /// The look the edit names, when it has strength.
     pub look: Option<String>,
@@ -1001,7 +1129,7 @@ fn look_read_at(edit: &Edit, facts: &Facts, profile_curve: bool) -> f32 {
 
 /// The profile and look directories a list reads its camera profile
 /// through: the user's, or in a test the ones it set (`TEST_STORES`).
-fn stores() -> greycard_edit_io::Stores {
+pub(crate) fn stores() -> greycard_edit_io::Stores {
     #[cfg(test)]
     if let Some(stores) = TEST_STORES.with(|s| s.borrow().clone()) {
         return stores;
@@ -1039,6 +1167,7 @@ pub fn stages(
         1
     };
     let mut s = Steps::default();
+    let fill = highlight_fill(edit, facts, &mut s);
     let mut settings = edit.settings(&stores());
     // Only where a look table may go on, so the list of an edit with
     // none (and its base, which keeps no baseline then) is as it was.
@@ -1056,21 +1185,15 @@ pub fn stages(
             merged,
             ..
         } => {
-            let tier = edit
-                .noise
-                .tier()
-                .map(|t| greycard_ai::denoiser(t).expect("the edit's tiers are the registry's"));
+            // The tier the edit names, as the frame's mosaic has it: an
+            // X-Trans frame runs the tier's X-Trans network.
             let xtrans = pattern.as_ref().is_some_and(CfaPattern::is_xtrans);
+            let tier = edit.noise.tier().map(|t| {
+                greycard_ai::denoiser_for(t, xtrans).expect("the edit's tiers are the registry's")
+            });
             let learned = match tier {
                 Some(_) if reduced => {
                     s.skip(LEARNED_DENOISER, Skip::Reduced);
-                    None
-                }
-                Some(_) if xtrans => {
-                    s.skip(
-                        LEARNED_DENOISER,
-                        Skip::Unavailable("the learned denoiser has no X-Trans version yet"),
-                    );
                     None
                 }
                 Some(_) if pattern.is_none() => {
@@ -1082,6 +1205,12 @@ pub fn stages(
                     );
                     None
                 }
+                // On record as off this card: it lost the card while it
+                // ran.
+                Some(_) if crate::ai::learned_off_card() => {
+                    s.skip(LEARNED_DENOISER, Skip::Unavailable(OFF_CARD));
+                    None
+                }
                 tier => tier,
             };
             // A merge's noise is the weighted mean of several frames', not
@@ -1091,25 +1220,36 @@ pub fn stages(
                 s.skip("the denoise", Skip::Reduced);
             }
             let denoise = denoise.filter(|_| !reduced);
+            // A file whose warps correct each color has corrected its
+            // lateral aberration itself, as Adobe's reader takes it: the
+            // automatic correction would move red and blue a second time.
+            let ca = settings
+                .chromatic_aberration
+                .filter(|_| facts.measures_ca());
             s.op(Stage::Prepare(Box::new(PrepareOptions {
                 settings: DevelopSettings {
                     chromatic_aberration: None,
                     denoise,
                     orientation: None,
+                    // The fill's cells, read beside opposed; only for
+                    // the fill, so a list without it prepares as it did.
+                    clip_codes: fill.is_some(),
+                    // On X-Trans the method resolved as the prepare
+                    // resolves it, so the demosaic that stands in for
+                    // the network, where it runs and what it is, is
+                    // X-Trans's own (a Bayer method has a device
+                    // version an X-Trans mosaic must not be sent to).
+                    demosaic: match pattern {
+                        Some(p) if xtrans && learned.is_some() => settings.demosaic.for_mosaic(p),
+                        _ => settings.demosaic,
+                    },
                     ..settings.clone()
                 },
                 measure_noise: learned.is_some(),
                 clip: true,
+                ca_follows: ca.is_some(),
             })));
-            // A file whose warps correct each color has corrected its
-            // lateral aberration itself, as Adobe's reader takes it: the
-            // automatic correction would move red and blue a second time.
-            s.op_if(
-                settings
-                    .chromatic_aberration
-                    .filter(|_| facts.measures_ca())
-                    .map(Stage::Ca),
-            );
+            s.op_if(ca.map(Stage::Ca));
             match (bin, learned) {
                 (b, _) if b > 1 && pattern.is_some() => s.op(Stage::Bin(b)),
                 (_, Some(model)) => s.op(Stage::Learned(model)),
@@ -1127,6 +1267,10 @@ pub fn stages(
                     .filter(|_| bin == 1 || pattern.is_none())
                     .map(Stage::Denoise),
             );
+            // In the frame the cells were read in: the mosaic's, before
+            // the file's warp moves it and the turn turns it. After the
+            // denoise, which reads the demosaic's noise as measured.
+            s.op_if(fill.map(Stage::HighlightFill));
             // The file's own correction of its lens, on the camera's
             // geometry: after the denoise, which reads the demosaic's
             // noise as measured, and before the turn.
@@ -1212,6 +1356,13 @@ pub fn stages(
         if *purpose == Purpose::ModelsSee {
             s.skip("the retouch", Skip::ModelsSee);
         } else {
+            // What the crop shows, only where it may cross a Fill's
+            // window: a crop moved anywhere else keeps the step as it
+            // was, and nothing past it is made again.
+            let (fw, fh) = facts.full();
+            let shown =
+                crate::shown::Shown::of(&edit.geometry, fw as f32, fh as f32, facts.camera())
+                    .filter(|v| v.reaches(&edit.retouch, fw as f32, fh as f32));
             s.op(Stage::Retouch(
                 edit.retouch.clone(),
                 if reduced {
@@ -1222,6 +1373,7 @@ pub fn stages(
                 } else {
                     Fills::Run
                 },
+                shown,
             ));
         }
     }
@@ -1296,6 +1448,76 @@ pub(crate) fn finish_of(purpose: &Purpose) -> Finish {
     }
 }
 
+/// The version of the learned highlight fill `edit` names, when this
+/// build has it and the frame `facts` describes takes it; why not in
+/// `s`'s skips otherwise, for the log. The edit keeps its field either
+/// way, and a list without the fill is the list of an edit without it.
+fn highlight_fill(edit: &Edit, facts: &Facts, s: &mut Steps) -> Option<&'static str> {
+    let name = edit.highlight_fill.as_deref()?;
+    let Some(version) = greycard_ai::highlight::version(name) else {
+        s.skip(HIGHLIGHT_FILL, Skip::Unavailable(NO_SUCH_FILL));
+        return None;
+    };
+    if let Some(why) = facts.highlight_fill_skip() {
+        s.skip(HIGHLIGHT_FILL, Skip::Unavailable(why));
+        return None;
+    }
+    Some(version.name)
+}
+
+/// Whether fields made by the steps `kept` (a list's steps through its
+/// highlight fill) may stand in for the fill of the steps `now` (another
+/// list's, through its fill), applied through `now`'s white balance
+/// (notes §719 §3): the same steps but for the white balance and the
+/// profiled denoise's settings, which move the camera picture's values
+/// and nothing of where its pixels are, which are clipped, or how they
+/// are counted.
+///
+/// Never across a version, a bin (and so a look scale), the demosaic or
+/// the learned denoiser (each another picture at every edge, the rim's
+/// included), the CA, the hot pixels, the levels, the highlights' mode,
+/// the profile, or anything else of the prepare: each may move a pixel
+/// or a cell's count, or is a click, where the fill made again is worth
+/// the wait. A frame's own crop and the frame itself are the input's,
+/// which the kept points are bound to.
+pub fn stands_in_for(kept: &[Step], now: &[Step]) -> bool {
+    kept.len() == now.len()
+        && matches!(now.last(), Some(Step::Op(Stage::HighlightFill(_))))
+        && kept.iter().zip(now).all(|(k, n)| match (k, n) {
+            (Step::Op(Stage::Prepare(k)), Step::Op(Stage::Prepare(n))) => {
+                let denoise = match (&k.settings.denoise, &n.settings.denoise) {
+                    (None, None) => true,
+                    (Some(k), Some(n)) => strength_alone(k, n),
+                    _ => false,
+                };
+                let moved = PrepareOptions {
+                    settings: DevelopSettings {
+                        white_point: k.settings.white_point,
+                        denoise: k.settings.denoise,
+                        ..n.settings.clone()
+                    },
+                    ..(**n).clone()
+                };
+                denoise && **k == moved
+            }
+            (Step::Op(Stage::Denoise(k)), Step::Op(Stage::Denoise(n))) => strength_alone(k, n),
+            (k, n) => k == n,
+        })
+}
+
+/// Whether two profiled denoises differ in their strength alone: every
+/// field named, so one added later is not taken to stand in unseen.
+fn strength_alone(k: &DenoiseOptions, n: &DenoiseOptions) -> bool {
+    let DenoiseOptions {
+        method,
+        strength: _,
+        chroma,
+        nlm,
+        hybrid_from,
+    } = k;
+    *method == n.method && *chroma == n.chroma && *nlm == n.nlm && *hybrid_from == n.hybrid_from
+}
+
 /// A merge's frame: the prepare with nothing clipped after the gains,
 /// the noise measured for the weights, the highlights reconstructed
 /// only where asked; the CA, by its own fit or the one the merge
@@ -1325,6 +1547,7 @@ fn merge_input(edit: &Edit, merge: &MergeInput, facts: &Facts) -> Steps {
         },
         measure_noise: true,
         clip: false,
+        ca_follows: false,
     })));
     s.op_if(
         settings
@@ -1341,7 +1564,15 @@ fn merge_input(edit: &Edit, merge: &MergeInput, facts: &Facts) -> Steps {
         .as_ref()
         .is_some_and(greycard_core::develop::rcd::is_bayer);
     match merge.denoiser {
+        // On a card a learned denoiser lost, every tier is skipped as on
+        // a mosaic it has no version for; that one's words first.
+        Some(_) if bayer && crate::ai::learned_off_card() => {
+            s.skip(LEARNED_DENOISER, Skip::Unavailable(OFF_CARD))
+        }
         Some(model) if bayer => s.op(Stage::Learned(model)),
+        Some(_) if pattern.as_ref().is_some_and(CfaPattern::is_xtrans) => {
+            s.skip(LEARNED_DENOISER, Skip::Unavailable(NO_XTRANS))
+        }
         Some(_) => s.skip(
             LEARNED_DENOISER,
             Skip::Unavailable("the learned denoiser needs a 2x2 Bayer mosaic"),
@@ -1359,14 +1590,21 @@ fn merge_input(edit: &Edit, merge: &MergeInput, facts: &Facts) -> Steps {
 }
 
 /// Whether `a` and `b` make the same base of the frame `facts`
-/// describes: the same steps to it, as a prefetch would take them.
+/// describes: the same steps to it, as a prefetch would take them. A
+/// highlight fill the frame does not take is the fill off here: its
+/// skip is the log's, and the list is the off list (notes §719 §1b).
 pub fn same_base(
     a: &Edit,
     b: &Edit,
     facts: &Facts,
     lenses: Option<&greycard_lens::Database>,
 ) -> bool {
-    stages(a, &Purpose::Prefetch, facts, lenses) == stages(b, &Purpose::Prefetch, facts, lenses)
+    let list = |e: &Edit| {
+        let mut s = stages(e, &Purpose::Prefetch, facts, lenses);
+        s.skipped.retain(|(name, _)| *name != HIGHLIGHT_FILL);
+        s
+    };
+    list(a) == list(b)
 }
 
 /// Whether `a` and `b` develop the same picture of the frame `facts`
@@ -1650,7 +1888,7 @@ mod tests {
             .map(|step| match step {
                 Step::Op(Stage::Bin(n)) => format!("bin {n}"),
                 Step::Op(Stage::Reduce(n)) => format!("reduce {n}"),
-                Step::Op(Stage::Retouch(_, Fills::Read { .. })) => "retouch, fills read".into(),
+                Step::Op(Stage::Retouch(_, Fills::Read { .. }, _)) => "retouch, fills read".into(),
                 Step::Op(Stage::Finish(Finish::Shader)) => "shader".into(),
                 Step::Op(Stage::Finish(Finish::Cpu { fit, .. })) => format!("finish {fit:?}"),
                 Step::Op(Stage::IntoWorking { .. }) => "into working".into(),
@@ -1668,6 +1906,279 @@ mod tests {
 
     fn export() -> Purpose {
         Purpose::Export(Box::default())
+    }
+
+    /// The edit's crate names the highlight fill's versions this build
+    /// has without seeing greycard-ai, whose versions they are: held
+    /// equal, in order.
+    #[test]
+    fn the_edit_names_the_highlight_fills_this_build_has() {
+        let names: Vec<&str> = greycard_ai::highlight::VERSIONS
+            .iter()
+            .map(|v| v.name)
+            .collect();
+        assert_eq!(names, greycard_edit::key::HIGHLIGHT_FILLS);
+        for name in names {
+            assert!(greycard_ai::highlight::version(name).is_some());
+        }
+    }
+
+    fn purposes() -> [Purpose; 5] {
+        [
+            Purpose::Viewport,
+            export(),
+            Purpose::Reduced,
+            Purpose::ModelsSee,
+            Purpose::Prefetch,
+        ]
+    }
+
+    fn filled(mut edit: Edit, name: &str) -> Edit {
+        edit.highlight_fill = Some(name.into());
+        edit
+    }
+
+    /// `off`'s list with the fill in it, as the list of an edit with
+    /// the fill on is to be: the prepare reads the cells, and the fill
+    /// runs just before the file's warp or, with none, the move into
+    /// the working space. Nothing else moves.
+    fn with_the_fill(off: &Steps) -> Steps {
+        let mut on = off.clone();
+        let at = on
+            .steps
+            .iter()
+            .position(|s| matches!(s, Step::Op(Stage::Warp(_) | Stage::IntoWorking { .. })))
+            .expect("a raw's list goes into the working space");
+        on.steps.insert(at, Step::Op(Stage::HighlightFill("hl-1")));
+        let Some(Step::Op(Stage::Prepare(p))) = on.steps.first_mut() else {
+            panic!("a raw's list starts at its prepare");
+        };
+        assert!(!p.settings.clip_codes, "off reads no cells");
+        p.settings.clip_codes = true;
+        on
+    }
+
+    /// The retouch step carries what the crop shows only where the
+    /// crop's edge may cross a Fill's window: a crop moved anywhere else
+    /// leaves the step, and all that a walk kept past it, as it was.
+    #[test]
+    fn the_retouch_knows_the_crop_only_near_a_fill() {
+        let shown = |crop: Option<Crop>, at: [f32; 2]| {
+            let mut edit = Edit::default();
+            edit.geometry.crop = crop;
+            edit.retouch.patches.push(Patch {
+                method: Method::Fill,
+                points: vec![at],
+                radius: 0.03,
+                ..Patch::default()
+            });
+            let s = stages(&edit, &Purpose::Viewport, &raw(0), None);
+            s.ops()
+                .find_map(|o| match o {
+                    Stage::Retouch(_, _, shown) => Some(*shown),
+                    _ => None,
+                })
+                .expect("a retouch")
+        };
+        let near = Some(Crop::of([0.02, 0.05, 0.93, 0.93]));
+        let other = Some(Crop::of([0.03, 0.04, 0.92, 0.94]));
+        assert_eq!(shown(None, [0.95, 0.6]), None);
+        assert!(shown(near, [0.95, 0.6]).is_some());
+        // A Fill in the middle: no crop reaches it, any crop the same.
+        assert_eq!(shown(near, [0.5, 0.3]), None);
+        assert_eq!(shown(other, [0.5, 0.3]), None);
+    }
+
+    /// The fill off makes the list it made before the fill: no stage,
+    /// and a prepare that reads no cells, for every purpose and input.
+    #[test]
+    fn the_highlight_fill_off_is_nothing() {
+        for purpose in purposes() {
+            for facts in [raw(0), raw(1), phone(), xtrans(), picture(0)] {
+                for edit in [Edit::default(), everything()] {
+                    let s = stages(&edit, &purpose, &facts, None);
+                    assert!(!s.ops().any(|o| matches!(o, Stage::HighlightFill(_))));
+                    assert!(
+                        !s.ops()
+                            .any(|o| matches!(o, Stage::Prepare(p) if p.settings.clip_codes))
+                    );
+                    assert!(!s.skipped.iter().any(|(n, _)| *n == HIGHLIGHT_FILL));
+                }
+            }
+        }
+    }
+
+    /// On, on a Bayer raw: the prepare reads the cells and the fill runs
+    /// after the demosaic, the bin, the denoise, or the learned
+    /// denoiser, before the file's warp; every other step as it was.
+    /// The reduced develop's is no skip.
+    #[test]
+    fn the_highlight_fill_runs_before_the_warp_in_camera_space() {
+        let mut learned = everything();
+        learned.noise.learned = greycard_edit::Learned::Fast;
+        for purpose in purposes() {
+            for facts in [raw(0), raw(3), phone()] {
+                for edit in [Edit::default(), everything(), learned.clone()] {
+                    let off = stages(&edit, &purpose, &facts, None);
+                    let on = stages(&filled(edit, "hl-1"), &purpose, &facts, None);
+                    assert_eq!(on, with_the_fill(&off), "{purpose:?}");
+                    assert!(!on.reduced_recipe() || off.reduced_recipe());
+                    let ops: Vec<&Stage> = on.ops().collect();
+                    let i = ops
+                        .iter()
+                        .position(|o| matches!(o, Stage::HighlightFill(_)))
+                        .unwrap();
+                    assert!(matches!(
+                        ops[i - 1],
+                        Stage::Demosaic(..) | Stage::Bin(_) | Stage::Denoise(_) | Stage::Learned(_)
+                    ));
+                    assert!(matches!(
+                        ops[i + 1],
+                        Stage::Warp(_) | Stage::IntoWorking { .. }
+                    ));
+                }
+            }
+        }
+        let s = stages(
+            &filled(everything(), "hl-1"),
+            &Purpose::Reduced,
+            &raw(0),
+            None,
+        );
+        assert!(
+            s.ops().any(|o| matches!(o, Stage::Bin(2))),
+            "a 24 MP frame bins"
+        );
+        let fill = Stage::HighlightFill("hl-1");
+        assert!(fill.commutes_with_turn());
+        assert!(!fill.device() && !fill.in_memory_on_device());
+        assert_eq!(fill.name(), "highlight fill");
+    }
+
+    /// A frame that cannot take the fill, or an edit naming a version
+    /// this build lacks, makes the list of the fill off, step for step,
+    /// and says why for the log; never under the reduced recipe.
+    #[test]
+    fn a_frame_that_takes_no_fill_walks_as_with_it_off() {
+        let monochrome = || {
+            let mut f = raw(0);
+            if let InputKind::Raw {
+                pattern,
+                monochrome,
+                ..
+            } = &mut f.input
+            {
+                *pattern = None;
+                *monochrome = true;
+            }
+            f
+        };
+        let linear = || {
+            let mut f = raw(0);
+            if let InputKind::Raw { pattern, .. } = &mut f.input {
+                *pattern = None;
+            }
+            f
+        };
+        let merged = || {
+            let mut f = raw(0);
+            if let InputKind::Raw { merged, .. } = &mut f.input {
+                *merged = true;
+            }
+            f
+        };
+        let quad = || {
+            let mut f = raw(0);
+            if let InputKind::Raw { pattern, .. } = &mut f.input {
+                // A quad Bayer: each color in 2x2 blocks.
+                use greycard_core::raw::CfaColor::{Blue as B, Green as G, Red as R};
+                let colors = vec![R, R, G, G, R, R, G, G, G, G, B, B, G, G, B, B];
+                *pattern = Some(CfaPattern::new(4, 4, colors).unwrap());
+            }
+            f
+        };
+        let cases: [(&str, Facts, &str); 6] = [
+            (
+                "X-Trans",
+                xtrans(),
+                "the highlight fill has no X-Trans version yet",
+            ),
+            (
+                "linear",
+                linear(),
+                "the highlight fill needs a mosaic, and this file has none",
+            ),
+            (
+                "monochrome",
+                monochrome(),
+                "the highlight fill has no monochrome version",
+            ),
+            (
+                "merged",
+                merged(),
+                "the highlight fill does not run on a merge",
+            ),
+            (
+                "quad",
+                quad(),
+                "the highlight fill needs a 2x2 Bayer mosaic",
+            ),
+            (
+                "picture",
+                picture(0),
+                "the highlight fill is a raw's, and this is a rendered picture",
+            ),
+        ];
+        for (what, facts, why) in cases {
+            assert_eq!(facts.highlight_fill_skip(), Some(why), "{what}");
+            for purpose in purposes() {
+                let off = stages(&everything(), &purpose, &facts, None);
+                let on = stages(&filled(everything(), "hl-1"), &purpose, &facts, None);
+                assert_eq!(on.steps, off.steps, "{what} {purpose:?}");
+                assert_eq!(on.skipped[0], (HIGHLIGHT_FILL, Skip::Unavailable(why)));
+                assert_eq!(on.skipped[1..], off.skipped[..], "{what}");
+                assert_eq!(on.reduced_recipe(), off.reduced_recipe());
+            }
+            // The same base as with the fill off: turning the switch
+            // there develops nothing again.
+            let on = filled(everything(), "hl-1");
+            assert!(same_base(&on, &everything(), &facts, None), "{what}");
+        }
+        assert!(!same_base(
+            &filled(everything(), "hl-1"),
+            &everything(),
+            &raw(0),
+            None
+        ));
+        assert!(same_base(
+            &filled(everything(), "hl-9"),
+            &everything(),
+            &raw(0),
+            None
+        ));
+        assert_eq!(raw(0).highlight_fill_skip(), None);
+        for purpose in purposes() {
+            let off = stages(&everything(), &purpose, &raw(0), None);
+            let on = stages(&filled(everything(), "hl-9"), &purpose, &raw(0), None);
+            assert_eq!(on.steps, off.steps);
+            assert_eq!(
+                on.skipped[0],
+                (HIGHLIGHT_FILL, Skip::Unavailable(NO_SUCH_FILL))
+            );
+            assert_eq!(on.skipped[1..], off.skipped[..]);
+        }
+        // A merge's frames keep their own path: no fill, no cells.
+        let merge = Purpose::MergeInput(MergeInput {
+            white: None,
+            reconstruct: true,
+            denoiser: None,
+            ca: MergeCa::Own,
+            lens: Vec::new(),
+        });
+        assert_eq!(
+            stages(&filled(everything(), "hl-1"), &merge, &raw(0), None),
+            stages(&everything(), &merge, &raw(0), None)
+        );
     }
 
     /// The sharpen's guide is tapped just before the local contrast,
@@ -2348,6 +2859,74 @@ mod tests {
             }));
     }
 
+    /// A learned tier on a card the denoiser lost is skipped in its own
+    /// words, in the window and an export alike, on X-Trans as on
+    /// Bayer. Off the record, it runs: on X-Trans, the tier's X-Trans
+    /// network.
+    ///
+    /// The nine pairs: the off-card flag is the same for a record of any
+    /// tier (greycard-ai's `a_record_of_any_tier_puts_the_denoiser_off`),
+    /// and each tier asked is skipped against it, in the window, an
+    /// export, and a merge's frame; the merge again's check declines it.
+    #[test]
+    fn a_learned_tier_on_a_card_it_lost_is_skipped_as_on_x_trans() {
+        use greycard_edit::Learned;
+        let tiers = [Learned::Fast, Learned::Balanced, Learned::Best];
+        let ai = crate::ai::Ai::for_test(greycard_ai::Store::at("no-store"), Vec::new());
+        crate::ai::set_test_off_card(Some(true));
+        for recorded in tiers {
+            for asked in tiers {
+                let mut edit = everything();
+                edit.noise.learned = asked;
+                let model = asked
+                    .tier()
+                    .and_then(greycard_ai::denoiser)
+                    .expect("a tier's model");
+                let merge = Purpose::MergeInput(MergeInput {
+                    white: None,
+                    reconstruct: false,
+                    denoiser: Some(model),
+                    ca: MergeCa::Own,
+                    lens: Vec::new(),
+                });
+                for purpose in [Purpose::Viewport, export(), merge] {
+                    let off = stages(&edit, &purpose, &raw(0), None);
+                    assert!(
+                        !off.ops().any(|o| matches!(o, Stage::Learned(_))),
+                        "{asked:?} asked, {recorded:?} on record"
+                    );
+                    assert_eq!(
+                        off.skipped,
+                        vec![(LEARNED_DENOISER, Skip::Unavailable(OFF_CARD))]
+                    );
+                }
+                assert!(matches!(
+                    ai.denoiser_there(model),
+                    Err(crate::ai::NoDenoiser::Failed(why)) if why == OFF_CARD
+                ));
+            }
+        }
+        let mut edit = everything();
+        edit.noise.learned = Learned::Best;
+        let x = stages(&edit, &Purpose::Viewport, &xtrans(), None);
+        assert_eq!(
+            x.skipped,
+            vec![(LEARNED_DENOISER, Skip::Unavailable(OFF_CARD))]
+        );
+        crate::ai::set_test_off_card(Some(false));
+        let on = stages(&edit, &Purpose::Viewport, &raw(0), None);
+        assert!(
+            on.ops()
+                .any(|o| *o == Stage::Learned(&greycard_ai::DENOISE_BEST))
+        );
+        let x = stages(&edit, &Purpose::Viewport, &xtrans(), None);
+        assert!(
+            x.ops()
+                .any(|o| *o == Stage::Learned(&greycard_ai::DENOISE_XTRANS_BEST))
+        );
+        crate::ai::set_test_off_card(None);
+    }
+
     #[test]
     fn a_learned_tier_makes_a_pair_and_blends_it() {
         let mut edit = everything();
@@ -2396,17 +2975,43 @@ mod tests {
         assert!(reduced.skipped.contains(&(LEARNED_DENOISER, Skip::Reduced)));
         assert_eq!(needs(&edit, &Purpose::Reduced).denoiser, None);
 
-        // Nor does an X-Trans mosaic, which it has no version for; the
-        // full develop stands in, which is the edit's picture, so the
-        // list is not the reduced recipe's.
-        let x = stages(&edit, &Purpose::Viewport, &xtrans(), None);
-        assert!(!x.ops().any(|o| matches!(o, Stage::Learned(_))));
-        assert!(matches!(
-            x.skipped[..],
-            [(LEARNED_DENOISER, Skip::Unavailable(_))]
-        ));
-        assert!(!x.reduced_recipe());
-        assert!(!stages(&edit, &export(), &xtrans(), None).reduced_recipe());
+        // An X-Trans mosaic takes the tier's X-Trans network, in the
+        // same place, blended as on Bayer, the profiled denoise not run.
+        for purpose in [Purpose::Viewport, export()] {
+            let x = stages(&edit, &purpose, &xtrans(), None);
+            assert_eq!(
+                names(&x)[..6],
+                [
+                    "prepare",
+                    "CA",
+                    "learned denoiser",
+                    "into working",
+                    "keep Pair",
+                    "blend"
+                ]
+            );
+            assert!(
+                x.ops()
+                    .any(|o| *o == Stage::Learned(&greycard_ai::DENOISE_XTRANS_BEST))
+            );
+            assert!(x.skipped.is_empty(), "{:?}", x.skipped);
+            let Some(Stage::Prepare(p)) = x.ops().next() else {
+                panic!("a raw's list begins at its prepare");
+            };
+            assert!(p.measure_noise && p.settings.denoise.is_none());
+            // Without its model, the engine's own path stands in: the
+            // mosaic's own demosaic and the profiled denoise.
+            let stand_in = x.without_learned();
+            assert!(!stand_in.ops().any(|o| matches!(o, Stage::Learned(_))));
+            let method = stand_in.ops().find_map(|o| match o {
+                Stage::Demosaic(m, _) => Some(*m),
+                _ => None,
+            });
+            assert_eq!(method, Some(DemosaicMethod::Markesteijn3));
+            assert!(!stand_in.ops().any(Stage::demosaics_on_device));
+        }
+        let reduced = stages(&edit, &Purpose::Reduced, &xtrans(), None);
+        assert!(reduced.skipped.contains(&(LEARNED_DENOISER, Skip::Reduced)));
     }
 
     /// A merge's frame: the prepare with nothing clipped and its noise
@@ -2468,10 +3073,10 @@ mod tests {
         );
         let x = stages(&edit, &merge(None, false, Some(model)), &xtrans(), None);
         assert_eq!(names(&x), ["prepare", "CA", "demosaic"]);
-        assert!(matches!(
-            x.skipped[..],
-            [(LEARNED_DENOISER, Skip::Unavailable(_))]
-        ));
+        assert_eq!(
+            x.skipped,
+            vec![(LEARNED_DENOISER, Skip::Unavailable(NO_XTRANS))]
+        );
 
         // A panorama's frame: the lens's vignetting in camera space,
         // after the demosaic, before anything leaves camera RGB.
@@ -2703,5 +3308,44 @@ mod tests {
             "the learned masks' tap in the list"
         );
         assert!(same(&masked(0.0, 0.0), &subject), "a learned shape");
+    }
+
+    /// A profile with a NaN in its hue and saturation map and in its
+    /// look table, read again as another pointer, is still the profile
+    /// its base was made under; a finite entry changed is not.
+    #[test]
+    fn a_profile_with_a_nan_in_its_tables_finds_its_base() {
+        use greycard_core::dcp::{Dcp, HueSatMaps};
+        let read = || {
+            let bytes = greycard_core::testing::dcp::synthetic();
+            let mut p = Dcp::from_bytes(&bytes).unwrap().profile().unwrap();
+            let mut maps = HueSatMaps::clone(p.maps.as_deref().expect("a map"));
+            maps.primary.data[1][0] = f32::NAN;
+            p.maps = Some(Arc::new(maps));
+            let mut look = p.look.as_deref().expect("a look table").clone();
+            look.data[2][1] = f32::NAN;
+            p.look = Some(Arc::new(look));
+            Arc::new(p)
+        };
+        let prepare = |profile: Arc<Profile>| PrepareOptions {
+            settings: DevelopSettings {
+                profile: Some(profile),
+                ..DevelopSettings::default()
+            },
+            measure_noise: false,
+            clip: true,
+            ca_follows: false,
+        };
+        let (a, b) = (read(), read());
+        assert!(!Arc::ptr_eq(&a, &b));
+        assert!(*a == *a, "equal to itself");
+        assert!(ProfileRef(a.clone()) == ProfileRef(b.clone()));
+        assert!(prepare(a.clone()) == prepare(b), "matches its base");
+
+        let mut other = Profile::clone(&a);
+        let mut look = other.look.as_deref().unwrap().clone();
+        look.data[0][0] += 1.0;
+        other.look = Some(Arc::new(look));
+        assert!(prepare(a) != prepare(Arc::new(other)));
     }
 }

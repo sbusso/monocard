@@ -396,6 +396,7 @@ impl WorkerModels<'_> {
         if patched.unmade.is_empty() {
             return;
         }
+        self.ai.set_shown(patched.shown.copied());
         let left = Retouch {
             patches: patched
                 .retouch
@@ -472,6 +473,24 @@ impl crate::walk::Models for WorkerModels<'_> {
             .map_err(|e| learned_failure(&e))?;
         self.learned = report;
         Ok(rgb)
+    }
+
+    fn shown(&mut self, shown: Option<&crate::shown::Shown>) {
+        self.ai.set_shown(shown.copied());
+    }
+
+    // Only for a fill still to come: one failed or refused is said so,
+    // and the patch is left as it was.
+    fn stand_in(
+        &mut self,
+        patch: &Patch,
+        region: &Region,
+        picture: &WorkingImage,
+    ) -> Option<Vec<f32>> {
+        if !self.fills.pending.contains(&patch.id) {
+            return None;
+        }
+        self.ai.stand_in(patch, region, picture)
     }
 
     fn fill(&mut self, patch: &Patch, region: &Region, picture: &WorkingImage) -> Option<Vec<f32>> {
@@ -569,6 +588,13 @@ impl crate::walk::Models for WorkerModels<'_> {
                 // models and asks for it again, once (`ask_fills_again`).
                 if short.is_some() && !self.patient {
                     self.fills.pending.push(patch.id);
+                    // A removal refused at 1024 is asked again, at 512
+                    // where 1024 is still short: still to come, said
+                    // refused only if it ends so.
+                    if self.ai.asks_again_at_512(patch) {
+                        self.ai.take_short_figures();
+                        return None;
+                    }
                 }
                 // What the window says of a removal the card was short
                 // of, now or still: its need and the card's free memory.
@@ -689,12 +715,14 @@ impl crate::walk::Models for WorkerModels<'_> {
     }
 }
 
-/// The learned denoiser's network takes a packed 2x2 Bayer mosaic.
-fn bayer_only(frame: &RawFrame) -> anyhow::Result<()> {
+/// The learned denoiser's networks take a 2x2 Bayer mosaic or an
+/// X-Trans one, each tier a network for each.
+fn bayer_or_xtrans(frame: &RawFrame) -> anyhow::Result<()> {
     if let greycard_core::raw::SensorLayout::Cfa(p) = &frame.layout
         && !greycard_core::develop::rcd::is_bayer(p)
+        && !p.is_xtrans()
     {
-        anyhow::bail!("the learned denoiser needs a 2x2 Bayer mosaic, not a {p} one");
+        anyhow::bail!("the learned denoiser needs a 2x2 Bayer or an X-Trans mosaic, not a {p} one");
     }
     Ok(())
 }
@@ -758,11 +786,11 @@ pub(crate) fn network(
     tiling: greycard_ai::denoise::Tiling,
 ) -> anyhow::Result<(Vec<f32>, LearnedReport)> {
     use anyhow::Context;
-    bayer_only(frame)?;
+    bayer_or_xtrans(frame)?;
     let pattern = prepared
         .pattern
         .clone()
-        .context("the learned denoiser needs a Bayer mosaic")?;
+        .context("the learned denoiser needs a mosaic")?;
     let noise = prepared
         .noise_model()
         .context("the learned denoiser needs the frame's noise model")?;
@@ -780,7 +808,7 @@ pub(crate) fn network(
             // loaded between develops, the denoiser's run, not its
             // load, is what asks for the most.
             if denoiser.provider() == greycard_ai::Provider::WebGpu {
-                crate::ai::denoise_room(tiling.tile)?;
+                crate::ai::denoise_room(model, tiling.tile)?;
             }
             let rgb = denoiser.run(
                 &prepared.samples,
@@ -893,6 +921,7 @@ mod learned_tests {
                 black: LevelPattern::uniform(100.0, 1),
                 white: LevelPattern::uniform(1100.0, 1),
                 black_deltas: None,
+                saturation: None,
             },
             as_shot_coefficients: Some([2.0, 1.0, 4.0]),
             calibrations: vec![Calibration {

@@ -33,6 +33,13 @@ users with the next release.
 5. Open a pull request with the one file. If your language's name in
    itself is not yet in the Language list, say so in the pull request.
 
+greycard bundles no font. Japanese, Chinese, and Korean take their
+region's typeface from the system's fonts, so shared ideographs keep
+their own forms. Windows and macOS ship these fonts; Linux needs Noto
+Sans CJK installed, from your distribution's package for it
+(`noto-fonts-cjk` on Arch, `fonts-noto-cjk` on Debian and Ubuntu,
+`google-noto-sans-cjk-fonts` on Fedora), or the text shows as boxes.
+
 To update a catalog after the window's wording changed, run
 `scripts/translations.sh` (see [building.md](building.md)) or ask in
 the pull request: new strings arrive empty and changed ones fuzzy.
@@ -45,6 +52,18 @@ differ from the English's. It also checks the template against the
 source, and lists words the window may show that nothing marks for
 translation; `translations/untranslated.txt` holds the ones that are
 data or keys. CI runs it without `--list`.
+
+## Glossaries
+
+The German, Spanish, Italian, Dutch, Polish, Brazilian Portuguese,
+Japanese, Korean, Simplified Chinese, and Traditional Chinese catalogs
+are drafts no native speaker has read yet. Each has a glossary beside it,
+`translations/<tag>/glossary.md`: the word chosen
+for each of the editor's terms, where it came from, and the
+alternatives, with the conventions the catalog keeps (how a button
+speaks, capitals, keys, and plurals). A reviewer can see there why a
+word was chosen, and correct it there and in the catalog together. A
+new translator is welcome to add one too.
 
 ## Where a string shows
 

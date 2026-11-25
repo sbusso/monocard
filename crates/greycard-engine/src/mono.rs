@@ -301,8 +301,13 @@ pub(crate) fn stages(
         } else {
             Fills::Run
         };
+        // As the stock list: what the crop hides is not shown to a Fill.
+        let (fw, fh) = facts.full();
+        let (fw, fh) = (fw as f32, fh as f32);
+        let shown = crate::shown::Shown::of(&edit.geometry, fw, fh, facts.camera())
+            .filter(|v| v.reaches(&edit.retouch, fw, fh));
         s.steps
-            .push(Step::Op(Stage::Retouch(edit.retouch.clone(), fills)));
+            .push(Step::Op(Stage::Retouch(edit.retouch.clone(), fills, shown)));
     }
     keep(&mut s, Keep::Patched);
     // Pixels of the full picture; none where the bin is wider than it.
@@ -568,6 +573,7 @@ pub(crate) fn frame_of(path: &Path, picture: &Picture) -> Option<RawFrame> {
             black: LevelPattern::uniform(0.0, 1),
             white: LevelPattern::uniform(1.0, 1),
             black_deltas: None,
+            saturation: None,
         },
         as_shot_coefficients: Some([1.0; 3]),
         calibrations: Vec::new(),

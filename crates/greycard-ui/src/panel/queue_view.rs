@@ -521,7 +521,8 @@ pub(crate) fn show(st: &mut State, app: &App) {
 }
 
 /// The tiles' marks while the queue runs: the frames of the running
-/// entry written so far (the exported mark), and the one the worker
+/// entry written or skipped so far (the exported mark; a failed one
+/// has none), and the one the worker
 /// said it began and has not finished (the running bar). The rest, and
 /// every tile outside the queue's view, carry none.
 pub(crate) fn marks(st: &State, app: &App) {
@@ -533,7 +534,9 @@ pub(crate) fn marks(st: &State, app: &App) {
         let r = refs.get(c).copied().flatten();
         let done = r.is_some_and(|r| {
             run.is_some_and(|run| {
-                run.entry == r.entry && run.done.get(r.frame).copied().unwrap_or(false)
+                run.entry == r.entry
+                    && run.done.get(r.frame).copied().unwrap_or(false)
+                    && !run.failed.contains(&r.id)
             })
         });
         let running = r.is_some_and(|r| busy == Some(r.id));
@@ -981,6 +984,7 @@ mod tests {
             set: None,
             at: Vec::new(),
             done: vec![false; 2],
+            failed: Vec::new(),
             left_behind: 0,
             whole: crate::panel::export_queue::Whole::new(),
             probe: 0,
@@ -1001,6 +1005,103 @@ mod tests {
         take_out(&mut st, &s.app, &[first, second]);
         assert_eq!(st.work.export_queue.len(), 1);
         assert_eq!(st.work.queue_run.as_ref().unwrap().entry, 0);
+        drop(st);
+        teardown(s);
+    }
+
+    /// While its set runs, a frame that failed wears no exported mark on
+    /// its tile, and one written does; at the set's end the failed frame
+    /// has left the queue all the same.
+    #[test]
+    fn a_failed_frame_is_not_marked_exported_while_its_set_runs() {
+        let s = setup("failed-mark", 3);
+        queue(
+            &s,
+            vec![
+                entry(&s, &[0, 1], None, "JPEG"),
+                entry(&s, &[2], None, "PNG"),
+            ],
+        );
+        open(&s);
+        s.app.invoke_export_queue_run();
+        let (failed, written) = {
+            let st = s.state.borrow();
+            let f = &st.work.export_queue[0].frames;
+            (f[0].id, f[1].id)
+        };
+        let done = |index: usize, done: crate::queue::Done| {
+            let (set, source, edit) = {
+                let st = s.state.borrow();
+                let run = st.work.queue_run.as_ref().unwrap();
+                let f = &st.work.export_queue[run.entry].frames[run.at[index]];
+                (
+                    run.set.clone().unwrap(),
+                    run.sent[index].clone(),
+                    f.edit.clone(),
+                )
+            };
+            crate::panel::deliver::deliver(
+                &s.app,
+                crate::worker::Outcome::SetFrameDone {
+                    set,
+                    index,
+                    source,
+                    edit,
+                    version: None,
+                    done,
+                },
+            );
+        };
+        // The tile's exported mark, found by the queued frame's id.
+        let marked = |id: u64| {
+            let st = s.state.borrow();
+            let ids = ids_of_cells(&st);
+            let row = st
+                .views
+                .shown
+                .iter()
+                .position(|&c| ids.get(c).copied().flatten() == Some(id))
+                .expect("the frame has a tile");
+            s.app.get_thumbs().row_data(row).unwrap().queue_done
+        };
+        done(
+            0,
+            crate::queue::Done::Failed {
+                message: "too large".into(),
+            },
+        );
+        done(
+            1,
+            crate::queue::Done::Exported {
+                path: PathBuf::from("/nowhere/IMG_0001.jpg"),
+                seconds: 1.0,
+                note: None,
+                left_out: Vec::new(),
+            },
+        );
+        assert!(!marked(failed), "a failed frame is not marked exported");
+        assert!(marked(written), "a written frame is");
+        let set = s
+            .state
+            .borrow()
+            .work
+            .queue_run
+            .as_ref()
+            .unwrap()
+            .set
+            .clone();
+        let set = set.unwrap();
+        let tally = set.tally();
+        crate::panel::deliver::deliver(&s.app, crate::worker::Outcome::SetDone { set, tally });
+        let st = s.state.borrow();
+        assert_eq!(st.work.export_queue.len(), 1, "the entry is done with");
+        assert!(
+            st.work
+                .export_queue
+                .iter()
+                .all(|e| e.frames.iter().all(|f| f.id != failed)),
+            "the failed frame left the queue"
+        );
         drop(st);
         teardown(s);
     }
@@ -1039,7 +1140,7 @@ mod tests {
             assert_eq!(st.sidecars[f].turn, 0);
             assert!(st.sidecars[f].versions.is_empty());
             assert_eq!(st.sidecars[f].history.len(), 1);
-            assert!((st.sidecars[f].current.light.exposure - 0.1).abs() < 1e-6);
+            assert!((st.sidecars[f].current().light.exposure - 0.1).abs() < 1e-6);
             assert!((st.develop.edit.light.exposure - 1.1).abs() < 1e-6);
         };
         // A turn.
@@ -1117,8 +1218,8 @@ mod tests {
         s.app.invoke_queue_view_picked();
         crate::roots::land_sent(&s.state, &s.app, &s.worker);
         assert_eq!(s.state.borrow().views.view, View::Queue);
-        let on_disk = Sidecar::load(&s.files[0]).unwrap().unwrap();
-        assert!((on_disk.current.light.exposure - 0.7).abs() < 1e-6);
+        let on_disk = Sidecar::load_as_file(&s.files[0]).unwrap().unwrap();
+        assert!((on_disk.current().light.exposure - 0.7).abs() < 1e-6);
         crate::roots::open_listing(
             &s.state,
             &s.app,
@@ -1209,7 +1310,7 @@ mod tests {
         s.app.set_grid_open(false);
         s.app.invoke_select(0);
         assert!(s.app.get_frozen());
-        assert_eq!(crate::testing::count_labeled(&s.app, "Cull mode"), 0);
+        assert_eq!(crate::testing::count_id(&s.app, "App::cull-mode-button"), 0);
         // Rating still works from the keys over the frozen frame.
         crate::testing::press(&s.app, "3");
         {
@@ -1227,7 +1328,7 @@ mod tests {
         s.app.set_grid_open(false);
         s.app.invoke_select(1);
         assert!(!s.app.get_frozen());
-        assert_eq!(crate::testing::count_labeled(&s.app, "Cull mode"), 1);
+        assert_eq!(crate::testing::count_id(&s.app, "App::cull-mode-button"), 1);
         teardown(s);
     }
 
@@ -1239,11 +1340,17 @@ mod tests {
     }
 
     /// The line in the tab bar's place over a frozen frame.
-    const WHY: &str = "Queued for export, shown as it will export. Edit it from its folder.";
+    // The note that says why the panel will not edit a queued frame.
+    const WHY: &str = "App::frozen-note";
 
     /// A click on the middle of the top's button named `label`.
-    fn press_button(s: &Setup, label: &str) {
-        let (at, size) = crate::testing::buttons(&s.app, label)[0];
+    fn press_button(s: &Setup, id: &str) {
+        use i_slint_backend_testing::ElementHandle;
+        crate::testing::count_id(&s.app, id);
+        let button = ElementHandle::find_by_element_id(&s.app, id)
+            .next()
+            .unwrap_or_else(|| panic!("no {id}"));
+        let (at, size) = (button.absolute_position(), button.size());
         crate::testing::click(&s.app, at.x + size.width / 2.0, at.y + size.height / 2.0);
     }
 
@@ -1273,9 +1380,9 @@ mod tests {
         s.app.set_grid_open(false);
         s.app.invoke_select(0);
         assert!(s.app.get_frozen());
-        assert_eq!(crate::testing::count_labeled(&s.app, "Cull mode"), 0);
-        assert_eq!(crate::testing::count_labeled(&s.app, WHY), 1);
-        press_button(&s, "Loupe view");
+        assert_eq!(crate::testing::count_id(&s.app, "App::cull-mode-button"), 0);
+        assert_eq!(crate::testing::count_id(&s.app, WHY), 1);
+        press_button(&s, "App::loupe-view-button");
         crate::roots::land_sent(&s.state, &s.app, &s.worker);
         assert_eq!(starts_on(&s), Some(s.files[1].clone()));
         s.app.invoke_select(1);
@@ -1291,8 +1398,8 @@ mod tests {
         assert!(!s.app.get_grid_open());
         assert!(!s.app.get_frozen());
         assert!(!s.app.get_queue_view_on());
-        assert_eq!(crate::testing::count_labeled(&s.app, "Cull mode"), 1);
-        assert_eq!(crate::testing::count_labeled(&s.app, WHY), 0);
+        assert_eq!(crate::testing::count_id(&s.app, "App::cull-mode-button"), 1);
+        assert_eq!(crate::testing::count_id(&s.app, WHY), 0);
         teardown(s);
     }
 
@@ -1327,7 +1434,10 @@ mod tests {
             drop(st);
             assert!(!s.app.get_frozen());
         };
-        for (button, grid) in [("Loupe view", false), ("Library view", true)] {
+        for (button, grid) in [
+            ("App::loupe-view-button", false),
+            ("App::library-view-button", true),
+        ] {
             // The queue the first view, or after nothing.
             open(&s);
             s.app.set_grid_open(false);
@@ -1353,7 +1463,7 @@ mod tests {
         assert_eq!(s.state.borrow().views.view, View::Queue);
         let written = s.dir.join("IMG_0001-edited.jpg");
         std::fs::write(&written, b"").unwrap();
-        press_button(&s, "Library view");
+        press_button(&s, "App::library-view-button");
         crate::roots::land_sent(&s.state, &s.app, &s.worker);
         assert_eq!(starts_on(&s), Some(s.files[1].clone()));
         {
@@ -1377,7 +1487,7 @@ mod tests {
         queue(&s, vec![entry(&s, &[0], None, "JPEG")]);
         folder_on(&s, 1);
         open(&s);
-        press_button(&s, "Loupe view");
+        press_button(&s, "App::loupe-view-button");
         assert!(s.app.get_grid_open(), "no Loupe before the read lands");
         assert_eq!(s.state.borrow().views.view, View::Queue);
         crate::roots::land_sent(&s.state, &s.app, &s.worker);
@@ -1386,7 +1496,7 @@ mod tests {
         // Overtaken.
         s.app.set_grid_open(true);
         open(&s);
-        press_button(&s, "Loupe view");
+        press_button(&s, "App::loupe-view-button");
         crate::roots::open_listing(
             &s.state,
             &s.app,
@@ -1419,7 +1529,7 @@ mod tests {
             key
         };
         open(&s);
-        press_button(&s, "Library view");
+        press_button(&s, "App::library-view-button");
         crate::roots::land_sent(&s.state, &s.app, &s.worker);
         let st = s.state.borrow();
         assert_eq!(st.views.view, View::Folder);
@@ -1439,9 +1549,16 @@ mod tests {
         let s = setup("folded", 1);
         queue(&s, vec![entry(&s, &[0], None, "JPEG")]);
         s.app.set_collapsed_collections(true);
-        let rows = crate::testing::buttons(&s.app, "Export queue");
-        assert_eq!(rows.len(), 1, "the row, once");
-        let (at, size) = rows[0];
+        use i_slint_backend_testing::ElementHandle;
+        assert_eq!(
+            crate::testing::count_id(&s.app, "App::queue-header"),
+            1,
+            "the row, once"
+        );
+        let row = ElementHandle::find_by_element_id(&s.app, "App::queue-header")
+            .next()
+            .expect("the queue's row");
+        let (at, size) = (row.absolute_position(), row.size());
         crate::testing::click(&s.app, at.x + size.width / 2.0, at.y + size.height / 2.0);
         crate::roots::land_sent(&s.state, &s.app, &s.worker);
         assert_eq!(s.state.borrow().views.view, View::Queue);
@@ -1457,7 +1574,7 @@ mod tests {
             .dispatch_event(slint::platform::WindowEvent::PointerMoved {
                 position: slint::LogicalPosition::new(0.0, 0.0),
             });
-        let e = ElementHandle::find_by_accessible_label(&s.app, "Export the queue").next()?;
+        let e = ElementHandle::find_by_element_id(&s.app, "GridSheet::queue-run-button").next()?;
         let (at, size) = (e.absolute_position(), e.size());
         Some((at.x + size.width / 2.0, at.y + size.height / 2.0))
     }

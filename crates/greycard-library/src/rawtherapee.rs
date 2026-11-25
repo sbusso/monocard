@@ -1,5 +1,6 @@
 //! RawTherapee's processing profiles brought across: for each frame,
-//! the `.pp3` beside it read by [`greycard_edit_io::pp3`], its rank, color
+//! the `.pp3` beside it (or ART's `.arp`, the same key file) read by
+//! [`greycard_edit_io::pp3`], its rank, color
 //! label and trash mark into the meta exactly, and its white balance,
 //! exposure, geometry and lens settings, as near as this engine has
 //! them, laid over the frame's edit as one state named for the import.
@@ -177,12 +178,20 @@ impl FrameReport {
         matches!(self.fate, Fate::Unchanged | Fate::Would | Fate::Wrote)
     }
 
+    /// The editor whose profile it is, by the profile's extension:
+    /// "RawTherapee", or "ART".
+    fn editor(&self) -> &'static str {
+        pp3::Dialect::of_path(&self.profile)
+            .unwrap_or_default()
+            .name()
+    }
+
     /// What it writes, in words: "the meta and a state \"Imported from
     /// RawTherapee\"".
     fn what(&self) -> String {
         let state = format!(
             "a state \"{}\"",
-            greycard_edit::history::import_label(pp3::SOURCE)
+            greycard_edit::history::import_label(self.editor())
         );
         match (self.meta, self.edit) {
             (true, true) => format!("the meta and {state}"),
@@ -237,10 +246,14 @@ impl FrameReport {
             line(
                 "  forced",
                 match self.here {
-                    Here::History => "over its history here, RawTherapee's neutral settings too",
-                    Here::Meta | Here::Nothing => "over its stars, label and flag set here",
-                }
-                .to_string(),
+                    Here::History => format!(
+                        "over its history here, {}'s neutral settings too",
+                        self.editor()
+                    ),
+                    Here::Meta | Here::Nothing => {
+                        "over its stars, label and flag set here".to_string()
+                    }
+                },
             );
         }
         if !self.replaced.is_empty() {
@@ -473,7 +486,9 @@ impl std::fmt::Display for Report {
 /// `.DNG`) both take it, as they always did. A picture takes it only
 /// when no raw of its name (an `.ORI` aside) is beside it, so the
 /// camera's JPEG of a raw and JPEG pair does not take the raw's lens
-/// profile, white balance and exposure.
+/// profile, white balance and exposure. ART's `.arp` is found by the
+/// same two names, and taken before RawTherapee's when a frame has both
+/// ([`pp3::Dialect::BY_PRECEDENCE`]).
 pub fn profile_beside(file: &Path) -> Option<PathBuf> {
     profile_for(file, &mut RawStems::default())
 }
@@ -514,13 +529,30 @@ impl RawStems {
 
 /// [`profile_beside`], each folder's raws listed once in `stems`.
 fn profile_for(file: &Path, stems: &mut RawStems) -> Option<PathBuf> {
+    profiles_for(file, stems).into_iter().next()
+}
+
+/// Every profile beside `file`, an editor's at most each, in
+/// [`pp3::Dialect::BY_PRECEDENCE`]'s order: ART's `.arp` by either
+/// name, then RawTherapee's `.pp3`. The first is read; the rest are
+/// named in the report.
+fn profiles_for(file: &Path, stems: &mut RawStems) -> Vec<PathBuf> {
+    pp3::Dialect::BY_PRECEDENCE
+        .iter()
+        .filter_map(|d| dialect_profile_for(file, d.extension(), stems))
+        .collect()
+}
+
+/// The profile of extension `ext` beside `file`, by either name.
+fn dialect_profile_for(file: &Path, ext: &str, stems: &mut RawStems) -> Option<PathBuf> {
     let mut name = file.file_name()?.to_os_string();
-    name.push(".pp3");
+    name.push(".");
+    name.push(ext);
     let appended = file.with_file_name(name);
     if appended.is_file() {
         return Some(appended);
     }
-    let replaced = file.with_extension("pp3");
+    let replaced = file.with_extension(ext);
     if replaced == file || !replaced.is_file() {
         return None;
     }
@@ -659,14 +691,15 @@ pub fn import_each(
 /// The sidecar of `file` as an import starts from: the one it has, or a
 /// new one at the edit the editor would open the frame at.
 fn sidecar_for(file: &Path) -> Result<Sidecar, String> {
-    let mut sidecar = match Sidecar::load(file) {
+    // The edit alone: the body is the Lightroom mapper's business, and a
+    // RawTherapee import takes no offset for it.
+    let start = crate::lightroom_catalog::starting_edit(file).0;
+    let mut sidecar = match Sidecar::load(file, &start) {
         Ok(Some(s)) => s,
-        Ok(None) => Sidecar {
-            // The edit alone: the body is the Lightroom mapper's business,
-            // and a RawTherapee import takes no offset for it.
-            line: greycard_edit::Line::of(crate::lightroom_catalog::starting_edit(file).0),
-            ..Sidecar::default()
-        },
+        // A line nobody developed holds no state (§724): an import of
+        // the meta alone records none, and one of a develop records the
+        // start as its root under the import's step.
+        Ok(None) => Sidecar::starting_at(&start),
         Err(e) => return Err(format!("reading the sidecar of {}: {e}", file.display())),
     };
     // A sidecar from before schema 4 does not know which way up an
@@ -677,7 +710,7 @@ fn sidecar_for(file: &Path) -> Result<Sidecar, String> {
             .ok()
             .and_then(|s| s.shown_size(sidecar.turn))
         {
-            Some((w, h)) => sidecar.migrate_with_frame(h > w),
+            Some((w, h)) => sidecar.frame_known(w as f32 / h as f32),
             None => log::warn!(
                 "{}: will not say which way up it is, so its Original crop is left for \
                  the editor to bring up to date",
@@ -693,7 +726,17 @@ fn sidecar_for(file: &Path) -> Result<Sidecar, String> {
 /// original takes it: the frame's other versions are as they were, as a
 /// preset laid over the frame leaves them.
 fn import_frame(file: &Path, options: &Options, stems: &mut RawStems) -> Option<FrameReport> {
-    let profile = profile_for(file, stems)?;
+    let mut found = profiles_for(file, stems).into_iter();
+    let profile = found.next()?;
+    let dialect = pp3::Dialect::of_path(&profile).unwrap_or_default();
+    // The other profiles beside it, never read in its place: named, so
+    // that one which will not read does not hide them.
+    let others: Vec<String> = found
+        .map(|p| {
+            let name = p.file_name().unwrap_or_default().to_string_lossy();
+            format!("{name}, beside it too")
+        })
+        .collect();
     let mut report = FrameReport {
         file: file.to_path_buf(),
         profile: profile.clone(),
@@ -708,7 +751,10 @@ fn import_frame(file: &Path, options: &Options, stems: &mut RawStems) -> Option<
         versions: 0,
         fate: Fate::Unchanged,
     };
-    let unreadable = |mut report: FrameReport, why: String| {
+    let unreadable = |mut report: FrameReport, mut why: String| {
+        for other in &others {
+            why.push_str(&format!("; not read: {other}"));
+        }
         report.fate = Fate::Unreadable(why);
         Some(report)
     };
@@ -738,12 +784,15 @@ fn import_frame(file: &Path, options: &Options, stems: &mut RawStems) -> Option<
     } else {
         pp3::Carry::Set
     };
-    let imported = match pp3::read_carrying(&text, frame, carry) {
+    let imported = match pp3::read_as(&text, frame, carry, dialect) {
         Ok(i) => i,
         Err(e) => return unreadable(report, format!("{}: {e}", profile.display())),
     };
     report.source = imported.source();
     report.said = imported.report();
+    for other in &others {
+        report.said.push(("not read", other.clone()));
+    }
     report.skipped = imported.skipped.clone();
     if here == Here::Meta {
         let mut after = sidecar.meta.clone();
@@ -835,6 +884,67 @@ Enabled=true
         // RawTherapee's own naming wins when both are there.
         std::fs::write(dir.join("IMG_0001.CR3.pp3"), PROFILE).unwrap();
         assert_eq!(profile_beside(&raw), Some(dir.join("IMG_0001.CR3.pp3")));
+        greycard_core::testing::remove_dir_retry(&dir);
+    }
+
+    /// ART's `.arp` is found by the same two names, taken before a
+    /// `.pp3` beside the same frame, which the report names; it is
+    /// imported under ART's name, and one that will not read is said
+    /// as a `.pp3` is.
+    #[test]
+    fn an_art_profile_is_found_as_a_pp3_is_and_taken_first() {
+        let dir = scratch("arp-names");
+        let raw = dir.join("IMG_0001.CR3");
+        let jpeg = dir.join("IMG_0001.JPG");
+        std::fs::write(&raw, b"").unwrap();
+        std::fs::write(&jpeg, b"").unwrap();
+        std::fs::write(dir.join("IMG_0001.arp"), PROFILE).unwrap();
+        assert_eq!(profile_beside(&raw), Some(dir.join("IMG_0001.arp")));
+        assert_eq!(profile_beside(&jpeg), None, "the raw's, not its JPEG's");
+        std::fs::write(dir.join("IMG_0001.CR3.arp"), PROFILE).unwrap();
+        assert_eq!(profile_beside(&raw), Some(dir.join("IMG_0001.CR3.arp")));
+        // RawTherapee's beside it too: ART's is read, the other named.
+        std::fs::write(
+            dir.join("IMG_0001.CR3.pp3"),
+            PROFILE.replace("Compensation=-0.7", "Compensation=1"),
+        )
+        .unwrap();
+        assert_eq!(profile_beside(&raw), Some(dir.join("IMG_0001.CR3.arp")));
+        assert_eq!(waiting_in(&dir), 1);
+        let dry = one(&raw, write(false, false)).unwrap();
+        assert_eq!(dry.profile, dir.join("IMG_0001.CR3.arp"));
+        assert_eq!(dry.source, "ART 5.10, profile version 351");
+        assert!(
+            dry.said
+                .contains(&("not read", "IMG_0001.CR3.pp3, beside it too".to_string()))
+        );
+        assert!(dry.lines(Voice::Command).contains(&(
+            "  would write".to_string(),
+            "the meta and a state \"Imported from ART\"".to_string()
+        )));
+        assert_eq!(fate(&raw, write(true, false)), Some(Fate::Wrote));
+        let sidecar = Sidecar::load_as_file(&raw).unwrap().unwrap();
+        assert_eq!(sidecar.current_label(), Some("Imported from ART"));
+        assert_eq!(sidecar.current().light.exposure, -0.7);
+        // One that will not read is that frame's line.
+        let other = dir.join("IMG_0002.CR3");
+        std::fs::write(&other, b"").unwrap();
+        std::fs::write(dir.join("IMG_0002.CR3.arp"), "not a profile").unwrap();
+        assert!(matches!(
+            fate(&other, write(true, false)),
+            Some(Fate::Unreadable(_))
+        ));
+        assert!(Sidecar::find(&other).is_none());
+        // With a `.pp3` beside it, that is named and not read instead.
+        std::fs::write(dir.join("IMG_0002.CR3.pp3"), PROFILE).unwrap();
+        let Some(Fate::Unreadable(why)) = fate(&other, write(true, false)) else {
+            panic!("unreadable");
+        };
+        assert!(
+            why.ends_with("; not read: IMG_0002.CR3.pp3, beside it too"),
+            "{why}"
+        );
+        assert!(Sidecar::find(&other).is_none());
         greycard_core::testing::remove_dir_retry(&dir);
     }
 
@@ -973,8 +1083,8 @@ Enabled=true
         let forced = one(&raw, write(true, true)).unwrap();
         assert_eq!(forced.fate, Fate::Wrote);
         assert!(forced.edit && forced.forced);
-        let sidecar = Sidecar::load(&raw).unwrap().unwrap();
-        assert_eq!(sidecar.current.light.exposure, 0.0);
+        let sidecar = Sidecar::load_as_file(&raw).unwrap().unwrap();
+        assert_eq!(sidecar.current().light.exposure, 0.0);
         assert_eq!(sidecar.history.len(), 2);
         greycard_core::testing::remove_dir_retry(&dir);
     }
@@ -989,11 +1099,11 @@ Enabled=true
         std::fs::write(dir.join("DSCF0001.DNG.pp3"), PROFILE).unwrap();
         assert!(greycard_edit_io::lightroom::body_offset(Some("Fujifilm GFX 100S II")) < -0.5);
         assert_eq!(fate(&raw, write(true, false)), Some(Fate::Wrote));
-        let sidecar = Sidecar::load(&raw).unwrap().unwrap();
+        let sidecar = Sidecar::load_as_file(&raw).unwrap().unwrap();
         assert!(
-            (sidecar.current.light.exposure + 0.7).abs() < 1e-6,
+            (sidecar.current().light.exposure + 0.7).abs() < 1e-6,
             "{}",
-            sidecar.current.light.exposure
+            sidecar.current().light.exposure
         );
         greycard_core::testing::remove_dir_retry(&dir);
     }
@@ -1014,7 +1124,9 @@ Enabled=true
         ));
         assert_eq!(report.profiled[1].fate, Fate::Wrote);
         assert_eq!(report.unreadable(), 1);
-        let next = Sidecar::load(&dir.join("IMG_0002.CR3")).unwrap().unwrap();
+        let next = Sidecar::load_as_file(&dir.join("IMG_0002.CR3"))
+            .unwrap()
+            .unwrap();
         assert_eq!(next.meta.rating, 4);
         assert_eq!(
             std::fs::read_to_string(dir.join("IMG_0001.CR3.gcd")).unwrap(),
@@ -1054,17 +1166,14 @@ Enabled=true
         let wrote = one(&raw, write(true, false)).unwrap();
         assert_eq!(wrote.fate, Fate::Wrote);
         assert_eq!((wrote.meta, wrote.edit), (dry.meta, dry.edit));
-        let sidecar = Sidecar::load(&raw).unwrap().expect("written");
+        let sidecar = Sidecar::load_as_file(&raw).unwrap().expect("written");
         assert_eq!(sidecar.meta.rating, 4);
         assert_eq!(sidecar.meta.label, Label::Green);
         assert_eq!(sidecar.meta.flag, Flag::Reject);
         assert_eq!(sidecar.history.len(), 1);
-        assert_eq!(
-            sidecar.current_label.as_deref(),
-            Some("Imported from RawTherapee")
-        );
-        assert_eq!(sidecar.current.light.exposure, -0.7);
-        assert_eq!(sidecar.history[0].edit.light.exposure, 0.0);
+        assert_eq!(sidecar.current_label(), Some("Imported from RawTherapee"));
+        assert_eq!(sidecar.current().light.exposure, -0.7);
+        assert_eq!(sidecar.history[0].edit().light.exposure, 0.0);
         assert_eq!(waiting_in(&dir), 0, "come in, so not offered again");
 
         // Now it has a history: held back, unless forced, and forced
@@ -1073,7 +1182,10 @@ Enabled=true
         let forced = one(&raw, write(true, true)).unwrap();
         assert_eq!(forced.fate, Fate::Unchanged);
         assert_eq!(forced.skipped, ["Local Contrast"]);
-        assert_eq!(Sidecar::load(&raw).unwrap().unwrap().history.len(), 1);
+        assert_eq!(
+            Sidecar::load_as_file(&raw).unwrap().unwrap().history.len(),
+            1
+        );
 
         // A profile that is not one is said, and passed over.
         std::fs::write(dir.join("IMG_0002.CR3.pp3"), "not a profile").unwrap();
@@ -1193,7 +1305,10 @@ Enabled=true
         culled.meta.set_rating(5);
         culled.meta.flag = Flag::Reject;
         culled.save(&raw).unwrap();
-        assert_eq!(Here::of(&Sidecar::load(&raw).unwrap().unwrap()), Here::Meta);
+        assert_eq!(
+            Here::of(&Sidecar::load_as_file(&raw).unwrap().unwrap()),
+            Here::Meta
+        );
         assert_eq!(waiting_in(&dir), 0, "not offered");
 
         // Unforced: held back, both kept, and said why.
@@ -1210,7 +1325,7 @@ Enabled=true
             "held back".into(),
             "1 with stars, a label or a flag set here already (--force to import over it)".into()
         )));
-        let kept = Sidecar::load(&raw).unwrap().unwrap();
+        let kept = Sidecar::load_as_file(&raw).unwrap().unwrap();
         assert_eq!((kept.meta.rating, kept.meta.flag), (5, Flag::Reject));
         assert!(kept.history.is_empty());
 
@@ -1232,9 +1347,9 @@ Enabled=true
         // sets, not its neutral too.
         assert!(!r.said.iter().any(|(k, _)| *k == "neutral"));
         import(std::slice::from_ref(&dir), &write(true, true)).unwrap();
-        let after = Sidecar::load(&raw).unwrap().unwrap();
+        let after = Sidecar::load_as_file(&raw).unwrap().unwrap();
         assert_eq!((after.meta.rating, after.meta.flag), (0, Flag::None));
-        assert_eq!(after.current.light.exposure, 0.5);
+        assert_eq!(after.current().light.exposure, 0.5);
         greycard_core::testing::remove_dir_retry(&dir);
     }
 
@@ -1248,9 +1363,14 @@ Enabled=true
         let meta_only = "[Version]\nVersion=351\n[General]\nRank=3\nColorLabel=1\nInTrash=false\n";
         std::fs::write(&profile, meta_only).unwrap();
         assert_eq!(fate(&raw, write(true, false)), Some(Fate::Wrote));
-        let first = Sidecar::load(&raw).unwrap().unwrap();
+        let first = Sidecar::load_as_file(&raw).unwrap().unwrap();
         assert!(first.history.is_empty());
         assert_eq!(Here::of(&first), Here::Meta);
+        // Nothing developed: no state recorded, so the frame still takes
+        // its ISO's seed when it opens (§724).
+        assert!(!first.line.recorded());
+        let written = std::fs::read_to_string(Sidecar::find(&raw).unwrap()).unwrap();
+        assert!(!written.contains("\"current\""), "{written}");
         // Run again unforced: nothing of its own would be replaced, so
         // nothing holds it; there is nothing new to write, and it is not
         // offered.
@@ -1271,8 +1391,8 @@ Enabled=true
         let r = one(&raw, write(true, false)).unwrap();
         assert_eq!(r.fate, Fate::Wrote);
         assert!(r.edit && !r.forced && r.replaced.is_empty());
-        let s = Sidecar::load(&raw).unwrap().unwrap();
-        assert_eq!(s.current.light.exposure, 0.4);
+        let s = Sidecar::load_as_file(&raw).unwrap().unwrap();
+        assert_eq!(s.current().light.exposure, 0.4);
         assert_eq!(s.meta.rating, 3);
         // A cull that differs, on a frame with no history yet, still
         // holds it.
@@ -1284,7 +1404,10 @@ Enabled=true
         culled.save(&other).unwrap();
         let r = one(&other, write(true, false)).unwrap();
         assert_eq!((r.fate, r.here), (Fate::Held, Here::Meta));
-        assert_eq!(Sidecar::load(&other).unwrap().unwrap().meta.rating, 1);
+        assert_eq!(
+            Sidecar::load_as_file(&other).unwrap().unwrap().meta.rating,
+            1
+        );
         greycard_core::testing::remove_dir_retry(&dir);
     }
 

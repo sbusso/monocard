@@ -59,6 +59,8 @@ component BindChip inherits Rectangle {
     accessible-value: self.shown;
     accessible-action-default => { root.listen(); }
     Text {
+        // Said by the chip, as its value.
+        accessible-role: none;
         text: root.shown;
         font-size: Theme.font-sm;
         font-weight: Theme.weight-medium;
@@ -461,7 +463,7 @@ export component SettingsSheet inherits Rectangle {
                                 VerticalLayout {
                                     padding: 2px;
                                     spacing: 2px;
-                                    for name[i] in root.categories: Rectangle {
+                                    for name[i] in root.categories: category-tab := Rectangle {
                                         property <bool> on: name == root.category;
                                         height: Theme.control-height;
                                         border-radius: Theme.radius-sm;
@@ -469,9 +471,13 @@ export component SettingsSheet inherits Rectangle {
                                         animate background { duration: Theme.quick; }
                                         accessible-role: tab;
                                         accessible-label: root.category-words[i];
+                                        // Its key, for automation: the category.
+                                        accessible-id: name;
                                         accessible-checked: self.on;
                                         accessible-action-default => { root.choose(name); }
                                         Text {
+                                            // Said by its tab, which it names.
+                                            accessible-role: none;
                                             x: Theme.space-3;
                                             width: parent.width - 2 * Theme.space-3;
                                             text: root.category-words[i];
@@ -513,7 +519,7 @@ export component SettingsSheet inherits Rectangle {
                             padding-right: Theme.space-5 + Theme.scrollbar-band;
                             padding-bottom: Theme.space-2;
                             spacing: Theme.space-3;
-                            Text {
+                            interface-heading := Text {
                                 text: @tr("INTERFACE");
                                 font-size: Theme.font-xs;
                                 font-weight: Theme.weight-medium;
@@ -521,8 +527,9 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Scale"); width: root.interface-label-w; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                scale-words := Text { accessible-role: none; text: @tr("Scale"); width: root.interface-label-w; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 LineEdit {
+                                    accessible-label: scale-words.text;
                                     width: 96px;
                                     text <=> root.ui-scale;
                                     input-type: number;
@@ -536,13 +543,13 @@ export component SettingsSheet inherits Rectangle {
                                 color: Theme.text-muted;
                                 wrap: word-wrap;
                             }
-                            if root.ui-scale-by-hand: Text {
+                            if root.ui-scale-by-hand: scale-by-hand-note := Text {
                                 text: @tr("SLINT_SCALE_FACTOR is set, and wins over this.");
                                 font-size: Theme.font-xs;
                                 color: Theme.text-secondary;
                                 wrap: word-wrap;
                             }
-                            if !root.ui-scale-by-hand && root.ui-scale-percent != root.ui-scale-started: Text {
+                            if !root.ui-scale-by-hand && root.ui-scale-percent != root.ui-scale-started: scale-next-start := Text {
                                 text: @tr("Applies at the next start.");
                                 font-size: Theme.font-xs;
                                 color: Theme.text-secondary;
@@ -550,8 +557,9 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Theme"); width: root.interface-label-w; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
-                                Segmented {
+                                theme-words := Text { accessible-role: none; text: @tr("Theme"); width: root.interface-label-w; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                theme-row := Segmented {
+                                    name: theme-words.text;
                                     options: ["Charcoal", "Grey", "Light"];
                                     labels: [@tr("Charcoal"), @tr("Grey"), @tr("theme" => "Light")];
                                     current <=> root.theme;
@@ -560,8 +568,9 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Scroll bars"); width: root.interface-label-w; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
-                                Segmented {
+                                scroll-bars-words := Text { accessible-role: none; text: @tr("Scroll bars"); width: root.interface-label-w; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                scroll-bars-row := Segmented {
+                                    name: scroll-bars-words.text;
                                     options: ["Fade", "Stay"];
                                     // Scroll bars: fade when idle, or stay
                                     labels: [@tr("Fade"), @tr("Stay")];
@@ -571,8 +580,9 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Scroll bar size"); width: root.interface-label-w; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
-                                Segmented {
+                                scroll-bar-size-words := Text { accessible-role: none; text: @tr("Scroll bar size"); width: root.interface-label-w; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                scroll-bar-size-row := Segmented {
+                                    name: scroll-bar-size-words.text;
                                     options: ["Thin", "Medium", "Wide"];
                                     // Scroll bar size
                                     labels: [@tr("Thin"), @tr("Medium"), @tr("Wide")];
@@ -582,17 +592,17 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Language"); width: root.interface-label-w; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
-                                ComboBox {
+                                language-words := Text { accessible-role: none; text: @tr("Language"); width: root.interface-label-w; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                language-box := ComboBox {
                                     width: 160px;
-                                    accessible-label: @tr("Language");
+                                    accessible-label: language-words.text;
                                     model: root.languages;
                                     current-index <=> root.language-index;
                                     selected => { root.language-changed(); }
                                 }
                                 Rectangle { horizontal-stretch: 1; }
                             }
-                            Text {
+                            language-next-start := Text {
                                 text: @tr("Applies at the next start.");
                                 font-size: Theme.font-xs;
                                 color: Theme.text-muted;
@@ -605,7 +615,7 @@ export component SettingsSheet inherits Rectangle {
                                 toggled => { root.one-section-changed(); }
                             }
                             HorizontalLayout {
-                                PanelButton {
+                                reset-order-button := PanelButton {
                                     // Interface: every view's sections back in
                                     // their first order, after dragging them
                                     text: @tr("Reset section order");
@@ -633,8 +643,9 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Start in"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
-                                Segmented {
+                                start-in-words := Text { accessible-role: none; text: @tr("Start in"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                start-in-row := Segmented {
+                                    name: start-in-words.text;
                                     options: ["Last folder", "Chosen folder"];
                                     labels: [@tr("Last folder"), @tr("Chosen folder")];
                                     current: root.start-choice;
@@ -642,7 +653,7 @@ export component SettingsSheet inherits Rectangle {
                                     selected(c) => { root.start-picked(c); }
                                 }
                             }
-                            if root.start-choice == "Chosen folder": Text {
+                            if root.start-choice == "Chosen folder": start-folder-text := Text {
                                 text: root.start-folder;
                                 font-size: Theme.font-xs;
                                 color: Theme.text-secondary;
@@ -651,7 +662,10 @@ export component SettingsSheet inherits Rectangle {
                             HorizontalLayout {
                                 spacing: Theme.space-2;
                                 Rectangle { width: 68px; }
-                                Segmented {
+                                start-view-row := Segmented {
+                                    // Spoken by a screen reader: the row under Start in
+                                    // that picks the view greycard opens in, Loupe or Library
+                                    name: @tr("Start view");
                                     options: ["Loupe", "Library"];
                                     labels: [@tr("Loupe"), @tr("Library")];
                                     current <=> root.start-view;
@@ -665,8 +679,9 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Cell size"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                cell-size-words := Text { accessible-role: none; text: @tr("Cell size"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 LineEdit {
+                                    accessible-label: cell-size-words.text;
                                     width: 96px;
                                     text <=> root.grid-cell-typed;
                                     input-type: number;
@@ -685,7 +700,7 @@ export component SettingsSheet inherits Rectangle {
                                 toggled => { Mono.camera-popup-changed(); }
                             }
                             Rectangle { height: Theme.space-1; }
-                            Text {
+                            sidecars-heading := Text {
                                 text: @tr("SIDECARS");
                                 font-size: Theme.font-xs;
                                 font-weight: Theme.weight-medium;
@@ -693,8 +708,9 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Edits go"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                edits-go-words := Text { accessible-role: none; text: @tr("Edits go"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 Segmented {
+                                    name: edits-go-words.text;
                                     options: ["Beside the raw", "Hidden folder"];
                                     labels: [@tr("Beside the raw"), @tr("Hidden folder")];
                                     current <=> root.sidecar-placement;
@@ -819,8 +835,9 @@ export component SettingsSheet inherits Rectangle {
                             if root.thumb-cache-on: HorizontalLayout {
                                 spacing: Theme.space-2;
                                 // Thumbnails: before the size field
-                                Text { text: @tr("Keep up to"); color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                keep-up-to-words := Text { accessible-role: none; text: @tr("Keep up to"); color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 LineEdit {
+                                    accessible-label: keep-up-to-words.text;
                                     width: 96px;
                                     text <=> root.thumb-cache-cap;
                                     placeholder-text: "300";
@@ -832,8 +849,9 @@ export component SettingsSheet inherits Rectangle {
                             }
                             if root.thumb-cache-on: HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Previews up to"); color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                previews-up-to-words := Text { accessible-role: none; text: @tr("Previews up to"); color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 LineEdit {
+                                    accessible-label: previews-up-to-words.text;
                                     width: 96px;
                                     text <=> root.preview-cache-cap;
                                     placeholder-text: "8192";
@@ -858,8 +876,9 @@ export component SettingsSheet inherits Rectangle {
                             HorizontalLayout {
                                 spacing: Theme.space-2;
                                 // Network folders: before the minutes field
-                                Text { text: @tr("Rescan every"); color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                rescan-every-words := Text { accessible-role: none; text: @tr("Rescan every"); color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 LineEdit {
+                                    accessible-label: rescan-every-words.text;
                                     width: 96px;
                                     text <=> root.network-poll-minutes;
                                     placeholder-text: "10";
@@ -888,13 +907,12 @@ export component SettingsSheet inherits Rectangle {
                             spacing: Theme.space-3;
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Canvas"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                canvas-words := Text { accessible-role: none; text: @tr("Canvas"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 canvas-row := Segmented {
+                                    name: canvas-words.text;
                                     options: root.canvas-names;
                                     current: root.canvas-names[root.canvas-choice];
                                     picks: false;
-                                    accessible-role: list;
-                                    accessible-value: self.current;
                                     selected(c) => {
                                         // The mono build's sixth; "" without one, which no row is.
                                         root.canvas-choice = c == root.canvas-names[5] ? 5
@@ -910,22 +928,21 @@ export component SettingsSheet inherits Rectangle {
                             HorizontalLayout {
                                 spacing: Theme.space-2;
                                 // Editing: the monitor profile row
-                                Text { text: @tr("Monitor"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                monitor-words := Text { accessible-role: none; text: @tr("Monitor"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 monitor-row := Segmented {
+                                    name: monitor-words.text;
                                     options: ["System", "sRGB", "Adobe RGB", "Display P3", "File"];
                                     labels: [@tr("System"), "sRGB", "Adobe RGB", "Display P3", @tr("File")];
                                     current <=> root.display-profile;
-                                    accessible-role: list;
-                                    // Spoken as the label shown.
-                                    accessible-value: self.current == "System" ? @tr("System")
-                                        : self.current == "File" ? @tr("File")
-                                        : self.current;
                                     selected(p) => { root.display-changed(); }
                                 }
                             }
                             if root.display-profile == "System" && root.monitors.length > 1: HorizontalLayout {
                                 padding-left: 68px + Theme.space-2;
                                 Segmented {
+                                    // Which of several monitors: under the Monitor row,
+                                    // named by its label, told apart by its value.
+                                    name: monitor-words.text;
                                     options: root.monitors;
                                     current <=> root.display-monitor;
                                     selected(m) => { root.display-changed(); }
@@ -934,7 +951,7 @@ export component SettingsSheet inherits Rectangle {
                             if root.display-profile == "File": HorizontalLayout {
                                 spacing: Theme.space-2;
                                 padding-left: 68px + Theme.space-2;
-                                Text {
+                                display-file-text := Text {
                                     text: root.display-file == "" ? @tr("No profile chosen") : root.display-file;
                                     font-size: Theme.font-xs;
                                     color: root.display-file == "" ? Theme.text-muted : Theme.text-secondary;
@@ -951,15 +968,12 @@ export component SettingsSheet inherits Rectangle {
                             if !Mono.only: HorizontalLayout {
                                 spacing: Theme.space-2;
                                 // Editing: the soft proof row
-                                Text { text: @tr("Soft proof"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                soft-proof-words := Text { accessible-role: none; text: @tr("Soft proof"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 proof-row := Segmented {
+                                    name: soft-proof-words.text;
                                     options: ["sRGB", "Display P3", "Rec.2020", "Adobe RGB", "File"];
                                     labels: ["sRGB", "Display P3", "Rec.2020", "Adobe RGB", @tr("File")];
                                     current <=> root.proof-profile;
-                                    accessible-role: list;
-                                    // Spoken as the label shown.
-                                    accessible-value: self.current == "File" ? @tr("File")
-                                        : self.current;
                                     selected(p) => { root.proof-changed(); }
                                 }
                             }
@@ -982,18 +996,16 @@ export component SettingsSheet inherits Rectangle {
                             if !Mono.only: HorizontalLayout {
                                 padding-left: 68px + Theme.space-2;
                                 intent-row := Segmented {
+                                    // Spoken by a screen reader: the soft proof's rendering intent,
+                                    // Perceptual or Relative
+                                    name: @tr("Intent");
                                     options: ["Perceptual", "Relative"];
                                     labels: [@tr("Perceptual"), @tr("Relative")];
                                     current <=> root.proof-intent;
-                                    accessible-role: list;
-                                    // Spoken as the label shown.
-                                    accessible-value: self.current == "Perceptual" ? @tr("Perceptual")
-                                        : self.current == "Relative" ? @tr("Relative")
-                                        : self.current;
                                     selected(i) => { root.proof-changed(); }
                                 }
                             }
-                            Toggle {
+                            lens-on-new-toggle := Toggle {
                                 label: @tr("Lens corrections on new edits");
                                 checked <=> root.lens-on-new;
                                 toggled => { root.lens-on-new-changed(); }
@@ -1010,7 +1022,7 @@ export component SettingsSheet inherits Rectangle {
                                 wrap: word-wrap;
                             }
                             Rectangle { height: Theme.space-1; }
-                            Text {
+                            crop-heading := Text {
                                 text: @tr("CROP");
                                 font-size: Theme.font-xs;
                                 font-weight: Theme.weight-medium;
@@ -1018,8 +1030,9 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Aspect"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                aspect-words := Text { accessible-role: none; text: @tr("Aspect"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 Segmented {
+                                    name: aspect-words.text;
                                     options: ["Original", "Last used", "Free"];
                                     // Editing: the aspect a new crop opens at
                                     labels: [@tr("aspect" => "Original"), @tr("Last used"), @tr("Free")];
@@ -1046,20 +1059,15 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Fill"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                fill-words := Text { accessible-role: none; text: @tr("Fill"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 fill-row := Segmented {
+                                    name: fill-words.text;
                                     options: ["Patch", "Fast", "Best"];
                                     labels: [@tr("Patch"), @tr("Fast"), @tr("Best")];
                                     tips: [@tr("From the picture around it, at once"), @tr("The remove in four steps: quicker, rougher on large areas"), @tr("The remove in full")];
                                     why-not: root.fill-why-not;
                                     current <=> root.fill-choice;
                                     picks: false;
-                                    accessible-role: list;
-                                    // Spoken as the label shown.
-                                    accessible-value: self.current == "Patch" ? @tr("Patch")
-                                        : self.current == "Fast" ? @tr("Fast")
-                                        : self.current == "Best" ? @tr("Best")
-                                        : self.current;
                                     selected(c) => { root.fill-chosen(c); }
                                 }
                             }
@@ -1093,7 +1101,7 @@ export component SettingsSheet inherits Rectangle {
                                 wrap: word-wrap;
                             }
                             Rectangle { height: Theme.space-1; }
-                            Text {
+                            export-heading := Text {
                                 text: @tr("EXPORT");
                                 font-size: Theme.font-xs;
                                 font-weight: Theme.weight-medium;
@@ -1101,26 +1109,22 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Format"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                format-words := Text { accessible-role: none; text: @tr("Format"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 format-row := Segmented {
+                                    name: format-words.text;
                                     options: ["JPEG", "PNG", "TIFF 16-bit", "WebP"];
                                     labels: ["JPEG", "PNG", @tr("TIFF 16-bit"), "WebP"];
                                     current <=> root.export-format;
-                                    accessible-role: list;
-                                    // Spoken as the label shown.
-                                    accessible-value: self.current == "TIFF 16-bit" ? @tr("TIFF 16-bit")
-                                        : self.current;
                                 }
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: Mono.only ? Mono.profile-label : @tr("Color"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                color-words := Text { accessible-role: none; text: Mono.only ? Mono.profile-label : @tr("Color"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 space-row := Segmented {
+                                    name: color-words.text;
                                     options: Mono.only ? ["sRGB", "Display P3", "Gray Gamma 2.2", "Dot Gain 20%"] : ["sRGB", "Display P3", "Rec.2020", "Adobe RGB"];
                                     labels: Mono.only ? ["sRGB", "Display P3", "Grey Gamma 2.2", "Dot Gain 20%"] : self.options;
                                     current <=> root.export-space;
-                                    accessible-role: list;
-                                    accessible-value: self.current;
                                 }
                             }
                             HorizontalLayout {
@@ -1164,8 +1168,9 @@ export component SettingsSheet inherits Rectangle {
                             HorizontalLayout {
                                 spacing: Theme.space-2;
                                 // Editing: the name every export carries
-                                Text { text: @tr("Author"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                author-words := Text { accessible-role: none; text: @tr("Author"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 author-field := LineEdit {
+                                    accessible-label: author-words.text;
                                     horizontal-stretch: 1;
                                     text <=> root.author;
                                     accepted => { root.rights-changed(); }
@@ -1174,8 +1179,9 @@ export component SettingsSheet inherits Rectangle {
                             HorizontalLayout {
                                 spacing: Theme.space-2;
                                 // Editing: the copyright notice every export carries
-                                Text { text: @tr("Copyright"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                copyright-words := Text { accessible-role: none; text: @tr("Copyright"); width: 68px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 copyright-field := LineEdit {
+                                    accessible-label: copyright-words.text;
                                     horizontal-stretch: 1;
                                     text <=> root.copyright;
                                     accepted => { root.rights-changed(); }
@@ -1201,7 +1207,7 @@ export component SettingsSheet inherits Rectangle {
                             padding-right: Theme.space-5 + Theme.scrollbar-band;
                             padding-bottom: Theme.space-2;
                             spacing: Theme.space-3;
-                            Text {
+                            models-heading := Text {
                                 text: @tr("MODELS");
                                 font-size: Theme.font-xs;
                                 font-weight: Theme.weight-medium;
@@ -1211,7 +1217,7 @@ export component SettingsSheet inherits Rectangle {
                             // scroll however long the list.
                             HorizontalLayout {
                                 alignment: start;
-                                PanelButton {
+                                models-fetch-button := PanelButton {
                                     text: root.models-fetch-label;
                                     icon: @image-url("../icons/image-down.svg");
                                     enabled: root.models-fetch-enabled;
@@ -1275,7 +1281,7 @@ export component SettingsSheet inherits Rectangle {
                             padding-right: Theme.space-5 + Theme.scrollbar-band;
                             padding-bottom: Theme.space-2;
                             spacing: Theme.space-3;
-                            Text {
+                            keys-heading := Text {
                                 text: @tr("KEYS");
                                 font-size: Theme.font-xs;
                                 font-weight: Theme.weight-medium;
@@ -1292,6 +1298,8 @@ export component SettingsSheet inherits Rectangle {
                                 if !row.heading: HorizontalLayout {
                                     spacing: Theme.space-2;
                                     Text {
+                                        // Said by its chips, which it names.
+                                        accessible-role: none;
                                         text: row.does;
                                         font-size: Theme.font-sm;
                                         color: Theme.text;
@@ -1305,14 +1313,17 @@ export component SettingsSheet inherits Rectangle {
                                     }
                                     HorizontalLayout {
                                         spacing: Theme.space-1;
-                                        BindChip {
+                                        bind-chip := BindChip {
+                                            // Its key, for automation: the action.
+                                            accessible-id: row.id;
                                             on: root.listening == row.id;
                                             keys: row.keys;
                                             does: row.does;
                                             warn: row.warn;
                                             listen => { root.listen(row.id); }
                                         }
-                                        if row.id2 != "": BindChip {
+                                        if row.id2 != "": second-bind-chip := BindChip {
+                                            accessible-id: row.id2;
                                             on: root.listening == row.id2;
                                             keys: row.keys2;
                                             does: row.does;
@@ -1330,7 +1341,7 @@ export component SettingsSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 alignment: end;
-                                PanelButton {
+                                reset-keys-button := PanelButton {
                                     text: @tr("Reset to defaults");
                                     // The button's click takes the focus from a
                                     // row listening; the focus goes back to the
@@ -1356,7 +1367,7 @@ export component SettingsSheet inherits Rectangle {
                                 spacing: Theme.space-2;
                                 // About: the version row
                                 Text { text: @tr("Version"); width: 68px; color: Theme.text; font-size: Theme.font-sm; }
-                                Text { text: root.version; font-size: Theme.font-sm; color: Theme.text-secondary; horizontal-stretch: 1; }
+                                version-text := Text { text: root.version; font-size: Theme.font-sm; color: Theme.text-secondary; horizontal-stretch: 1; }
                             }
                             if Mono.on: MonoAbout { }
                             Rectangle { height: Theme.space-1; }
@@ -1387,7 +1398,7 @@ export component SettingsSheet inherits Rectangle {
                                     wrap: word-wrap;
                                     horizontal-stretch: 1;
                                 }
-                                PanelButton {
+                                check-now-button := PanelButton {
                                     text: @tr("Check now");
                                     width: 96px;
                                     enabled: !root.update-checking;
@@ -1398,7 +1409,7 @@ export component SettingsSheet inherits Rectangle {
                             if root.settings-dir != "": HorizontalLayout {
                                 spacing: Theme.space-2;
                                 min-height: settings-path.preferred-height;
-                                Text { text: @tr("Settings"); width: 68px; color: Theme.text; font-size: Theme.font-sm; }
+                                settings-row-words := Text { accessible-role: none; text: @tr("Settings"); width: 68px; color: Theme.text; font-size: Theme.font-sm; }
                                 settings-path := Text {
                                     text: root.settings-dir;
                                     font-size: Theme.font-sm;
@@ -1406,6 +1417,12 @@ export component SettingsSheet inherits Rectangle {
                                     wrap: char-wrap;
                                     horizontal-stretch: 1;
                                     settings-open := TouchArea {
+                                        // To a screen reader a button, named
+                                        // by the row, that shows the folder.
+                                        accessible-role: button;
+                                        accessible-label: settings-row-words.text;
+                                        accessible-description: settings-path.text;
+                                        accessible-action-default => { root.dir-clicked(0); }
                                         mouse-cursor: MouseCursor.pointer;
                                         clicked => { root.dir-clicked(0); }
                                     }
@@ -1414,7 +1431,7 @@ export component SettingsSheet inherits Rectangle {
                             if root.library-dir != "": HorizontalLayout {
                                 spacing: Theme.space-2;
                                 min-height: library-path.preferred-height;
-                                Text { text: @tr("Library"); width: 68px; color: Theme.text; font-size: Theme.font-sm; }
+                                library-row-words := Text { accessible-role: none; text: @tr("Library"); width: 68px; color: Theme.text; font-size: Theme.font-sm; }
                                 library-path := Text {
                                     text: root.library-dir;
                                     font-size: Theme.font-sm;
@@ -1422,6 +1439,12 @@ export component SettingsSheet inherits Rectangle {
                                     wrap: char-wrap;
                                     horizontal-stretch: 1;
                                     library-open := TouchArea {
+                                        // To a screen reader a button, named
+                                        // by the row, that shows the folder.
+                                        accessible-role: button;
+                                        accessible-label: library-row-words.text;
+                                        accessible-description: library-path.text;
+                                        accessible-action-default => { root.dir-clicked(1); }
                                         mouse-cursor: MouseCursor.pointer;
                                         clicked => { root.dir-clicked(1); }
                                     }
@@ -1431,7 +1454,7 @@ export component SettingsSheet inherits Rectangle {
                                 spacing: Theme.space-2;
                                 min-height: caches-path.preferred-height;
                                 // About: the cache folder's row
-                                Text { text: @tr("Caches"); width: 68px; color: Theme.text; font-size: Theme.font-sm; }
+                                caches-row-words := Text { accessible-role: none; text: @tr("Caches"); width: 68px; color: Theme.text; font-size: Theme.font-sm; }
                                 caches-path := Text {
                                     text: root.caches-dir;
                                     font-size: Theme.font-sm;
@@ -1439,6 +1462,12 @@ export component SettingsSheet inherits Rectangle {
                                     wrap: char-wrap;
                                     horizontal-stretch: 1;
                                     caches-open := TouchArea {
+                                        // To a screen reader a button, named
+                                        // by the row, that shows the folder.
+                                        accessible-role: button;
+                                        accessible-label: caches-row-words.text;
+                                        accessible-description: caches-path.text;
+                                        accessible-action-default => { root.dir-clicked(2); }
                                         mouse-cursor: MouseCursor.pointer;
                                         clicked => { root.dir-clicked(2); }
                                     }
@@ -1448,7 +1477,7 @@ export component SettingsSheet inherits Rectangle {
                                 spacing: Theme.space-2;
                                 min-height: log-path.preferred-height;
                                 // About: the log folder's row
-                                Text { text: @tr("Log"); width: 68px; color: Theme.text; font-size: Theme.font-sm; }
+                                log-row-words := Text { accessible-role: none; text: @tr("Log"); width: 68px; color: Theme.text; font-size: Theme.font-sm; }
                                 log-path := Text {
                                     text: root.log-dir;
                                     font-size: Theme.font-sm;
@@ -1456,6 +1485,12 @@ export component SettingsSheet inherits Rectangle {
                                     wrap: char-wrap;
                                     horizontal-stretch: 1;
                                     log-open := TouchArea {
+                                        // To a screen reader a button, named
+                                        // by the row, that shows the folder.
+                                        accessible-role: button;
+                                        accessible-label: log-row-words.text;
+                                        accessible-description: log-path.text;
+                                        accessible-action-default => { root.dir-clicked(3); }
                                         mouse-cursor: MouseCursor.pointer;
                                         clicked => { root.dir-clicked(3); }
                                     }

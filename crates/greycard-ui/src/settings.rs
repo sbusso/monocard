@@ -12,7 +12,7 @@
 //! that will not parse is set aside as `settings.json.bad` rather than
 //! written over, and only a change writes the file again.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -194,6 +194,8 @@ pub struct Settings {
     /// stays until newer ones push it off the end; choosing it says
     /// it is gone rather than taking it out behind the user's back.
     pub recent_folders: Vec<String>,
+    /// Collection destinations, by ID, most recently used first.
+    pub recent_collections: Vec<String>,
     /// The folder a launch with no path opens, as chosen in the
     /// Settings sheet; empty for the last folder, the last file's, which
     /// is what every earlier build opened. Taken as written, with no `~`
@@ -273,6 +275,14 @@ pub struct Settings {
     /// `panel::crop::aspect_key` spells it ("3:2", "Custom 7:5"):
     /// what "Last used" opens under. Written as it is picked.
     pub crop_last: String,
+    /// The guide drawn inside the crop in crop mode, by
+    /// `panel::crop::overlay::Overlay::name` ("Thirds", "Golden
+    /// spiral"), and how far the spiral or the triangles are turned: a
+    /// view's, never the edit's. Written as it is chosen; a name this
+    /// build does not know reads as the thirds.
+    #[serde(deserialize_with = "string_leniently")]
+    pub crop_overlay: String,
+    pub crop_overlay_turn: u32,
     /// What a Fill drawn next is made by, "Patch", "Fast" or "Best"
     /// (`FillChoice`), as last chosen in the panel or the Settings
     /// sheet; empty until one is, for the machine's default.
@@ -857,6 +867,7 @@ impl Default for Settings {
             preset_favorites: Vec::new(),
             preset_folds: Vec::new(),
             recent_folders: Vec::new(),
+            recent_collections: Vec::new(),
             start_folder: String::new(),
             start_view: START_VIEWS[0].into(),
             filter_bar: true,
@@ -873,6 +884,8 @@ impl Default for Settings {
             sync_shift: SyncShift::default(),
             crop_start: "Original".into(),
             crop_last: "Free".into(),
+            crop_overlay: "Thirds".into(),
+            crop_overlay_turn: 0,
             fill_choice: String::new(),
             ui_scale: 100,
             ui_scale_system: 0.0,
@@ -920,6 +933,105 @@ pub fn path() -> Option<PathBuf> {
     return TEST_PATH.with(|p| p.borrow().clone());
     #[cfg(not(test))]
     greycard_engine::settings::path()
+}
+
+/// This install's opaque id ([`greycard_edit::sync::install`]), the one
+/// a sidecar's `head_at` carries in place of the machine's name: kept in
+/// `install-id` beside the settings file, made at random the first time
+/// and never again. None with no configuration directory (and in a
+/// test, which has none), or when the file cannot be written.
+pub fn install_id() -> Option<String> {
+    install_id_at(&path()?.with_file_name("install-id"))
+}
+
+/// The id kept in `file`, made if there is none. Two instances starting
+/// at once both end on the one that landed first: a new id is written
+/// whole beside the file and linked into place only if the file is
+/// absent, and the file is read again after. Where the file system
+/// makes no links (FAT, exFAT, some shares), the file is made only if
+/// absent and written in place, and an instance that finds it made
+/// waits a moment for the other's write before taking it.
+fn install_id_at(file: &Path) -> Option<String> {
+    let read = || {
+        let text = std::fs::read_to_string(file).ok()?;
+        let id = text.trim();
+        (id.len() == 16 && id.chars().all(|c| c.is_ascii_hexdigit())).then(|| id.to_string())
+    };
+    if let Some(id) = read() {
+        return Some(id);
+    }
+    let id = greycard_edit::sync::new_install_id();
+    let line = format!("{id}\n");
+    let kept = (|| {
+        if let Some(dir) = file.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let whole = file.with_file_name(format!("install-id.{id}.new"));
+        {
+            use std::io::Write as _;
+            let mut f = std::fs::File::create(&whole)?;
+            f.write_all(line.as_bytes())?;
+            f.sync_all()?;
+        }
+        let linked = link(&whole, file);
+        let _ = std::fs::remove_file(&whole);
+        let made = match linked {
+            Err(e) if e.kind() != std::io::ErrorKind::AlreadyExists => {
+                // No links here: made only if absent, in place.
+                use std::io::Write as _;
+                match std::fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(file)
+                {
+                    Ok(mut f) => {
+                        f.write_all(line.as_bytes())?;
+                        f.sync_all()?;
+                        true
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                        // Another instance's, which may be mid-write.
+                        for _ in 0..20 {
+                            if read().is_some() {
+                                break;
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                        }
+                        false
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            other => other.is_ok(),
+        };
+        // Another instance's id, or a file that will not read: only the
+        // second is replaced.
+        if !made && read().is_none() {
+            greycard_edit::replace_synced(file, line.as_bytes())?;
+        }
+        Ok(())
+    })();
+    if let Err(e) = kept {
+        tracing::warn!("{}: install id not kept: {e}", file.display());
+        return None;
+    }
+    read()
+}
+
+#[cfg(test)]
+thread_local! {
+    /// This thread's file system makes no links: for the tests.
+    static NO_LINKS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// [`std::fs::hard_link`], or in a test the error a file system with no
+/// links gives.
+fn link(from: &Path, to: &Path) -> std::io::Result<()> {
+    #[cfg(test)]
+    if NO_LINKS.get() {
+        return Err(std::io::ErrorKind::Unsupported.into());
+    }
+    std::fs::hard_link(from, to)
 }
 
 impl Settings {
@@ -1137,6 +1249,74 @@ mod tests {
         crate::testing::remove_dir_retry(&dir);
     }
 
+    /// The install id is made once, at random, kept beside the settings
+    /// and read back the same; it is nothing of the machine's name (§724).
+    /// With no settings file, as a test has, there is none.
+    #[test]
+    fn the_install_id_is_made_once_and_kept() {
+        use_file(None);
+        assert_eq!(install_id(), None);
+        let dir = crate::testing::scratch_dir("settings-install");
+        use_file(Some(dir.join("settings.json")));
+        let id = install_id().expect("made");
+        assert!(id.len() == 16 && id.chars().all(|c| c.is_ascii_hexdigit()));
+        assert_eq!(install_id().as_deref(), Some(id.as_str()), "kept");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("install-id"))
+                .unwrap()
+                .trim(),
+            id
+        );
+        assert!(
+            !id.contains(&greycard_edit::sync::host()) || greycard_edit::sync::host().is_empty()
+        );
+        use_file(None);
+        crate::testing::remove_dir_retry(&dir);
+    }
+
+    /// Instances starting at once all take the one id, and leave no
+    /// half-written file beside it, on a file system that links and on
+    /// one that does not.
+    #[test]
+    fn instances_starting_at_once_share_one_install_id() {
+        install_race("settings-install-race", false);
+        install_race("settings-install-nolink", true);
+    }
+
+    fn install_race(name: &str, no_links: bool) {
+        let dir = crate::testing::scratch_dir(name);
+        let file = dir.join("install-id");
+        let start = std::sync::Arc::new(std::sync::Barrier::new(8));
+        let threads: Vec<_> = (0..8)
+            .map(|_| {
+                let (file, start) = (file.clone(), start.clone());
+                std::thread::spawn(move || {
+                    NO_LINKS.set(no_links);
+                    start.wait();
+                    install_id_at(&file)
+                })
+            })
+            .collect();
+        let ids: Vec<_> = threads
+            .into_iter()
+            .map(|t| t.join().unwrap().expect("an id"))
+            .collect();
+        assert!(ids.iter().all(|i| *i == ids[0]), "{ids:?}");
+        let left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        assert_eq!(left, vec![std::ffi::OsString::from("install-id")]);
+        // A file that will not read is replaced, once.
+        std::fs::write(&file, "not an id\n").unwrap();
+        NO_LINKS.set(no_links);
+        let fresh = install_id_at(&file).expect("replaced");
+        NO_LINKS.set(false);
+        assert_ne!(fresh, ids[0]);
+        assert_eq!(install_id_at(&file).as_deref(), Some(fresh.as_str()));
+        crate::testing::remove_dir_retry(&dir);
+    }
+
     /// White, the fifth canvas, is kept by its name and read back as
     /// the fifth choice, which the shader paints white.
     #[test]
@@ -1303,6 +1483,7 @@ mod tests {
                 "/usr/share/applications/gimp.desktop".into(),
             ],
             recent_folders: vec!["/home/x/Pictures/b".into(), "/mnt/gone/a".into()],
+            recent_collections: vec!["collection-b".into(), "collection-a".into()],
             start_folder: "~/Pictures/start".into(),
             start_view: "Library".into(),
             filter_bar: false,
@@ -1358,6 +1539,8 @@ mod tests {
             },
             crop_start: "Last used".into(),
             crop_last: "Custom 7:5".into(),
+            crop_overlay: "Golden spiral".into(),
+            crop_overlay_turn: 3,
             fill_choice: "Fast".into(),
             ui_scale: 150,
             ui_scale_system: 1.25,
@@ -2075,5 +2258,39 @@ mod tests {
     #[test]
     fn the_gamut_warning_is_off_by_default() {
         assert!(!Settings::default().gamut_warning);
+    }
+
+    #[test]
+    fn a_settings_file_from_before_the_sort_reads_as_every_default() {
+        use crate::sort::{Choice, Kept, View};
+        use greycard_library::{Order, SortBy};
+        // A file as 0.7.0 wrote it: the filter kept, no sort.
+        let old = r#"{"filter": {"stars": 3, "text": "iso>=400"}, "jpegs_apart": true}"#;
+        let settings: crate::settings::Settings = serde_json::from_str(old).unwrap();
+        assert_eq!(settings.sort, Kept::default());
+        assert_eq!(settings.filter.stars, 3);
+        assert_eq!(
+            settings.sort.choice(&View::Roots(None)),
+            Choice::By(Order::TAKEN)
+        );
+        // A later build's order, and a hand order kept for a view that
+        // has none: each view's default, the file's words kept.
+        let later: Kept =
+            serde_json::from_str(r#"{"folder": "size-desc", "roots": "hand"}"#).unwrap();
+        assert_eq!(later.choice(&View::Folder), Choice::By(Order::NAME));
+        assert_eq!(later.choice(&View::Roots(None)), Choice::By(Order::TAKEN));
+        assert_eq!(later.folder.as_deref(), Some("size-desc"));
+        // And the whole settings file round trips with one.
+        let mut settings = crate::settings::Settings::default();
+        settings
+            .sort
+            .set(&View::Folder, Choice::By(Order::new(SortBy::Edited, false)));
+        let text = serde_json::to_string(&settings).unwrap();
+        let back: crate::settings::Settings = serde_json::from_str(&text).unwrap();
+        assert_eq!(back.sort, settings.sort);
+        assert_eq!(
+            back.sort.choice(&View::Folder),
+            Choice::By(Order::new(SortBy::Edited, false))
+        );
     }
 }

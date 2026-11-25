@@ -7,10 +7,13 @@
 //! fetched on first use into the [`store`] after their license has
 //! been shown, and are never redistributed by greycard (see
 //! [`registry`]). The design and its reasons are in the notes, §34.
+//! The one exception is the learned highlight fill's small network,
+//! greycard's own, whose weights are built in ([`highlight`], §719).
 
 pub mod cache;
 pub mod denoise;
 pub mod fill;
+pub mod highlight;
 pub mod image;
 pub mod landscape;
 pub mod matte;
@@ -32,9 +35,10 @@ pub use fill::Fill;
 pub use image::{Mask, Rgb8, Rgbf};
 pub use refine::refine;
 pub use registry::{
-    DENOISE_BALANCED, DENOISE_BEST, DENOISE_FAST, DENOISERS, FILL, MODELS, Model, REMOVE,
-    REMOVE_FAST, RETIRED, Retired, Runtime, SAM, SAM3, SKY, SUBJECT, SUBJECT_WEBGPU, cpu_runtime,
-    denoiser, model, tier_of,
+    DENOISE_BALANCED, DENOISE_BEST, DENOISE_FAST, DENOISE_XTRANS_BALANCED, DENOISE_XTRANS_BEST,
+    DENOISE_XTRANS_FAST, DENOISERS, FILL, MODELS, Model, REMOVE, REMOVE_FAST, RETIRED, Retired,
+    Runtime, SAM, SAM3, SKY, SUBJECT, SUBJECT_WEBGPU, XTRANS_DENOISERS, cpu_runtime, denoiser,
+    denoiser_for, for_mosaic, model, takes_xtrans, tier_of,
 };
 pub use remove::Remove;
 pub use runtime::Provider;

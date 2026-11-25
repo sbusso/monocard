@@ -169,8 +169,10 @@ fn changes(b: &Edit, a: &Edit) -> Vec<String> {
     }
     if b.vignette != a.vignette {
         let (x, y) = (&b.vignette, &a.vignette);
-        let shape_same =
-            x.midpoint == y.midpoint && x.feather == y.feather && x.roundness == y.roundness;
+        let shape_same = x.midpoint == y.midpoint
+            && x.feather == y.feather
+            && x.roundness == y.roundness
+            && x.place == y.place;
         out.push(
             if x.enabled != y.enabled && x.amount == y.amount && shape_same {
                 switched("Vignette", y.enabled)
@@ -190,6 +192,11 @@ fn changes(b: &Edit, a: &Edit) -> Vec<String> {
     }
     if b.demosaic != a.demosaic {
         out.push("Demosaic".to_string());
+    }
+    if b.highlight_fill.is_some() != a.highlight_fill.is_some() {
+        out.push(switched("Highlight fill", a.highlight_fill.is_some()));
+    } else if b.highlight_fill != a.highlight_fill {
+        out.push("Highlight fill".to_string());
     }
     if b.camera.profile == a.camera.profile && b.camera.tone_curve != a.camera.tone_curve {
         out.push(switched("Profile tone curve", a.camera.tone_curve));
@@ -332,6 +339,9 @@ fn detail(x: &crate::Detail, y: &crate::Detail) -> String {
         x.dehaze != y.dehaze,
         x.structure != y.structure,
         x.sharpen != y.sharpen,
+        x.output_sharpen != y.output_sharpen
+            || x.output_sharpen_radius != y.output_sharpen_radius
+            || x.output_sharpen_threshold != y.output_sharpen_threshold,
     ];
     if moved.iter().filter(|&&m| m).count() != 1 {
         return "Detail".to_string();
@@ -346,6 +356,11 @@ fn detail(x: &crate::Detail, y: &crate::Detail) -> String {
         format!("{} {:+.0}", crate::STRUCTURE, y.structure * 100.0)
     } else if moved[5] {
         format!("Sharpen {:+.0}", y.sharpen * 100.0)
+    } else if moved[6] && x.output_sharpen != y.output_sharpen {
+        format!("Output sharpen {:+.0}", y.output_sharpen * 100.0)
+    } else if moved[6] {
+        // Its Radius or Threshold, as the picture's own row says them.
+        "Output sharpen".to_string()
     } else {
         format!("Dehaze {:+.0}", y.dehaze * 100.0)
     }
@@ -833,11 +848,7 @@ mod tests {
     }
 
     fn snap(name: &str, edit: &Edit) -> Snapshot {
-        Snapshot {
-            name: name.into(),
-            taken: 0,
-            edit: edit.clone(),
-        }
+        Snapshot::new(name, 0, edit.clone())
     }
 
     /// The tone curve's switch is named on its own when the profile
@@ -947,6 +958,10 @@ mod tests {
         let mut e = base.clone();
         e.vignette.amount = -1.0;
         assert_eq!(describe(&base, &e, &[]), "Vignette -1.00");
+        // Where it acts is named as its shape is: the section's name.
+        let mut e = base.clone();
+        e.vignette.place = crate::vignette::Place::Display;
+        assert_eq!(describe(&base, &e, &[]), "Vignette");
         let mut e = base.clone();
         e.grain.enabled = !e.grain.enabled;
         assert!(describe(&base, &e, &[]).starts_with("Grain o"));
@@ -1118,6 +1133,18 @@ mod tests {
         let mut soft = wide.clone();
         soft.adjustments[0].look.detail.sharpen = -1.0;
         assert_eq!(describe(&wide, &soft, &[]), "Sky: Sharpen -100");
+        let mut crisp = soft.clone();
+        crisp.adjustments[0].look.detail.output_sharpen = 0.4;
+        assert_eq!(describe(&soft, &crisp, &[]), "Sky: Output sharpen +40");
+        let mut wide_radius = crisp.clone();
+        wide_radius.adjustments[0].look.detail.output_sharpen_radius = Some(3.0);
+        assert_eq!(describe(&crisp, &wide_radius, &[]), "Sky: Output sharpen");
+        let mut kneed = wide_radius.clone();
+        kneed.adjustments[0].look.detail.output_sharpen_threshold = Some(0.0);
+        assert_eq!(describe(&wide_radius, &kneed, &[]), "Sky: Output sharpen");
+        let mut more = kneed.clone();
+        more.adjustments[0].look.detail.output_sharpen = 1.8;
+        assert_eq!(describe(&kneed, &more, &[]), "Sky: Output sharpen +180");
         let mut hazed = clear.clone();
         hazed.adjustments[0].look.detail.dehaze = 0.25;
         assert_eq!(describe(&clear, &hazed, &[]), "Sky: Dehaze +25");
@@ -1138,6 +1165,20 @@ mod tests {
         e.bw.strength = 2.0;
         assert_eq!(describe(&base, &e, &[]), "Black and white strength 2.00x");
         assert_eq!(describe(&base, &base, &[]), "No change");
+    }
+
+    /// The highlight fill's switch is named as the other switches are,
+    /// on or off; a step from one version to another by its name alone.
+    #[test]
+    fn the_highlight_fill_is_named_as_a_switch() {
+        let base = Edit::default();
+        let mut on = base.clone();
+        on.highlight_fill = Some("hl-1".into());
+        assert_eq!(describe(&base, &on, &[]), "Highlight fill on");
+        assert_eq!(describe(&on, &base, &[]), "Highlight fill off");
+        let mut newer = on.clone();
+        newer.highlight_fill = Some("hl-9".into());
+        assert_eq!(describe(&on, &newer, &[]), "Highlight fill");
     }
 
     #[test]

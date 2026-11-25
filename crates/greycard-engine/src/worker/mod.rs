@@ -24,9 +24,13 @@ mod develop;
 mod engine;
 mod export;
 mod handle;
+#[cfg(test)]
+mod highlight_rounds;
 mod keep;
 mod masks;
 mod prefetch;
+#[cfg(test)]
+mod render_gate;
 #[cfg(test)]
 mod samples;
 mod shelf;
@@ -52,7 +56,9 @@ use self::{
 pub(crate) use self::base::{learned_failure, network, run_tiling};
 #[cfg(any(test, feature = "testing"))]
 pub use self::prefetch::{behind_prefetch, claim};
-pub use self::thumbs::{THUMB_RECIPE, THUMB_WIDTH, count_thumb_cache};
+pub use self::thumbs::{
+    THUMB_RECIPE, THUMB_WIDTH, count_thumb_cache, earlier_recipe, thumb_recipe,
+};
 pub use self::{
     decode::correct_lens_of,
     handle::order_thumbnails,
@@ -319,6 +325,11 @@ pub struct FillReport {
     /// delivered first, and the worker makes these after it, one a
     /// develop of the same generation.
     pub pending: Vec<u64>,
+    /// The learned highlight fill is still to make: the picture is the
+    /// edit's with the fill off, or the last fields standing in under
+    /// another white balance, and the worker's next round of the same
+    /// generation makes it (notes §719 §3).
+    pub highlight_pending: bool,
 }
 
 /// The white balance a develop used: camera gains and the camera to
@@ -363,18 +374,23 @@ impl WhiteBase {
 /// What the lens database made of a file.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LensReport {
+    /// Nothing read yet: the panel's for a frame picked whose open has
+    /// not said, or one that does not develop. Never sent.
+    Unread,
     /// No database on this machine.
     NoDatabase,
     /// The file names no lens.
     NoLensName,
     /// The lens is not in the database.
     Unknown(String),
-    /// The lens found, whether the body was, and whether the profile
-    /// was measured on a smaller sensor than the body's.
+    /// The lens found, whether the body was, whether the profile was
+    /// measured on a smaller sensor than the body's, and which
+    /// corrections it has for the frame.
     Found {
         lens: String,
         camera: bool,
         smaller_sensor: bool,
+        carries: crate::lens::Carries,
     },
 }
 
@@ -419,6 +435,13 @@ pub enum Outcome {
         /// The learned-denoiser blend seeded from the ISO, when the
         /// job asked for one and the file was a raw.
         blend: Option<f32>,
+    },
+    /// The lenses a picker offers for the open of `generation`, again:
+    /// a look at the profile folder behind the open found another list
+    /// than the one `Opened` carried.
+    LensOptions {
+        generation: u64,
+        options: Vec<crate::lens::LensOption>,
     },
     Developed {
         generation: u64,
@@ -727,6 +750,9 @@ struct Queue {
     /// A lens database fetched since the worker read its own, for it
     /// to take up before its next develop.
     lenses: Option<Arc<greycard_lens::Database>>,
+    /// The open frame's body and shot, for the window to have the
+    /// profile folder looked at again behind it.
+    lens_look: Option<engine::LensLook>,
     /// The editor's device and queue, handed over once the window has
     /// them, for the engine's GPU ops to run on: the picture they
     /// leave is then the viewport's without a copy.
@@ -814,6 +840,10 @@ struct Queue {
     /// The shelf's budget, as a test has it, for a shelf made anew.
     #[cfg(test)]
     shelf_by_test: Option<shelf::Budget>,
+    /// A develop a test sends as a fill round asks its hold first, as
+    /// the window would send one while the round runs.
+    #[cfg(test)]
+    develop_on_fill_ask: Option<Job>,
     /// The card's free memory, and what its sessions give back when
     /// dropped, as a test has them (`Ai::free_memory_by_test`).
     #[cfg(test)]
@@ -825,6 +855,14 @@ struct Queue {
     /// How many times the worker gave the card back, for a test.
     #[cfg(test)]
     gave_back_by_test: usize,
+    /// A UNet held for a queue of fills, as a test has it
+    /// (`Ai::unet_by_test`).
+    #[cfg(test)]
+    unet_by_test: Option<(usize, u64)>,
+    /// Each of the open frame's fills begun, by name, and the side it
+    /// ran at, for a test.
+    #[cfg(test)]
+    ran_at_by_test: Vec<(String, usize)>,
     /// What the open frame's fills let go of the card, as a test has
     /// it for a worker with no device.
     #[cfg(test)]
@@ -1071,12 +1109,13 @@ impl FrameDevelop {
 
     /// The developed picture finished under `edit` (whose develop is
     /// the one this was made under) and `settings`, as an export
-    /// finishes it.
+    /// finishes it, or refused as an export refuses a frame too large
+    /// to hold.
     pub fn finish(
         &mut self,
         edit: &Edit,
         settings: &greycard_render::export::Settings,
-    ) -> greycard_render::export::Rendered {
+    ) -> Result<greycard_render::export::Rendered, greycard_render::geometry::TooLarge> {
         for item in &self.left_out {
             tracing::warn!("{item}");
         }
@@ -1084,27 +1123,28 @@ impl FrameDevelop {
     }
 
     /// What the finish would be handed for `edit` and `settings`,
-    /// before any pixel goes through it ([`greycard_render::export::Scene`]).
+    /// before any pixel goes through it ([`greycard_render::export::Scene`]),
+    /// or refused for a frame too large to hold.
     pub fn scene(
         &self,
         edit: &Edit,
         settings: &greycard_render::export::Settings,
-    ) -> greycard_render::export::Scene {
+    ) -> Result<greycard_render::export::Scene, greycard_render::geometry::TooLarge> {
         let framed;
         let (w, h) = (self.image.width as f32, self.image.height as f32);
         let image: &WorkingImage = if edit.geometry.is_identity_on(w, h, self.input.camera) {
             &self.image
         } else {
-            framed = greycard_render::geometry::apply(&self.image, &edit.geometry);
+            framed = greycard_render::geometry::apply(&self.image, &edit.geometry)?;
             &framed
         };
-        greycard_render::export::scene_framed(
+        Ok(greycard_render::export::scene_framed(
             image,
             edit,
             self.input.source,
             settings,
             self.input.guide.as_deref(),
-        )
+        ))
     }
 }
 

@@ -44,13 +44,20 @@ export component CurvesSection inherits Section {
     on <=> root.curves-enabled;
     switched => { root.view-changed(); }
     Segmented {
+        // The panel's Tab is the window's: no stop here.
+        tab-stop: false;
+        name: @tr("Curves");
         options: ["Parametric", "Point"];
         labels: [@tr("Parametric"), @tr("Point")];
         equal-width: true;
         current <=> root.curve-mode;
         selected(v) => { root.curve-mode-changed(); }
     }
-    if root.curve-mode == "Point": Segmented {
+    if root.curve-mode == "Point": channel-row := Segmented {
+        // The panel's Tab is the window's: no stop here.
+        tab-stop: false;
+        // Spoken by a screen reader: the point curve's row of channels
+        name: @tr("Channel");
         options: ["RGB", "Red", "Green", "Blue", "R/G", "B/Y"];
         labels: ["RGB", @tr("Red"), @tr("Green"), @tr("Blue"), "R/G", "B/Y"];
         current <=> root.curve-channel;
@@ -77,7 +84,7 @@ export component CurvesSection inherits Section {
             font-size: Theme.font-sm;
             vertical-alignment: center;
         }
-        ValueField {
+        point-in-field := ValueField {
             width: 48px;
             height: Theme.control-height - 4px;
             boxed: true;
@@ -94,7 +101,7 @@ export component CurvesSection inherits Section {
             font-size: Theme.font-sm;
             vertical-alignment: center;
         }
-        ValueField {
+        point-out-field := ValueField {
             width: 48px;
             height: Theme.control-height - 4px;
             boxed: true;
@@ -104,7 +111,7 @@ export component CurvesSection inherits Section {
             committed(typed) => { root.curve-typed("out", typed); }
         }
     }
-    if root.curve-mode == "Parametric": EditSlider {
+    if root.curve-mode == "Parametric": highlights-slider := EditSlider {
         label: @tr("Highlights");
         enabled: root.curves-enabled;
         minimum: -1;
@@ -117,7 +124,7 @@ export component CurvesSection inherits Section {
         text: (root.para-highlights >= 0 ? "+" : "") + round(root.para-highlights * 100);
         changed(v) => { root.parametric-changed(); }
     }
-    if root.curve-mode == "Parametric": EditSlider {
+    if root.curve-mode == "Parametric": lights-slider := EditSlider {
         // Parametric curve: the slider for the light tones
         label: @tr("Lights");
         enabled: root.curves-enabled;
@@ -131,7 +138,7 @@ export component CurvesSection inherits Section {
         text: (root.para-lights >= 0 ? "+" : "") + round(root.para-lights * 100);
         changed(v) => { root.parametric-changed(); }
     }
-    if root.curve-mode == "Parametric": EditSlider {
+    if root.curve-mode == "Parametric": darks-slider := EditSlider {
         // Parametric curve: the slider for the dark tones
         label: @tr("Darks");
         enabled: root.curves-enabled;
@@ -145,7 +152,7 @@ export component CurvesSection inherits Section {
         text: (root.para-darks >= 0 ? "+" : "") + round(root.para-darks * 100);
         changed(v) => { root.parametric-changed(); }
     }
-    if root.curve-mode == "Parametric": EditSlider {
+    if root.curve-mode == "Parametric": shadows-slider := EditSlider {
         label: @tr("Shadows");
         enabled: root.curves-enabled;
         minimum: -1;

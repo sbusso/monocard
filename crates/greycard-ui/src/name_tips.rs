@@ -24,8 +24,10 @@ fn texts(app: &App, words: &str) -> Vec<(f32, f32)> {
     app.window().dispatch_event(WindowEvent::PointerMoved {
         position: slint::LogicalPosition::new(0.0, 0.0),
     });
+    // A frame's name is said by its cell, a folder's by its words.
     let mut found: Vec<_> = ElementHandle::find_by_element_type_name(app, "Text")
         .filter(|e| e.accessible_label().is_some_and(|l| l == words))
+        .chain(crate::testing::cell_names(app, words))
         .filter(|e| e.size().width > 0.0)
         .map(|e| {
             let (at, size) = (e.absolute_position(), e.size());
@@ -167,15 +169,19 @@ fn the_strips_names_cut_short_come_up_whole() {
     // A re-flow (a thumbnail's shape come in, which the strip shares
     // with the grid) leaves another control's word alone.
     app.set_can_undo(true);
-    crate::testing::rest_on(&app, "Undo");
-    assert_eq!(app.get_tip_text(), "Undo");
+    crate::testing::rest_on_id(&app, "PanelHead::undo-button");
+    assert_eq!(app.get_tip_text(), crate::tr!("Undo"));
     assert!(crate::cells::note_aspect(&app, 2, 0.5));
     assert!(crate::cells::take_aspects(&app));
     slint::platform::update_timers_and_animations();
-    assert_eq!(app.get_tip_text(), "Undo", "a re-flow left the word up");
+    assert_eq!(
+        app.get_tip_text(),
+        crate::tr!("Undo"),
+        "a re-flow left the word up"
+    );
     away(&app);
-    crate::testing::rest_on(&app, "Undo");
-    assert_eq!(app.get_tip_text(), "Undo", "and it comes again");
+    crate::testing::rest_on_id(&app, "PanelHead::undo-button");
+    assert_eq!(app.get_tip_text(), crate::tr!("Undo"), "and it comes again");
     away(&app);
     let long = *texts(&app, LONG)
         .last()
@@ -317,7 +323,7 @@ fn the_grid_holding_its_place_leaves_a_buttons_word_up() {
     slint::platform::update_timers_and_animations();
     let scroll = app.get_grid_scroll();
     assert!(scroll > 0.0, "the sheet scrolled");
-    crate::testing::rest_on(&app, "Sort: Capture time");
+    crate::testing::rest_on_id(&app, "SortButton::root");
     assert_eq!(app.get_tip_text(), "Sort: Capture time");
     // Every picture above the view comes in wide: the rows above get
     // shorter, and the sheet's scroll moves to hold what is on screen.

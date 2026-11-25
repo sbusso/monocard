@@ -365,6 +365,7 @@ pub struct Noise {
     /// The engine's strength; 1.5 is what its benchmark chose.
     pub strength: f32,
     /// The learned denoiser, by tier, or off.
+    #[serde(deserialize_with = "crate::meta::newer_loose")]
     pub learned: Learned,
     /// How much of the learned answer shows, 0 to 1: it is blended
     /// with the plain demosaic of the same mosaic, so the slider does
@@ -524,6 +525,31 @@ pub struct Detail {
     /// its own section. Left out of a sidecar at zero.
     #[serde(skip_serializing_if = "is_zero")]
     pub sharpen: f32,
+    /// A mask's share of the output sharpen, -1 to 2 (the panel shows
+    /// -100 to +200), under the mask's weight. Under zero it scales the
+    /// picture's Amount (`OutputSharpen::amount`, 0 to 2) by one plus
+    /// it, at the picture's Radius and Threshold: -1 is none of the
+    /// picture's under the mask whatever its Amount, -0.5 half, and with
+    /// the picture's off nothing. Over zero it adds an amount: +1 is
+    /// 100% more, and with the picture's off the mask alone sharpened at
+    /// 100%, at the mask's own Radius and Threshold where it has them
+    /// ([`Self::output_sharpen_radius`]). The render crate's `output_sharpen`
+    /// says how masks combine. Read only on a mask's look. Left out of
+    /// a sidecar at zero.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub output_sharpen: f32,
+    /// The Radius a mask's positive Output sharpen sharpens at, as the
+    /// picture's (`OutputSharpen::radius`, 0.5 to 3, in pixels of the
+    /// picture made); none is the picture's. Nothing under a negative
+    /// share, which takes from the picture's own at its own radius. Read
+    /// only on a mask's look. Left out of a sidecar when none.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_sharpen_radius: Option<f32>,
+    /// The Threshold a mask's positive Output sharpen sharpens at, as
+    /// the picture's (`OutputSharpen::threshold`, 0 to 0.1); none is the
+    /// picture's. As [`Self::output_sharpen_radius`] otherwise.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_sharpen_threshold: Option<f32>,
 }
 
 impl Default for Detail {
@@ -535,6 +561,9 @@ impl Default for Detail {
             structure: 0.0,
             dehaze: 0.0,
             sharpen: 0.0,
+            output_sharpen: 0.0,
+            output_sharpen_radius: None,
+            output_sharpen_threshold: None,
         }
     }
 }
@@ -1042,6 +1071,135 @@ mod tests {
         // The picture's own Detail never writes one.
         let json: serde_json::Value = serde_json::from_str(&Edit::default().to_json()).unwrap();
         assert!(json["detail"].get("sharpen").is_none(), "{json}");
+    }
+
+    /// A mask's Output sharpen in the sidecar: absent it reads as zero,
+    /// at zero it is left out so the file and the develop key are what
+    /// they were, set it is written and read back, and a build from
+    /// before it (0.12, whose Detail has no such field) reads the same
+    /// sidecar with the rest of the mask's Detail as it was written.
+    #[test]
+    fn a_masks_output_sharpen_round_trips_and_an_older_build_reads_the_rest() {
+        let mut e = Edit::default();
+        e.adjustments.push(crate::Adjustment {
+            id: 1,
+            ..Default::default()
+        });
+        e.adjustments[0].look.detail.texture = -0.3;
+        e.adjustments[0].look.detail.sharpen = 0.2;
+        let json: serde_json::Value = serde_json::from_str(&e.to_json()).unwrap();
+        let detail = &json["adjustments"][0]["look"]["detail"];
+        assert!(
+            detail.get("output_sharpen").is_none(),
+            "zero is left out: {json}"
+        );
+        let before = e.develop_key_with(&[], None);
+        let mut old = json.clone();
+        old["adjustments"][0]["look"]["detail"]
+            .as_object_mut()
+            .unwrap()
+            .remove("output_sharpen");
+        assert_eq!(Edit::from_json(&old.to_string()).unwrap(), e);
+        e.adjustments[0].look.detail.output_sharpen = -0.65;
+        let json: serde_json::Value = serde_json::from_str(&e.to_json()).unwrap();
+        let written = json["adjustments"][0]["look"]["detail"]["output_sharpen"].as_f64();
+        assert!(written.is_some_and(|v| (v + 0.65).abs() < 1e-6), "{json}");
+        assert_eq!(Edit::from_json(&e.to_json()).unwrap(), e);
+        assert_ne!(e.develop_key_with(&[], None), before);
+        // An older build: its Detail as 0.12 had it, and the field it
+        // does not know passed over, the rest read as written.
+        #[derive(Debug, PartialEq, Deserialize)]
+        #[serde(default)]
+        struct Before {
+            enabled: bool,
+            texture: f32,
+            clarity: f32,
+            structure: f32,
+            dehaze: f32,
+            sharpen: f32,
+        }
+        impl Default for Before {
+            fn default() -> Self {
+                Before {
+                    enabled: true,
+                    texture: 0.0,
+                    clarity: 0.0,
+                    structure: 0.0,
+                    dehaze: 0.0,
+                    sharpen: 0.0,
+                }
+            }
+        }
+        let read: Before =
+            serde_json::from_value(json["adjustments"][0]["look"]["detail"].clone()).unwrap();
+        assert_eq!(
+            read,
+            Before {
+                texture: -0.3,
+                sharpen: 0.2,
+                ..Before::default()
+            }
+        );
+        // The picture's own Detail never writes one.
+        let json: serde_json::Value = serde_json::from_str(&Edit::default().to_json()).unwrap();
+        assert!(json["detail"].get("output_sharpen").is_none(), "{json}");
+    }
+
+    /// A mask's own Radius and Threshold for its Output sharpen: none is
+    /// left out, so an edit without them writes and keys as it did;
+    /// set, each is written, read back, and keyed; +200 is written as
+    /// set; and a sidecar's null reads as none.
+    #[test]
+    fn a_masks_own_output_radius_and_threshold_round_trip_and_are_left_out_at_none() {
+        let mut e = Edit::default();
+        e.adjustments.push(crate::Adjustment {
+            id: 1,
+            ..Default::default()
+        });
+        e.adjustments[0].look.detail.output_sharpen = 0.5;
+        let before_text = e.to_json();
+        let before_key = e.develop_key_with(&[], None);
+        let json: serde_json::Value = serde_json::from_str(&before_text).unwrap();
+        let detail = &json["adjustments"][0]["look"]["detail"];
+        assert!(detail.get("output_sharpen_radius").is_none(), "{json}");
+        assert!(detail.get("output_sharpen_threshold").is_none(), "{json}");
+        let mut own = e.clone();
+        own.adjustments[0].look.detail.output_sharpen = 2.0;
+        own.adjustments[0].look.detail.output_sharpen_radius = Some(3.0);
+        own.adjustments[0].look.detail.output_sharpen_threshold = Some(0.0);
+        let json: serde_json::Value = serde_json::from_str(&own.to_json()).unwrap();
+        let detail = &json["adjustments"][0]["look"]["detail"];
+        assert_eq!(detail["output_sharpen"].as_f64(), Some(2.0), "{json}");
+        assert_eq!(
+            detail["output_sharpen_radius"].as_f64(),
+            Some(3.0),
+            "{json}"
+        );
+        assert_eq!(detail["output_sharpen_threshold"].as_f64(), Some(0.0));
+        assert_eq!(Edit::from_json(&own.to_json()).unwrap(), own);
+        let mut radius_alone = e.clone();
+        radius_alone.adjustments[0]
+            .look
+            .detail
+            .output_sharpen_radius = Some(3.0);
+        assert_ne!(radius_alone.develop_key_with(&[], None), before_key);
+        let mut threshold_alone = e.clone();
+        threshold_alone.adjustments[0]
+            .look
+            .detail
+            .output_sharpen_threshold = Some(0.0);
+        assert_ne!(threshold_alone.develop_key_with(&[], None), before_key);
+        // Set back to none: the bytes and the key as before.
+        let mut back = own.clone();
+        back.adjustments[0].look.detail = e.adjustments[0].look.detail;
+        assert_eq!(back.to_json(), before_text);
+        assert_eq!(back.develop_key_with(&[], None), before_key);
+        // A null reads as none.
+        let mut nulled = json.clone();
+        nulled["adjustments"][0]["look"]["detail"]["output_sharpen_radius"] =
+            serde_json::Value::Null;
+        let read = Edit::from_json(&nulled.to_string()).unwrap();
+        assert_eq!(read.adjustments[0].look.detail.output_sharpen_radius, None);
     }
 
     /// The sharpen's threshold at the panel's top, 200 percent: written

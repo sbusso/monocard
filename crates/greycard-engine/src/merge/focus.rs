@@ -252,7 +252,11 @@ pub fn write_dng<W: std::io::Write + std::io::Seek>(
     stacked: &Stacked,
     uncompressed: bool,
 ) -> Result<()> {
-    let preview = greycard_core::merge::preview(&stacked.merged, &stacked.balance, 1024)?;
+    let preview = greycard_core::merge::preview(
+        &stacked.merged,
+        &stacked.balance,
+        greycard_core::merge::PREVIEW_SIDE,
+    )?;
     let options = LinearDngOptions {
         compression: if uncompressed {
             Compression::Uncompressed
@@ -332,11 +336,13 @@ pub fn stack(files: &[PathBuf], options: &Options, progress: &dyn Progress) -> R
 }
 
 /// The edit a stack's file starts with: the reference frame's, less
-/// the learned denoiser, which a file with no mosaic cannot run. Its
-/// exposure stays: a stack is at the reference's.
+/// the learned denoiser and the highlight fill, which a file with no
+/// mosaic cannot run. Its exposure stays: a stack is at the
+/// reference's.
 pub fn edit_for_stack(reference: &Edit) -> Edit {
     let mut edit = reference.clone();
     edit.noise.learned = greycard_edit::Learned::Off;
+    edit.highlight_fill = None;
     edit
 }
 
@@ -345,6 +351,18 @@ mod tests {
     use super::*;
     use greycard_core::merge::Noise;
     use greycard_core::merge::testing::{mosaic, write_dng as write_raw};
+
+    /// A stack's file starts without the highlight fill, as without
+    /// the learned denoiser, and at the reference's exposure.
+    #[test]
+    fn a_stack_starts_without_the_highlight_fill() {
+        let mut reference = Edit::default();
+        reference.light.exposure = 0.5;
+        reference.highlight_fill = Some("hl-1".into());
+        let edit = edit_for_stack(&reference);
+        assert_eq!(edit.highlight_fill, None);
+        assert_eq!(edit.light.exposure, 0.5);
+    }
 
     fn scratch(name: &str) -> PathBuf {
         let dir =
@@ -401,7 +419,9 @@ mod tests {
         let (merged, by_hand) = stack::stack_camera(&images, &stack::Options::default()).unwrap();
         assert_eq!(by_hand.reference, report.stack.reference);
         let (frame, metadata, balance) = &sources[by_hand.reference];
-        let preview = greycard_core::merge::preview(&merged, balance, 1024).unwrap();
+        let preview =
+            greycard_core::merge::preview(&merged, balance, greycard_core::merge::PREVIEW_SIDE)
+                .unwrap();
         let mut want = std::io::Cursor::new(Vec::new());
         write_linear_dng(
             &mut want,

@@ -1,7 +1,7 @@
 //! Report a problem: the bug report form on GitHub, opened in the
 //! browser with what a tester cannot be expected to know already
-//! filled in, the version, the OS and its version, the GPU, and the
-//! log's folder opened beside it so the file is one drag away.
+//! filled in, the version, the OS and its version, the GPU, the CPU,
+//! and the log's folder opened beside it so the file is one drag away.
 //!
 //! The form is `.github/ISSUE_TEMPLATE/bug.yml`, and GitHub fills an
 //! issue form's fields from query parameters named by the fields'
@@ -9,7 +9,7 @@
 //! Nothing is sent from here: the browser shows the form, and the
 //! tester reads it, adds to it and submits it or does not.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::rc::Rc;
 
 use anyhow::{Context, Result};
@@ -17,11 +17,18 @@ use slint::ComponentHandle;
 
 use crate::{App, Shared, gpu, log, tr};
 
+// A path of ours as shown, the home folder short, in the library
+// beside the files, where the export queue's lines take it too.
+#[cfg(test)]
+use crate::files::abbreviate;
+pub(crate) use crate::files::path_shown;
+
 /// The fields of the form this fills, by id, in the form's order.
 pub struct Report {
     pub version: String,
     pub os: String,
     pub gpu: String,
+    pub cpu: String,
     pub log: String,
 }
 
@@ -38,6 +45,7 @@ pub fn issue_url(repository: &str, report: &Report) -> String {
         ("version", &report.version),
         ("os", &report.os),
         ("gpu", &report.gpu),
+        ("cpu", &report.cpu),
         ("log", &report.log),
     ] {
         if !value.is_empty() {
@@ -82,35 +90,6 @@ pub fn log_note(log: &str) -> String {
          Drag greycard-ui.log here. If greycard closed on its own before this, \
          greycard-ui-1.log is that run: drag it too."
     )
-}
-
-/// `path` with the first of `prefixes` it lies under swapped for that
-/// prefix's name: `%LOCALAPPDATA%` or `~`, so what goes into a public
-/// form does not carry the account's name.
-fn abbreviate(path: &Path, prefixes: &[(Option<PathBuf>, &str)]) -> String {
-    for (prefix, name) in prefixes {
-        if let Some(rest) = prefix.as_ref().and_then(|p| path.strip_prefix(p).ok()) {
-            return format!("{name}{}{}", std::path::MAIN_SEPARATOR, rest.display());
-        }
-    }
-    path.display().to_string()
-}
-
-/// A path of ours as the form and the Settings sheet show it, the
-/// home folder short, so neither carries the account's name.
-pub(crate) fn path_shown(path: &Path) -> String {
-    if cfg!(windows) {
-        abbreviate(
-            path,
-            &[
-                (dirs::data_local_dir(), "%LOCALAPPDATA%"),
-                (dirs::config_dir(), "%APPDATA%"),
-                (dirs::home_dir(), "%USERPROFILE%"),
-            ],
-        )
-    } else {
-        abbreviate(path, &[(dirs::home_dir(), "~")])
-    }
 }
 
 /// The adapter as the log's start and the form both say it.
@@ -258,6 +237,49 @@ fn linux_name(os_release: &str, kernel: &str, desktop: &str, session: &str) -> S
     out
 }
 
+/// The processor as the system names it, as the form's placeholder
+/// has it: `/proc/cpuinfo`'s model name on Linux, the brand string
+/// CPUID answers on any other x86-64 machine, `sysctl` on a Mac.
+/// Empty, for the tester to fill in, where none of those answers, as
+/// on Windows on ARM.
+pub fn cpu() -> String {
+    cpu_name().unwrap_or_default()
+}
+
+#[cfg(target_os = "macos")]
+fn cpu_name() -> Option<String> {
+    let out = crate::adapter::scrub(&mut std::process::Command::new("sysctl"))
+        .args(["-n", "machdep.cpu.brand_string"])
+        .output()
+        .ok()?;
+    let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    (out.status.success() && !name.is_empty()).then_some(name)
+}
+
+#[cfg(windows)]
+fn cpu_name() -> Option<String> {
+    greycard_ai::runtime::processor_name()
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn cpu_name() -> Option<String> {
+    std::fs::read_to_string("/proc/cpuinfo")
+        .ok()
+        .and_then(|text| cpuinfo_name(&text))
+        .or_else(greycard_ai::runtime::processor_name)
+}
+
+/// The first processor's model name in `/proc/cpuinfo`'s text; ARM
+/// kernels often give none.
+#[cfg_attr(any(windows, target_os = "macos"), allow(dead_code))]
+fn cpuinfo_name(cpuinfo: &str) -> Option<String> {
+    cpuinfo.lines().find_map(|l| {
+        let (k, v) = l.split_once(':')?;
+        let v = v.trim();
+        (k.trim() == "model name" && !v.is_empty()).then(|| v.to_string())
+    })
+}
+
 /// Show `file` selected in the platform's file manager: Explorer's
 /// `/select`, Finder's `open -R`, and on Linux the file manager's
 /// `ShowItems` over D-Bus, which Nautilus, Dolphin, Nemo and Thunar
@@ -333,6 +355,7 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>) {
             version: greycard_version::LABEL.into(),
             os: os(),
             gpu: state.borrow().develop.gpu.clone().unwrap_or_default(),
+            cpu: cpu(),
             log: log
                 .as_deref()
                 .map(|p| log_note(&path_shown(p)))
@@ -400,6 +423,7 @@ mod tests {
             version: "0.1.0".into(),
             os: "Windows 11 10.0.26200, x86_64".into(),
             gpu: "NVIDIA GeForce RTX 5070 Ti (Vulkan, DiscreteGpu), driver NVIDIA 581.57".into(),
+            cpu: "AMD Ryzen 7 7800X3D 8-Core Processor".into(),
             log: log_note(r"%LOCALAPPDATA%\greycard\logs\greycard-ui.log"),
         }
     }
@@ -419,6 +443,10 @@ mod tests {
             "{url}"
         );
         assert!(url.contains("&gpu=NVIDIA%20GeForce%20RTX%205070%20Ti%20%28Vulkan%2C%20DiscreteGpu%29%2C%20driver%20NVIDIA%20581.57&"), "{url}");
+        assert!(
+            url.contains("&cpu=AMD%20Ryzen%207%207800X3D%208-Core%20Processor&"),
+            "{url}"
+        );
         assert!(
             url.contains(
                 "&log=The%20log%20is%20%25LOCALAPPDATA%25%5Cgreycard%5Clogs%5Cgreycard-ui.log%2C%20"
@@ -441,11 +469,13 @@ mod tests {
     fn an_empty_field_is_left_to_the_tester() {
         let r = Report {
             gpu: String::new(),
+            cpu: String::new(),
             log: String::new(),
             ..report()
         };
         let url = issue_url("https://github.com/jessolmstead/greycard", &r);
         assert!(!url.contains("gpu="), "{url}");
+        assert!(!url.contains("cpu="), "{url}");
         assert!(!url.contains("log="), "{url}");
         assert!(url.contains("&os="), "{url}");
     }
@@ -536,6 +566,22 @@ mod tests {
     }
 
     #[test]
+    fn the_cpu_from_cpuinfo() {
+        let x86 = "processor\t: 0\nvendor_id\t: AuthenticAMD\n\
+                   model name\t: AMD Ryzen 7 7800X3D 8-Core Processor\n\n\
+                   processor\t: 1\nmodel name\t: AMD Ryzen 7 7800X3D 8-Core Processor\n";
+        assert_eq!(
+            cpuinfo_name(x86).as_deref(),
+            Some("AMD Ryzen 7 7800X3D 8-Core Processor")
+        );
+        // An ARM kernel's: no model name, and no guess at one.
+        let arm = "processor\t: 0\nBogoMIPS\t: 108.00\nCPU implementer\t: 0x41\n\
+                   CPU part\t: 0xd0b\n";
+        assert_eq!(cpuinfo_name(arm), None);
+        assert_eq!(cpuinfo_name("model name\t:\n"), None);
+    }
+
+    #[test]
     fn this_machine_is_named_with_its_version() {
         let os = os();
         assert!(os.ends_with(std::env::consts::ARCH), "{os}");
@@ -547,6 +593,10 @@ mod tests {
                 os.starts_with("macOS 1") || os.starts_with("macOS 2"),
                 "{os}"
             );
+        }
+        // Every machine CI builds on names its processor.
+        if cfg!(any(target_arch = "x86_64", target_os = "macos")) {
+            assert!(!cpu().is_empty());
         }
     }
 }

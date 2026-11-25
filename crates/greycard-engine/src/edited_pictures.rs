@@ -56,20 +56,45 @@ use crate::version_key::Key;
 use crate::worker::ThumbCache;
 
 /// The recipe the pictures made from an edit are kept under, where the
-/// camera's carry `worker::THUMB_RECIPE`: the high bit says "made from
-/// the edit", so the two never name one entry. Raise the low bits when
+/// camera's carry `worker::thumb_recipe` (a raw's `THUMB_RECIPE`, a
+/// picture file's that with `PICTURE_STEP` in its high byte): the high
+/// bit says "made from the edit", so the two never name one entry. Raise the low bits when
 /// the shrink, the un-turn or the encode below make another picture
 /// from the same finished one; a change to the develop or the finish
-/// is `greycard_edit::key::DEVELOP_RECIPE`'s.
-pub const EDITED_RECIPE: u16 = 0x8001;
+/// is `greycard_edit::key::DEVELOP_RECIPE`'s, unless it changes these
+/// pictures alone, which raise both recipes past every value either
+/// held ([`RETIRED_RECIPES`]).
+///
+/// 0x8003: the resize to [`BIG`] keeps light over one and values under
+/// zero, and a mask's Sharpen there is the delta between the resized
+/// pictures, 2026-11-21. Raised here, not in `DEVELOP_RECIPE`, which
+/// also names the learned masks' rasters.
+///
+/// 0x8005: the gamut op at the output in the clamp's place, for every
+/// edit (`greycard_render::gamut`), 2026-11-22. Here and not in
+/// `DEVELOP_RECIPE`: a change of finish is a change of the global look,
+/// which a mask's print leaves out by design (`mask_base`), though the
+/// models' preview, made through the finish, shows it.
+pub const EDITED_RECIPE: u16 = 0x8005;
 
 /// The recipe the pictures the reduced develop made are kept under
 /// (`reduced`): the edit's too, and looked up after
 /// [`EDITED_RECIPE`]'s, but made from the binned mosaic with no capture
 /// sharpen and no denoise. The open frame's develop makes the edit's
 /// pictures under [`EDITED_RECIPE`] when the frame is opened, and they
-/// take these ones' place.
-pub const REDUCED_RECIPE: u16 = 0x8002;
+/// take these ones' place. 0x8006 with [`EDITED_RECIPE`]'s 0x8005.
+pub const REDUCED_RECIPE: u16 = 0x8006;
+
+/// The process the edit's recipes were last raised for, and the recipe:
+/// a new process (`greycard_edit::PROCESS`) that changes the finish
+/// alone raises both recipes and this with it.
+#[cfg(test)]
+const RECIPE_FOR_PROCESS: (u32, u16) = (2, 0x8005);
+
+/// The values the two recipes held before, never used again: a picture
+/// kept under one is never asked for.
+#[cfg(test)]
+const RETIRED_RECIPES: [u16; 4] = [0x8001, 0x8002, 0x8003, 0x8004];
 
 /// Both recipes of the edit's pictures, in the order they are looked
 /// up.
@@ -359,8 +384,10 @@ impl Drop for Marked {
 /// The lens database a develop reads now, named by the directory it is
 /// found in (the first of `greycard_lens::Store::candidates` with any
 /// XML in it, which is the one `Store::load` reads) and the fetch's
-/// `timestamp.txt` there: a fetch or an update moves it. `None` with
-/// none. A listing or two and one small read, never the database.
+/// `timestamp.txt` there: a fetch or an update moves it. With the
+/// matching's version, [`greycard_lens::MATCHING`]: the same database
+/// matched another way gives a file another profile. `None` with none.
+/// A listing or two and one small read, never the database.
 pub fn lens_database() -> Option<String> {
     let store = greycard_lens::Store::user().ok()?;
     let dir = store.candidates().into_iter().find(|dir| {
@@ -368,8 +395,18 @@ pub fn lens_database() -> Option<String> {
             entries.any(|e| e.is_ok_and(|e| e.path().extension().is_some_and(|x| x == "xml")))
         })
     })?;
+    Some(lens_database_named(&dir))
+}
+
+/// [`lens_database`] for the database in `dir`.
+fn lens_database_named(dir: &std::path::Path) -> String {
     let made = std::fs::read_to_string(dir.join("timestamp.txt")).unwrap_or_default();
-    Some(format!("{} {}", dir.display(), made.trim()))
+    format!(
+        "{} {} matching {}",
+        dir.display(),
+        made.trim(),
+        greycard_lens::MATCHING
+    )
 }
 
 impl Edited {
@@ -538,7 +575,7 @@ impl Edited {
     /// the develop reads now, the file's camera frame taken in as the
     /// index takes it (`greycard_edit::key::framed_key`).
     pub fn key_of(&self, path: &Path, edit: &Edit) -> u64 {
-        self.key_under(edit, camera_of(path))
+        self.key_under(edit, path, camera_of(path))
     }
 
     /// [`Edited::key_of`] with the camera's frame as known, nothing of
@@ -546,10 +583,15 @@ impl Edited {
     /// read yet gets its edit's own key, a hint the thumbnail's read
     /// corrects.
     pub fn key_known(&self, path: &Path, edit: &Edit) -> u64 {
-        self.key_under(edit, camera_known(path))
+        self.key_under(edit, path, camera_known(path))
     }
 
-    fn key_under(&self, edit: &Edit, camera: Option<greycard_core::raw::CameraFrame>) -> u64 {
+    fn key_under(
+        &self,
+        edit: &Edit,
+        path: &Path,
+        camera: Option<greycard_core::raw::CameraFrame>,
+    ) -> u64 {
         let lenses = self.lenses();
         let key = match &*self.dirs.lock().expect("key dirs") {
             Some((looks, profiles)) => greycard_edit_io::key::develop_key_in(
@@ -560,6 +602,7 @@ impl Edited {
             ),
             None => greycard_edit_io::key::develop_key(edit, lenses.as_deref()),
         };
+        let key = greycard_edit::key::decode_key(key, path);
         greycard_edit::key::framed_key(
             key,
             edit.geometry.crop.is_none(),
@@ -957,10 +1000,10 @@ fn read_key(frame: &Key, iso: Iso, key_of: impl Fn(&Edit) -> u64) -> Read {
     let Some(line) = sidecar.line(frame.version()) else {
         return Read::Default;
     };
-    if !is_edited(path, &line.current, iso) {
+    if !is_edited(path, line.current(), iso) {
         return Read::Default;
     }
-    Read::Key(key_of(&line.current))
+    Read::Key(key_of(line.current()))
 }
 
 /// Whether `edit` is an edit of the frame at `path`, by the rule the
@@ -1145,8 +1188,15 @@ pub fn read_back_reduced(
 /// before its geometry): the geometry, a resize to [`BIG`] on the long
 /// edge, the finish as an export at that size is finished (with no
 /// output sharpening), the frame's own turns taken back out, and the
-/// made sizes shrunk from that.
-pub fn make(reduced: &WorkingImage, finish: &Finish) -> Made {
+/// made sizes shrunk from that. The picture cut here is the reduced
+/// one, under 4096 on its long edge, whose limit is at least
+/// [`greycard_render::geometry::MAX_FRAME_PIXELS`], so in practice
+/// nothing is refused: a frame the export refuses still gets its
+/// pictures. The error is passed on all the same.
+pub fn make(
+    reduced: &WorkingImage,
+    finish: &Finish,
+) -> Result<Made, greycard_render::geometry::TooLarge> {
     // The camera's frame resolved into the geometry at the full
     // develop's size, as the export resolves it, for the renderers that
     // take a whole geometry.
@@ -1165,7 +1215,7 @@ pub fn make(reduced: &WorkingImage, finish: &Finish) -> Made {
     let image = if whole {
         reduced
     } else {
-        framed = greycard_render::geometry::apply(reduced, &edit.geometry);
+        framed = greycard_render::geometry::apply(reduced, &edit.geometry)?;
         &framed
     };
     // At the size an export at BIG of the full develop has, to the
@@ -1173,10 +1223,12 @@ pub fn make(reduced: &WorkingImage, finish: &Finish) -> Made {
     // is placed by the output's own pixels: a crop rounded at another
     // scale would put the picture a pixel off it.
     let (w, h) = fitted_size(finish.full, &edit.geometry, None);
+    let framed_picture = image;
     let fitted = greycard_render::export::fit_exact(image, w, h);
     let image = fitted.as_ref().unwrap_or(image);
     // The masks' bands by the same steps: reduced by the whole factor
-    // the picture was, framed, and fitted.
+    // the picture was, framed, and fitted, the sharpen's delta in the
+    // fit made from the picture as the export makes it.
     let detail = finish.detail.as_ref().map(|planes| {
         let mut bands = if (planes.width, planes.height) == (reduced.width, reduced.height) {
             planes.to_image()
@@ -1188,10 +1240,13 @@ pub fn make(reduced: &WorkingImage, finish: &Finish) -> Made {
             bands.fit_exact(rw, rh).unwrap_or(bands)
         };
         if !whole {
-            bands = bands.framed(&edit.geometry);
+            bands = bands.framed(&edit.geometry)?;
         }
-        bands.fit_exact(w, h).unwrap_or(bands)
+        Ok(bands
+            .fit_exact_beside(w, h, true, framed_picture, planes.meta.sharpened)
+            .unwrap_or(bands))
     });
+    let detail = detail.transpose()?;
     let (sw, sh) = (finish.source.0 as f32, finish.source.1 as f32);
     let frame_width = edit.geometry.frame(sw, sh, None).size.0;
     let full_width = edit.geometry.frame(fw, fh, None).size.0;
@@ -1218,12 +1273,15 @@ pub fn make(reduced: &WorkingImage, finish: &Finish) -> Made {
         finish.white.as_ref(),
         detail.as_ref().zip(finish.detail.as_ref().map(|p| &p.meta)),
     );
-    made_of(rendered, edit, finish.turn)
+    Ok(made_of(rendered, edit, finish.turn))
 }
 
 /// [`make`] from a monochrome raw's planes, reduced as its picture is.
 #[cfg(feature = "mono")]
-pub fn make_mono(reduced: &mono_core::MonoFrame, finish: &Finish) -> Made {
+pub fn make_mono(
+    reduced: &mono_core::MonoFrame,
+    finish: &Finish,
+) -> Result<Made, greycard_render::geometry::TooLarge> {
     let (fw, fh) = (finish.full.0 as f32, finish.full.1 as f32);
     let edit = &Edit {
         geometry: finish
@@ -1242,14 +1300,14 @@ pub fn make_mono(reduced: &mono_core::MonoFrame, finish: &Finish) -> Made {
         full: Some(finish.full),
         exact: Some(fitted_size(finish.full, &edit.geometry, None)),
     };
-    let mut rendered = greycard_render::mono::render(reduced, edit, &settings, &beside);
+    let mut rendered = greycard_render::mono::render(reduced, edit, &settings, &beside)?;
     // A thumbnail is three bytes a pixel.
     if rendered.is_grey()
         && let greycard_render::export::Pixels::Eight(p) = &mut rendered.pixels
     {
         *p = p.iter().flat_map(|v| [*v; 3]).collect();
     }
-    made_of(rendered, edit, finish.turn)
+    Ok(made_of(rendered, edit, finish.turn))
 }
 
 fn made_of(rendered: greycard_render::export::Rendered, edit: &Edit, turn: u8) -> Made {
@@ -1391,6 +1449,7 @@ pub fn keep(edited: &Edited, job: Keeping, done: impl FnOnce(Key)) {
         .as_ref()
         .map_or((rw, rh), |f| (f.base.width, f.base.height));
     let reducing = started.elapsed().as_secs_f64();
+    let name = job.frame.said();
     #[cfg(feature = "mono")]
     let made = match &mono {
         Some(frame) => make_mono(frame, &job.finish),
@@ -1398,13 +1457,21 @@ pub fn keep(edited: &Edited, job: Keeping, done: impl FnOnce(Key)) {
     };
     #[cfg(not(feature = "mono"))]
     let made = make(image, &job.finish);
+    // A frame refused makes nothing, and the pictures kept before it
+    // stay as they were.
+    let made = match made {
+        Ok(made) => made,
+        Err(e) => {
+            tracing::warn!("the edit's pictures of {name}: not made: {e}");
+            return;
+        }
+    };
     let making = started.elapsed().as_secs_f64() - reducing;
     let stored = edited.store(&job.frame, &job.hash, job.key, job.iso, &made);
     // Kept, or not: a save of the same picture from now on looks for it
     // in the cache rather than waiting on this one.
     drop(job.marked);
     let total = started.elapsed().as_secs_f64();
-    let name = job.frame.said();
     match stored {
         Ok(bytes) => {
             tracing::info!(
@@ -1433,6 +1500,57 @@ pub fn keep(edited: &Edited, job: Keeping, done: impl FnOnce(Key)) {
 pub mod tests {
     use super::*;
     use crate::testing::edited::{Heard, rig};
+
+    /// The edit's two recipes are apart from each other and from the
+    /// camera's (the high bit), and from every value they held before,
+    /// so a picture kept under a retired one is never read back.
+    #[test]
+    fn the_edits_recipes_are_new_and_apart() {
+        // Raised for this build's process (`greycard_edit::key::PROCESS_KEYED`).
+        assert_eq!(
+            RECIPE_FOR_PROCESS,
+            (greycard_edit::PROCESS, EDITED_RECIPE),
+            "a new process: raise both recipes (or DEVELOP_RECIPE) and RECIPE_FOR_PROCESS"
+        );
+        assert_ne!(EDITED_RECIPE, REDUCED_RECIPE);
+        for recipe in EDIT_RECIPES {
+            assert_ne!(recipe & 0x8000, 0, "{recipe:#x}");
+            assert_ne!(recipe, crate::worker::THUMB_RECIPE);
+            assert!(!RETIRED_RECIPES.contains(&recipe), "{recipe:#x} was used");
+        }
+    }
+
+    /// A CR3's pictures are keyed with the headroom's version, as its
+    /// index row is, and every other file's keep the edit's own key;
+    /// nothing is read for it.
+    #[test]
+    fn a_cr3s_pictures_take_the_headroom_in() {
+        let edited = Edited::new(Arc::new(Mutex::new(None)));
+        let edit = Edit::default();
+        let nef = Path::new("not-there/a.NEF");
+        let cr3 = Path::new("not-there/a.CR3");
+        let own = edited.key_known(nef, &edit);
+        assert_eq!(edited.key_of(nef, &edit), own);
+        let headroom = greycard_edit::key::headroom_key(own, true);
+        assert_eq!(edited.key_known(cr3, &edit), headroom);
+        assert_eq!(edited.key_of(cr3, &edit), headroom);
+    }
+
+    /// A DNG's pictures are keyed with the linearization's version, as
+    /// its index row is; a CR3's and a RAF's are not.
+    #[test]
+    fn a_dngs_pictures_take_the_linearization_in() {
+        let edited = Edited::new(Arc::new(Mutex::new(None)));
+        let edit = Edit::default();
+        let raf = Path::new("not-there/a.RAF");
+        let own = edited.key_known(raf, &edit);
+        assert_eq!(edited.key_of(raf, &edit), own);
+        let dng = greycard_edit::key::linearization_key(own, true);
+        assert_eq!(edited.key_known(Path::new("not-there/a.DNG"), &edit), dng);
+        assert_eq!(edited.key_of(Path::new("not-there/a.dng"), &edit), dng);
+        let cr3 = edited.key_known(Path::new("not-there/a.CR3"), &edit);
+        assert_eq!(cr3, greycard_edit::key::headroom_key(own, true));
+    }
 
     /// What the camera's frames are known by: a read only where asked
     /// for one (never for the window's thread, nor a picture from the
@@ -1629,7 +1747,7 @@ pub mod tests {
                 detail: None,
                 camera: None,
             };
-            let big = make(&reduced, &finish).big;
+            let big = make(&reduced, &finish).unwrap().big;
             assert_eq!((big.width, big.height), (w as u32, h as u32));
             let i = ((h / 2) * w + 1001) * 3;
             big.rgb[i..i + 3].iter().map(|v| u32::from(*v)).sum::<u32>()
@@ -1659,7 +1777,7 @@ pub mod tests {
         let mut edit = Edit::for_picture();
         edit.light.exposure = 1.5;
         let mut sidecar = greycard_edit::Sidecar {
-            line: greycard_edit::Line::of(edit.clone()),
+            line: greycard_edit::Line::of(edit.clone(), 0).unwrap(),
             ..greycard_edit::Sidecar::default()
         };
         sidecar.save(&other).unwrap();
@@ -2214,6 +2332,18 @@ pub mod tests {
         edited.settle_key(&a, &ha, 7, None);
         assert!(edited.settle_key(&a, &ha, 8, None));
         assert!(!has(&ha, 7), "the version found its own key: 7 is nobody's");
+        crate::testing::remove_dir_retry(&dir);
+    }
+
+    /// The database's name for the keys carries the matching's version,
+    /// so a frame whose profile the matching changed is made again.
+    #[test]
+    fn the_lens_databases_name_carries_the_matching() {
+        let dir = crate::testing::scratch_dir("lens-database-name");
+        std::fs::write(dir.join("timestamp.txt"), "1700000000\n").unwrap();
+        let name = lens_database_named(&dir);
+        assert!(name.starts_with(&format!("{} 1700000000 ", dir.display())));
+        assert!(name.ends_with(&format!("matching {}", greycard_lens::MATCHING)));
         crate::testing::remove_dir_retry(&dir);
     }
 }

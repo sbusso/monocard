@@ -29,7 +29,7 @@ pub(super) fn export_open(
     };
     let (rendered, left_out) =
         render_open(edit, turn, f, held, models, lenses, gpu, written.settings)?;
-    write_rendered(&rendered, edit, written)?;
+    write_rendered(&rendered, edit, written, lens_named(f, edit, lenses))?;
     Ok(left_out)
 }
 
@@ -85,6 +85,17 @@ fn lens_left_out(
     crate::lens::left_out((make, model, shot, input.is_raw()), &edit.lens, lenses)
 }
 
+/// The lens the export names where its source names none
+/// ([`crate::lens::named`]).
+fn lens_named(
+    input: &Input,
+    edit: &Edit,
+    lenses: Option<&greycard_lens::Database>,
+) -> Option<greycard_core::exif::LensName> {
+    let (make, model, shot) = input.identity();
+    crate::lens::named((make, model, shot, input.is_raw()), &edit.lens, lenses)
+}
+
 /// A set frame's edit with its learned-denoiser blend seeded from the
 /// raw's ISO when it has no sidecar yet, as its first open would; `path` is
 /// the file `input` was read from.
@@ -129,6 +140,7 @@ pub(super) fn export_other(
     let edit = seeded(&frame.edit, frame.seed_blend, Some(&input), &frame.source);
     ai.forget(Some(frame.source.clone()));
     let lens_words = lens_left_out(&input, &edit, lenses);
+    let lens = lens_named(&input, &edit, lenses);
     let (rendered, mut left_out) = walk_export(
         input,
         &edit,
@@ -151,6 +163,7 @@ pub(super) fn export_other(
             metadata: Some(&metadata),
             time_shift: frame.time_shift,
         },
+        lens,
     )?;
     Ok((edit, left_out))
 }
@@ -228,7 +241,7 @@ pub(super) fn walk_for_export(
         .iter()
         .any(|s| matches!(s, Step::Tap(Tap::Masks(_))))
         && steps.ops().any(|s| {
-            matches!(s, Stage::Retouch(r, _)
+            matches!(s, Stage::Retouch(r, ..)
                 if r.patches.iter().any(|p| p.method == greycard_edit::retouch::Method::Fill))
         });
     steps.steps.retain(|s| match s {
@@ -268,10 +281,7 @@ pub(super) fn walk_for_export(
         tracing::info!("{name} stood down: {why}");
     }
     let learned = match (&walked.meta.stood_in, unavailable) {
-        (Some(NoLearned::Missing(model)), _) => LearnedReport::Missing(model),
-        (Some(NoLearned::Failed(why) | NoLearned::Short(why)), _) => {
-            LearnedReport::Failed(why.clone())
-        }
+        (Some(no), _) => super::develop::stood_in_report(no),
         (None, Some(why)) => LearnedReport::Unavailable(why),
         (None, None) => learned,
     };
@@ -281,6 +291,7 @@ pub(super) fn walk_for_export(
         _ => learned,
     };
     let mut left_out = left_out_words(&learned, walked.meta.gave_way.as_ref(), &fills);
+    left_out.extend(super::masks::profile_left_out(edit, facts.is_raw()));
     left_out.extend(super::masks::look_left_out(edit));
     left_out.extend(masks);
     let mut walked = walked;
@@ -324,15 +335,21 @@ pub(super) fn walk_for_export(
 
 /// The file of `rendered`, finished under `edit`, as `written` says:
 /// the source's EXIF with its capture times moved by the frame's time
-/// shift, and its name and edit as where it came from.
+/// shift and `lens` named where the source names none, and its name
+/// and edit as where it came from.
 fn write_rendered(
     rendered: &greycard_render::export::Rendered,
     edit: &Edit,
     written: Written<'_>,
+    lens: Option<greycard_core::exif::LensName>,
 ) -> Result<(), String> {
-    let shifted = written
-        .metadata
-        .map(|m| greycard_core::exif::with_capture_shifted(m, written.time_shift));
+    let shifted = written.metadata.map(|m| {
+        let mut m = greycard_core::exif::with_capture_shifted(m, written.time_shift);
+        if let Some(lens) = &lens {
+            greycard_core::exif::name_lens(&mut m, lens);
+        }
+        m
+    });
     let origin = greycard_render::export::Origin {
         source_name: written
             .source
@@ -342,10 +359,70 @@ fn write_rendered(
     };
     greycard_render::export::write(
         rendered,
-        written.settings,
+        // The sheet's words in the file's XMP as the frame was made.
+        &written.settings.for_edit(edit),
         written.path,
         shifted.as_ref(),
         &origin,
     )
     .map_err(|e| format!("{e:#}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use greycard_core::exif::LensName;
+
+    /// An export of a source naming no lens carries the lens picked;
+    /// one whose source names its lens carries the source's.
+    #[test]
+    fn an_export_names_the_lens_picked_where_its_source_names_none() {
+        let dir = crate::testing::scratch_dir("export-lens-named");
+        let rendered = greycard_render::export::Rendered {
+            width: 2,
+            height: 1,
+            pixels: greycard_render::export::Pixels::Eight(vec![128; 6]),
+        };
+        let settings = greycard_render::export::Settings::default();
+        let picked = LensName {
+            make: Some("Pentax".into()),
+            model: "smc PENTAX-FA 35mm F2 AL".into(),
+        };
+        let written = |source_lens: Option<&str>, name: &str| {
+            let mut metadata = greycard_core::decode::RawMetadata {
+                make: "Pentax".into(),
+                model: "K-1".into(),
+                ..Default::default()
+            };
+            metadata.exif.lens_model = source_lens.map(String::from);
+            let path = dir.join(name);
+            write_rendered(
+                &rendered,
+                &Edit::default(),
+                Written {
+                    settings: &settings,
+                    path: &path,
+                    source: None,
+                    metadata: Some(&metadata),
+                    time_shift: 0,
+                },
+                Some(picked.clone()),
+            )
+            .unwrap();
+            let back = greycard_core::picture::decode_picture_path(&path).unwrap();
+            (back.shot.lens_make, back.shot.lens_model)
+        };
+        assert_eq!(
+            written(None, "none.jpg"),
+            (
+                Some("Pentax".into()),
+                Some("smc PENTAX-FA 35mm F2 AL".into())
+            )
+        );
+        assert_eq!(
+            written(Some("Own 50mm"), "own.jpg"),
+            (None, Some("Own 50mm".into()))
+        );
+        crate::testing::remove_dir_retry(&dir);
+    }
 }

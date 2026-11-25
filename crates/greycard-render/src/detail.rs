@@ -466,14 +466,27 @@ pub struct BandImages {
 impl Plane {
     /// The frame of `geometry` cut from it, as from a channel of the
     /// picture.
-    fn framed(&self, geometry: &greycard_edit::geometry::Geometry) -> Self {
-        let (data, width, height) =
-            crate::geometry::apply_plane(&self.data, self.width, self.height, geometry);
-        Plane {
+    /// At `at` when given, as [`crate::geometry::apply_plane_at`] cuts.
+    fn framed(
+        &self,
+        geometry: &greycard_edit::geometry::Geometry,
+        at: Option<(usize, usize)>,
+    ) -> Result<Self, crate::geometry::TooLarge> {
+        let (data, width, height) = match at {
+            Some(size) => crate::geometry::apply_plane_at(
+                &self.data,
+                self.width,
+                self.height,
+                geometry,
+                size,
+            )?,
+            None => crate::geometry::apply_plane(&self.data, self.width, self.height, geometry)?,
+        };
+        Ok(Plane {
             width,
             height,
             data,
-        }
+        })
     }
 
     /// Resampled to `w` by `h` as a channel of the picture is.
@@ -505,18 +518,50 @@ impl BandImages {
         [t, c, h, one(&self.structure), one(&self.sharpen)]
     }
 
-    /// The frame of `geometry` cut from each, as from the picture.
-    pub fn framed(&self, geometry: &greycard_edit::geometry::Geometry) -> Self {
-        let lanes = self
-            .lanes
+    /// The frame of `geometry` cut from each, as from the picture, or
+    /// none of it when the frame is too large to hold.
+    pub fn framed(
+        &self,
+        geometry: &greycard_edit::geometry::Geometry,
+    ) -> Result<Self, crate::geometry::TooLarge> {
+        self.framed_with(geometry, None)
+    }
+
+    /// [`Self::framed`] with the frame cut at `size`, as
+    /// [`crate::geometry::apply_at`] cuts the picture.
+    pub fn framed_at(
+        &self,
+        geometry: &greycard_edit::geometry::Geometry,
+        size: (usize, usize),
+    ) -> Result<Self, crate::geometry::TooLarge> {
+        self.framed_with(geometry, Some(size))
+    }
+
+    fn framed_with(
+        &self,
+        geometry: &greycard_edit::geometry::Geometry,
+        at: Option<(usize, usize)>,
+    ) -> Result<Self, crate::geometry::TooLarge> {
+        let cut = |i: &WorkingImage| match at {
+            Some(size) => crate::geometry::apply_at(i, geometry, size),
+            None => crate::geometry::apply(i, geometry),
+        };
+        let lanes = self.lanes.as_ref().map(cut).transpose()?;
+        let structure = self
+            .structure
             .as_ref()
-            .map(|l| crate::geometry::apply(l, geometry));
-        let structure = self.structure.as_ref().map(|s| s.framed(geometry));
-        let sharpen = self.sharpen.as_ref().map(|s| s.framed(geometry));
+            .map(|s| s.framed(geometry, at))
+            .transpose()?;
+        let sharpen = self
+            .sharpen
+            .as_ref()
+            .map(|s| s.framed(geometry, at))
+            .transpose()?;
         let sample = self
             .sample
             .as_ref()
-            .map(|s| Arc::new(crate::geometry::apply(s, geometry)));
+            .map(|s| cut(s.as_ref()).map(Arc::new))
+            .transpose()?;
         let size = lanes
             .as_ref()
             .map(|l| (l.width, l.height))
@@ -524,24 +569,32 @@ impl BandImages {
             .or_else(|| sharpen.as_ref().map(|s| (s.width, s.height)))
             .or_else(|| sample.as_ref().map(|s| (s.width, s.height)))
             .unwrap_or(self.size);
-        Self {
+        Ok(Self {
             size,
             lanes,
             structure,
             sharpen,
             sample,
-        }
+        })
     }
 
     /// Each resampled to `w` by `h` as the picture is, or none when
-    /// they are that size already.
+    /// they are that size already. The sharpen's delta is resampled as a
+    /// channel is; [`Self::fit_exact_beside`] makes it from the picture.
     pub fn fit_exact(&self, w: u32, h: u32) -> Option<Self> {
-        self.fit_exact_with(w, h, true)
+        self.fit_exact_with(w, h, true, true)
     }
 
     /// [`Self::fit_exact`], the range masks' picture resampled too
-    /// only `with_sample`, and left out otherwise.
-    fn fit_exact_with(&self, w: u32, h: u32, with_sample: bool) -> Option<Self> {
+    /// only `with_sample` and the sharpen's delta only `with_sharpen`,
+    /// each left out otherwise.
+    fn fit_exact_with(
+        &self,
+        w: u32,
+        h: u32,
+        with_sample: bool,
+        with_sharpen: bool,
+    ) -> Option<Self> {
         if self.size == (w as usize, h as usize) {
             return None;
         }
@@ -552,7 +605,11 @@ impl BandImages {
                 .as_ref()
                 .map(|l| crate::export::fit_exact(l, w, h).unwrap_or_else(|| l.clone())),
             structure: self.structure.as_ref().map(|s| s.fit_exact(w, h)),
-            sharpen: self.sharpen.as_ref().map(|s| s.fit_exact(w, h)),
+            sharpen: self
+                .sharpen
+                .as_ref()
+                .filter(|_| with_sharpen)
+                .map(|s| s.fit_exact(w, h)),
             sample: self
                 .sample
                 .as_ref()
@@ -561,12 +618,138 @@ impl BandImages {
         })
     }
 
+    /// [`Self::fit_exact`] beside `picture`, these planes' picture
+    /// (`sharpened` or not), the range masks' picture only
+    /// `with_sample`: the sharpen's delta is the one between the
+    /// picture and the picture on the sharpen's other side, both
+    /// resampled ([`fitted_delta`]), and is not resampled itself. A
+    /// picture of another size than the planes' takes the delta
+    /// resampled.
+    pub fn fit_exact_beside(
+        &self,
+        w: u32,
+        h: u32,
+        with_sample: bool,
+        picture: &WorkingImage,
+        sharpened: bool,
+    ) -> Option<Self> {
+        let beside = (picture.width, picture.height) == self.size;
+        let mut fitted = self.fit_exact_with(w, h, with_sample, !beside)?;
+        if let Some(delta) = self.sharpen.as_ref().filter(|_| beside) {
+            fitted.sharpen = Some(fitted_delta(picture, delta, sharpened, w, h));
+        }
+        Some(fitted)
+    }
+
     /// Each no larger than `long_edge` on its long side, as the export
     /// fits the picture, the range masks' picture only `with_sample`;
-    /// none when they already fit.
-    pub(crate) fn fit(&self, long_edge: Option<u32>, with_sample: bool) -> Option<Self> {
+    /// none when they already fit. [`Self::fit_exact_beside`].
+    pub(crate) fn fit(
+        &self,
+        long_edge: Option<u32>,
+        with_sample: bool,
+        picture: &WorkingImage,
+        sharpened: bool,
+    ) -> Option<Self> {
         let (w, h) = crate::export::fit_size(self.width(), self.height(), long_edge)?;
-        self.fit_exact_with(w, h, with_sample)
+        self.fit_exact_beside(w, h, with_sample, picture, sharpened)
+    }
+}
+
+/// The sharpen's delta for `picture` resized to `w` by `h`: not
+/// `delta` resized, but the delta between the two pictures resized,
+/// this one and the one on the sharpen's other side (the picture
+/// before the sharpen when this one is `sharpened`, the sharpened one
+/// otherwise), each pixel's luminance on the pedestal. A delta resized
+/// is a mean of stops: the sharpen moves a pixel up and its neighbor
+/// down by about as much, and the mean of the two is near none where
+/// the sharpen's mark on the resized picture is not. This one takes the
+/// resized picture to the other resized picture, in luminance, at a
+/// share of one: -1 over a sharpened picture is the unsharpened export
+/// at that size, and +1 over one never sharpened the sharpened.
+///
+/// Both resized luminances are held at the pedestal from below, as the
+/// sharpen holds the luminance it reads: dark noise and the filter's
+/// lobes take a sum of them toward zero, where a ratio would run away
+/// and the delta put on every channel would make a dark pixel a bright
+/// colored dot. Exact in luminance only: one gain a pixel, as the
+/// sharpen's own, where the resized pictures differ by a color too at a
+/// saturated edge. Each luminance is resized as soon as it is made, so
+/// one plane of the picture's size is held at a time.
+fn fitted_delta(picture: &WorkingImage, delta: &Plane, sharpened: bool, w: u32, h: u32) -> Plane {
+    let side = side(sharpened);
+    let fit = |p: Vec<f32>| {
+        crate::export::fit_exact_plane(&p, picture.width, picture.height, w, h).unwrap_or(p)
+    };
+    let pixels = picture.data.as_chunks::<3>().0;
+    let there = fit(pixels
+        .par_iter()
+        .zip(delta.data.par_iter())
+        .map(|(p, &d)| on_pedestal(p) * (side * d).exp2())
+        .collect());
+    let here = fit(pixels.par_iter().map(|p| on_pedestal(p)).collect());
+    Plane {
+        width: w as usize,
+        height: h as usize,
+        data: here
+            .par_iter()
+            .zip(there.par_iter())
+            .map(|(&a, &b)| stops_between(a, b, side))
+            .collect(),
+    }
+}
+
+/// The way from a picture to the one on the sharpen's other side: back
+/// over a picture `sharpened`, on over one that is not.
+fn side(sharpened: bool) -> f32 {
+    if sharpened { -1.0 } else { 1.0 }
+}
+
+/// A pixel's luminance on the sharpen's pedestal, which a delta scales.
+fn on_pedestal(p: &[f32]) -> f32 {
+    use greycard_core::develop::sharpen::{BLACK_PEDESTAL, LUMA};
+    LUMA[0] * p[0] + LUMA[1] * p[1] + LUMA[2] * p[2] + BLACK_PEDESTAL
+}
+
+/// The delta from luminance `here` to `there`, both on the pedestal
+/// and held at it from below, in stops the way [`side`] goes.
+fn stops_between(here: f32, there: f32, side: f32) -> f32 {
+    use greycard_core::develop::sharpen::BLACK_PEDESTAL;
+    side * (there.max(BLACK_PEDESTAL) / here.max(BLACK_PEDESTAL)).log2()
+}
+
+/// `picture` taken to the sharpen's other side by `delta`, at its
+/// size: the picture a mask's Sharpen of one reaches.
+pub(crate) fn other_side(picture: &WorkingImage, delta: &Plane, sharpened: bool) -> WorkingImage {
+    let side = side(sharpened);
+    let mut other = picture.clone();
+    other
+        .data
+        .par_chunks_mut(3)
+        .zip(delta.data.par_iter())
+        .for_each(|(p, &d)| p.copy_from_slice(&apply_delta([p[0], p[1], p[2]], side * d)));
+    other
+}
+
+/// The sharpen's delta between `picture` and `other`, the picture on
+/// its other side, both at one size: what each became after a step
+/// both took (the export's output sharpen), so a mask's Sharpen of one
+/// still reaches the other.
+pub(crate) fn delta_between(
+    picture: &WorkingImage,
+    other: &WorkingImage,
+    sharpened: bool,
+) -> Plane {
+    let side = side(sharpened);
+    Plane {
+        width: picture.width,
+        height: picture.height,
+        data: picture
+            .data
+            .par_chunks(3)
+            .zip(other.data.par_chunks(3))
+            .map(|(a, b)| stops_between(on_pedestal(a), on_pedestal(b), side))
+            .collect(),
     }
 }
 
@@ -778,18 +961,41 @@ mod tests {
         planes: Option<&DetailPlanes>,
         white: Option<&greycard_edit::WhiteShift>,
     ) -> Vec<u16> {
+        export_at(image, edit, planes, white, None)
+    }
+
+    /// [`export`] no larger than `long_edge`.
+    fn export_at(
+        image: &WorkingImage,
+        edit: &greycard_edit::Edit,
+        planes: Option<&DetailPlanes>,
+        white: Option<&greycard_edit::WhiteShift>,
+        long_edge: Option<u32>,
+    ) -> Vec<u16> {
         let settings = crate::export::Settings {
             format: crate::export::Format::Tiff,
             sharpen: crate::export::Sharpen::Off,
+            long_edge,
             ..Default::default()
         };
+        export_with(image, edit, planes, white, &settings)
+    }
+
+    /// [`export`] under the sheet's `settings`.
+    fn export_with(
+        image: &WorkingImage,
+        edit: &greycard_edit::Edit,
+        planes: Option<&DetailPlanes>,
+        white: Option<&greycard_edit::WhiteShift>,
+        settings: &crate::export::Settings,
+    ) -> Vec<u16> {
         let bands = planes.map(|p| p.to_image());
         sixteen(crate::export::render(
             image,
             edit,
             &greycard_edit::NoStores,
             (image.width as u32, image.height as u32),
-            &settings,
+            settings,
             &Default::default(),
             CLIP,
             None,
@@ -868,6 +1074,9 @@ mod tests {
                     structure,
                     dehaze,
                     sharpen: 0.0,
+                    output_sharpen: 0.0,
+                    output_sharpen_radius: None,
+                    output_sharpen_threshold: None,
                 };
                 let (worst, _) = whole_against_global(&image, d, white);
                 assert!(worst <= 10, "{white:?} {d:?}: {worst} of 65535");
@@ -1018,6 +1227,9 @@ mod tests {
                 structure,
                 dehaze,
                 sharpen: 0.0,
+                output_sharpen: 0.0,
+                output_sharpen_radius: None,
+                output_sharpen_threshold: None,
             };
             let half = Detail {
                 enabled: true,
@@ -1026,6 +1238,9 @@ mod tests {
                 structure: structure / 2.0,
                 dehaze: dehaze / 2.0,
                 sharpen: 0.0,
+                output_sharpen: 0.0,
+                output_sharpen_radius: None,
+                output_sharpen_threshold: None,
             };
             let want = global(&image, &half);
             let planes = DetailPlanes::make(&image, None, CLIP, wants(&d)).unwrap();
@@ -1188,10 +1403,17 @@ mod tests {
             }),
             ..Default::default()
         };
-        let framed = bands.framed(&turned);
+        let framed = bands.framed(&turned).unwrap();
         let s = framed.structure.as_ref().unwrap();
         assert_eq!((s.width, s.height), (framed.width(), framed.height()));
         assert_eq!(s.data, first(&framed));
+        // Cut smaller, as an export of a frame too large to hold cuts
+        // it, the plane still goes as the channel does.
+        let small = bands.framed_at(&turned, (21, 13)).unwrap();
+        let s = small.structure.as_ref().unwrap();
+        assert_eq!((s.width, s.height), (21, 13));
+        assert_eq!(small.size, (21, 13));
+        assert_eq!(s.data, first(&small));
         for (w, h) in [(30, 20), (90, 70)] {
             let fitted = framed.fit_exact(w, h).unwrap();
             assert_eq!(
@@ -1249,8 +1471,8 @@ mod tests {
                 }),
                 ..Default::default()
             };
-            let framed = bands.framed(&turned);
-            let channel = crate::geometry::apply(&as_channel, &turned);
+            let framed = bands.framed(&turned).unwrap();
+            let channel = crate::geometry::apply(&as_channel, &turned).unwrap();
             let s = framed.sharpen.as_ref().unwrap();
             assert_eq!((s.width, s.height), (framed.width(), framed.height()));
             assert_eq!((channel.width, channel.height), framed.size);
@@ -1265,6 +1487,125 @@ mod tests {
             assert_eq!(reduced.sharpen.unwrap().data, first(&want));
             assert_eq!(reduced.size, (want.width, want.height));
             assert_eq!(reduced.lanes.is_some(), planes.has_bands());
+        }
+    }
+
+    /// Every band of an export cut smaller, as a frame too large to
+    /// hold is ([`crate::export::reduced_frame`], on a limit lowered to
+    /// a quarter of a frame held whole here), is cut at the picture's
+    /// size, and fitted is the bands of the whole frame fitted, each to
+    /// near its own range.
+    #[test]
+    fn bands_cut_smaller_are_the_whole_frames_fitted() {
+        use crate::export::{fit_size, reduced_frame};
+        let (w, h) = (240, 160);
+        let image = picture(w, h);
+        let delta: Vec<f32> = (0..w * h)
+            .map(|i| (((i % w) as f32 / 6.0).sin() * ((i / w) as f32 / 5.0).cos()) * 0.2)
+            .collect();
+        let planes = DetailPlanes::make(
+            &image,
+            None,
+            CLIP,
+            DetailWants {
+                texture: true,
+                clarity: true,
+                structure: true,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .with_sharpen(sharpen_delta(&delta));
+        let planes =
+            DetailPlanes::with_sample(Some(Arc::new(planes)), Some(Arc::new(image.clone())), CLIP)
+                .unwrap();
+        let bands = planes.to_image();
+        assert!(bands.lanes.is_some() && bands.structure.is_some());
+        assert!(bands.sharpen.is_some() && bands.sample.is_some());
+        let turned = greycard_edit::geometry::Geometry {
+            angle: 7.0,
+            vertical: 15.0,
+            crop: Some(greycard_edit::geometry::Crop {
+                x: 0.08,
+                y: 0.1,
+                w: 0.8,
+                h: 0.75,
+            }),
+            ..Default::default()
+        };
+        let whole = bands.framed(&turned).unwrap();
+        let (fw, fh) = whole.size;
+        let edge = Some(48);
+        let target = fit_size(fw, fh, edge).unwrap();
+        let at = reduced_frame((fw, fh), edge, fw * fh / 4).unwrap();
+        assert!(at.0 < fw && at.0.max(at.1) > 48, "{at:?} of {fw}x{fh}");
+        let small = bands.framed_at(&turned, at).unwrap();
+        // Each band at the size the picture is cut at.
+        let picture = crate::geometry::apply_at(&image, &turned, at).unwrap();
+        assert_eq!((picture.width, picture.height), at);
+        assert_eq!(small.size, at);
+        let lanes = small.lanes.as_ref().unwrap();
+        let sample = small.sample.as_ref().unwrap();
+        for (what, size) in [
+            ("lanes", (lanes.width, lanes.height)),
+            ("structure", {
+                let s = small.structure.as_ref().unwrap();
+                (s.width, s.height)
+            }),
+            ("sharpen", {
+                let s = small.sharpen.as_ref().unwrap();
+                (s.width, s.height)
+            }),
+            ("sample", (sample.width, sample.height)),
+        ] {
+            assert_eq!(size, at, "{what}");
+        }
+        // The range masks' sample is the picture, cut as it is.
+        assert_eq!(sample.data, picture.data);
+        let a = whole.fit_exact(target.0, target.1).unwrap();
+        let b = small.fit_exact(target.0, target.1).unwrap();
+        assert_eq!(
+            (a.size, b.size),
+            (b.size, (target.0 as usize, target.1 as usize))
+        );
+        // The mean and most difference over the band's largest value.
+        let read = |a: &[f32], b: &[f32]| {
+            let range = a.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+            let diffs: Vec<f32> = a.iter().zip(b).map(|(a, b)| (a - b).abs()).collect();
+            let mean = diffs.iter().sum::<f32>() / diffs.len() as f32 / range;
+            let most = diffs.iter().cloned().fold(0.0, f32::max) / range;
+            (mean, most)
+        };
+        // A turn half a degree off, cut and fitted the same, to show
+        // the bound tells a band out of place.
+        let off = greycard_edit::geometry::Geometry {
+            angle: 7.5,
+            ..turned
+        };
+        let off = bands
+            .framed_at(&off, at)
+            .unwrap()
+            .fit_exact(target.0, target.1)
+            .unwrap();
+        let of = |b: &BandImages| {
+            [
+                ("lanes", b.lanes.as_ref().unwrap().data.clone()),
+                ("structure", b.structure.as_ref().unwrap().data.clone()),
+                ("sharpen", b.sharpen.as_ref().unwrap().data.clone()),
+                ("sample", b.sample.as_ref().unwrap().data.clone()),
+            ]
+        };
+        for (((what, a), (_, b)), (_, o)) in of(&a).into_iter().zip(of(&b)).zip(of(&off)) {
+            assert_eq!(a.len(), b.len(), "{what}");
+            let (mean, most) = read(&a, &b);
+            // Measured 0.0021 to 0.0042 on the mean and 0.020 to 0.10
+            // at the most, the most on the sample's clip spikes and
+            // fine pattern, where the cut's box and the whole frame's
+            // Lanczos part; the turn half a degree off reads 0.012 to
+            // 0.051 on the mean.
+            assert!(mean < 0.005 && most < 0.15, "{what}: {mean} {most}");
+            let (off, _) = read(&a, &o);
+            assert!(off > 0.006, "{what}: {off}");
         }
     }
 
@@ -1334,6 +1675,253 @@ mod tests {
         );
         let put = export(&image, &masked(1.0), Some(&unsharpened), None);
         assert!(worst(&put, &sharp) <= Some(10), "{:?}", worst(&put, &sharp));
+    }
+
+    /// `picture` without its color, and a sharpened copy with the
+    /// sharpen's delta, for the checks of a mask's Sharpen made smaller.
+    fn neutral_sharpened(w: usize, h: usize) -> (WorkingImage, WorkingImage, DetailPlanes) {
+        neutral_sharpened_at(w, h, 1.0)
+    }
+
+    /// [`neutral_sharpened`] with the picture's contrast about its
+    /// middle grey times `contrast`.
+    fn neutral_sharpened_at(
+        w: usize,
+        h: usize,
+        contrast: f32,
+    ) -> (WorkingImage, WorkingImage, DetailPlanes) {
+        use greycard_core::develop::sharpen::{self, Radius, SharpenOptions, Threshold};
+        let mut image = picture(w, h);
+        for px in image.data.chunks_mut(3) {
+            let y = (px[0] + px[1] + px[2]) / 3.0;
+            px.fill(0.18 + (y - 0.18) * contrast);
+        }
+        let options = SharpenOptions {
+            radius: Radius::Fixed(0.9),
+            contrast: Threshold::Fixed(0.0),
+            ..Default::default()
+        };
+        let mut sharpened = image.clone();
+        let (_, _, delta) = sharpen::sharpen_with_delta(&mut sharpened, None, &options, None, CLIP);
+        let planes = DetailPlanes::sharpen_only(w, h, CLIP, sharpen_delta(&delta));
+        (image, sharpened, planes)
+    }
+
+    /// The sharpen's delta fitted for an export made smaller takes the
+    /// fitted picture's luminance to the other fitted picture's, on
+    /// the pedestal, to the half floats' rounding: the sharpened one
+    /// back to the unsharpened, and the unsharpened on to the
+    /// sharpened. Resizing the delta itself missed by tens of times
+    /// that.
+    #[test]
+    fn the_fitted_delta_is_the_delta_of_the_fitted_pictures() {
+        use greycard_core::develop::sharpen::{BLACK_PEDESTAL, LUMA};
+        let (image, sharpened, planes) = neutral_sharpened(160, 120);
+        let luma = |p: &[f32]| LUMA[0] * p[0] + LUMA[1] * p[1] + LUMA[2] * p[2] + BLACK_PEDESTAL;
+        for (from, to, sharpened_here) in [(&sharpened, &image, true), (&image, &sharpened, false)]
+        {
+            let bands = planes.to_image();
+            let fitted = bands.fit(Some(40), false, from, sharpened_here).unwrap();
+            let (w, h) = (fitted.width() as u32, fitted.height() as u32);
+            let delta = &fitted.sharpen.as_ref().unwrap().data;
+            let a = crate::export::fit_exact(from, w, h).unwrap();
+            let b = crate::export::fit_exact(to, w, h).unwrap();
+            let side = if sharpened_here { -1.0 } else { 1.0 };
+            // Where the filter rings under the pedestal the delta is
+            // held to it, as the sharpen holds what it reads.
+            let (mut most, mut none) = (0f32, 0);
+            for ((a, b), d) in a.data.chunks(3).zip(b.data.chunks(3)).zip(delta) {
+                if luma(a) < BLACK_PEDESTAL || luma(b) < BLACK_PEDESTAL {
+                    none += 1;
+                    continue;
+                }
+                most = most.max((luma(a) * (side * d).exp2() / luma(b) - 1.0).abs());
+            }
+            assert!(most < 2e-3, "sharpened {sharpened_here}: {most}");
+            assert!(none < 8, "{none}");
+        }
+    }
+
+    /// A mask's Sharpen in an export made smaller does there what it
+    /// does at full size: over the whole frame at -1 it takes the
+    /// develop's sharpen off, and at +1 on a picture never sharpened
+    /// it puts it on, each against the export at that size of the
+    /// other picture; the sharpen itself moves that export many times
+    /// as far.
+    #[test]
+    fn a_masks_sharpen_holds_in_an_export_made_smaller() {
+        let (image, sharpened, planes) = neutral_sharpened(160, 120);
+        let masked = |amount: f32| {
+            let mut e = greycard_edit::Edit::default();
+            e.adjustments.push(everywhere(Detail {
+                sharpen: amount,
+                ..Detail::default()
+            }));
+            e
+        };
+        let mean = |a: &[u16], b: &[u16]| {
+            a.iter()
+                .zip(b)
+                .map(|(a, b)| f64::from(a.abs_diff(*b)))
+                .sum::<f64>()
+                / a.len() as f64
+        };
+        for edge in [80, 40] {
+            let at = |image: &WorkingImage, edit: &greycard_edit::Edit, planes| {
+                export_at(image, edit, planes, None, Some(edge))
+            };
+            let plain = at(&image, &greycard_edit::Edit::default(), None);
+            let sharp = at(&sharpened, &greycard_edit::Edit::default(), None);
+            let apart = mean(&plain, &sharp);
+            let taken = mean(&at(&sharpened, &masked(-1.0), Some(&planes)), &plain);
+            let unsharpened = planes.clone().unsharpened();
+            let put = mean(&at(&image, &masked(1.0), Some(&unsharpened)), &sharp);
+            eprintln!("at {edge}: the sharpen {apart:.1}, taken off {taken:.2}, put on {put:.2}");
+            assert!(apart > 100.0, "at {edge}: {apart}");
+            assert!(taken < apart / 10.0, "at {edge}: {taken} of {apart}");
+            assert!(put < apart / 10.0, "at {edge}: {put} of {apart}");
+        }
+    }
+
+    /// A whole-frame mask's Sharpen in a smaller export of a dark,
+    /// noisy frame, as high-ISO shadows are after the matrix (a channel
+    /// under zero at most pixels): at -1 over the sharpened frame and at
+    /// +1 over the frame never sharpened, no pixel lands further from
+    /// the other picture's export than the sharpen itself moves any
+    /// pixel there, by half again. With the resized luminances not held
+    /// at the pedestal, a ratio of two sums near zero made dots of tens
+    /// of thousands of levels.
+    #[test]
+    fn a_masks_sharpen_makes_no_dots_in_dark_noise_made_smaller() {
+        use greycard_core::develop::sharpen::{self, Radius, SharpenOptions, Threshold};
+        let (w, h) = (240usize, 180usize);
+        let hash = |i: usize| {
+            let mut z = (i as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            z ^= z >> 31;
+            z = z.wrapping_mul(0xBF58_476D_1CE4_E5B9);
+            z ^= z >> 29;
+            (z % 100_000) as f32 / 100_000.0
+        };
+        let mut image = WorkingImage::new(w, h);
+        for (i, v) in image.data.iter_mut().enumerate() {
+            let p = i / 3;
+            let (x, y) = ((p % w) as f32, (p / w) as f32);
+            let level = 0.0006 + 0.0114 * ((x / 23.0).sin() * (y / 17.0).cos() + 1.0) / 2.0;
+            *v = level + 0.024 * (hash(i) - 0.5);
+        }
+        let under = image
+            .data
+            .chunks(3)
+            .filter(|p| p.iter().any(|&v| v < 0.0))
+            .count();
+        assert!(under * 2 > w * h, "{under} of {}", w * h);
+        let options = SharpenOptions {
+            radius: Radius::Fixed(0.9),
+            contrast: Threshold::Fixed(0.0),
+            ..Default::default()
+        };
+        let mut sharpened = image.clone();
+        let (_, _, delta) = sharpen::sharpen_with_delta(&mut sharpened, None, &options, None, CLIP);
+        let planes = DetailPlanes::sharpen_only(w, h, CLIP, sharpen_delta(&delta));
+        let masked = |amount: f32| {
+            let mut e = greycard_edit::Edit::default();
+            e.adjustments.push(everywhere(Detail {
+                sharpen: amount,
+                ..Detail::default()
+            }));
+            e
+        };
+        let at = |image: &WorkingImage, edit: &greycard_edit::Edit, planes| {
+            export_at(image, edit, planes, None, Some(120))
+        };
+        let worst = |a: &[u16], b: &[u16]| {
+            a.iter()
+                .zip(b)
+                .map(|(a, b)| u32::from(a.abs_diff(*b)))
+                .max()
+                .unwrap()
+        };
+        let plain = at(&image, &greycard_edit::Edit::default(), None);
+        let sharp = at(&sharpened, &greycard_edit::Edit::default(), None);
+        let own = worst(&plain, &sharp);
+        let taken = worst(&at(&sharpened, &masked(-1.0), Some(&planes)), &plain);
+        let unsharpened = planes.clone().unsharpened();
+        let put = worst(&at(&image, &masked(1.0), Some(&unsharpened)), &sharp);
+        eprintln!("the sharpen at most {own}; taken off, worst {taken}; put on, worst {put}");
+        assert!(own > 1000, "{own}");
+        assert!(taken * 2 <= own * 3, "taken off: {taken} against {own}");
+        assert!(put * 2 <= own * 3, "put on: {put} against {own}");
+    }
+
+    /// A mask's Sharpen in a smaller export with the output sharpen on:
+    /// the delta is made of the resized pictures before the output
+    /// sharpen and put on after it, and over the whole frame at -1 the
+    /// export is the unsharpened frame's under the same output sharpen,
+    /// to a fraction of a level.
+    #[test]
+    fn a_masks_sharpen_holds_beside_the_output_sharpen() {
+        // At half the contrast, so the sharpened picture resized never
+        // rings under black, where no gain reaches the other picture.
+        let (image, sharpened, planes) = neutral_sharpened_at(160, 120, 0.5);
+        let mut masked = greycard_edit::Edit::default();
+        masked.adjustments.push(everywhere(Detail {
+            sharpen: -1.0,
+            ..Detail::default()
+        }));
+        let mean = |a: &[u16], b: &[u16]| {
+            a.iter()
+                .zip(b)
+                .map(|(a, b)| f64::from(a.abs_diff(*b)))
+                .sum::<f64>()
+                / a.len() as f64
+        };
+        for output in [
+            crate::export::Sharpen::Standard,
+            crate::export::Sharpen::High,
+        ] {
+            let settings = crate::export::Settings {
+                format: crate::export::Format::Tiff,
+                sharpen: output,
+                long_edge: Some(80),
+                ..Default::default()
+            };
+            let at = |image: &WorkingImage, edit: &greycard_edit::Edit, planes| {
+                export_with(image, edit, planes, None, &settings)
+            };
+            let plain = at(&image, &greycard_edit::Edit::default(), None);
+            let sharp = at(&sharpened, &greycard_edit::Edit::default(), None);
+            let apart = mean(&plain, &sharp);
+            let taken = mean(&at(&sharpened, &masked, Some(&planes)), &plain);
+            eprintln!("{output:?}: the sharpen {apart:.1}, taken off {taken:.2}");
+            assert!(apart > 100.0, "{output:?}: {apart}");
+            assert!(taken < apart / 100.0, "{output:?}: {taken} of {apart}");
+        }
+    }
+
+    /// The bands keep their sign through the export's resize: a band
+    /// of stops under zero is the same under zero made smaller.
+    #[test]
+    fn the_bands_keep_their_sign_through_the_resize() {
+        let planes = DetailPlanes::make(
+            &picture(64, 48),
+            None,
+            CLIP,
+            DetailWants {
+                texture: true,
+                structure: true,
+                ..Default::default()
+            },
+        )
+        .unwrap()
+        .with_sharpen(sharpen_delta(&vec![-0.3; 64 * 48]));
+        let mut bands = planes.to_image();
+        bands.lanes.as_mut().unwrap().data.fill(-0.4);
+        bands.structure.as_mut().unwrap().data.fill(-0.2);
+        let fitted = bands.fit_exact(16, 12).unwrap();
+        let near = |data: &[f32], v: f32| data.iter().all(|d| (d - v).abs() < 1e-4);
+        assert!(near(&fitted.lanes.unwrap().data, -0.4));
+        assert!(near(&fitted.structure.unwrap().data, -0.2));
+        assert!(near(&fitted.sharpen.unwrap().data, -0.3));
     }
 
     #[test]

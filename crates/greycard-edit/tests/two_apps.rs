@@ -56,7 +56,9 @@ fn a_gcd_is_where_monocard_starts_and_is_never_changed() {
         let gcd = greycards(&raw, hidden);
         std::fs::write(&gcd, text(VERSION, 4)).unwrap();
 
-        let mut s = Sidecar::load(&raw).unwrap().expect("read in both apps");
+        let mut s = Sidecar::load_as_file(&raw)
+            .unwrap()
+            .expect("read in both apps");
         assert_eq!(s.meta.rating, 4);
         assert_eq!(Sidecar::find(&raw).is_none(), MONO);
         assert_eq!(Sidecar::find_to_read(&raw), Some(gcd.clone()));
@@ -68,7 +70,7 @@ fn a_gcd_is_where_monocard_starts_and_is_never_changed() {
             Sidecar::settle(&raw, Placement::Beside).unwrap();
             assert_eq!(std::fs::read_to_string(&gcd).unwrap(), text(VERSION, 4));
             // From here on its own is the one read.
-            assert_eq!(Sidecar::load(&raw).unwrap().unwrap().meta.rating, 2);
+            assert_eq!(Sidecar::load_as_file(&raw).unwrap().unwrap().meta.rating, 2);
             assert_eq!(Sidecar::find_to_read(&raw), Some(Sidecar::path_for(&raw)));
         }
         greycard_core::testing::remove_dir_retry(&dir);
@@ -82,10 +84,10 @@ fn a_newer_sidecar_is_refused() {
     let dir = scratch("newer");
     let raw = dir.join("a.DNG");
     std::fs::write(greycards(&raw, false), text(VERSION + 1, 4)).unwrap();
-    assert!(matches!(Sidecar::load(&raw), Err(Error::Newer(v)) if v == VERSION + 1));
+    assert!(matches!(Sidecar::load_as_file(&raw), Err(Error::Newer(v)) if v == VERSION + 1));
     std::fs::write(greycards(&raw, false), text(VERSION, 4)).unwrap();
     std::fs::write(Sidecar::path_for(&raw), text(VERSION + 1, 3)).unwrap();
-    assert!(matches!(Sidecar::load(&raw), Err(Error::Newer(v)) if v == VERSION + 1));
+    assert!(matches!(Sidecar::load_as_file(&raw), Err(Error::Newer(v)) if v == VERSION + 1));
     greycard_core::testing::remove_dir_retry(&dir);
 }
 
@@ -96,6 +98,6 @@ fn greycard_never_reads_monocards() {
     let dir = scratch("stock");
     let raw = dir.join("a.DNG");
     std::fs::write(dir.join("a.DNG.mcd"), text(VERSION, 4)).unwrap();
-    assert_eq!(Sidecar::load(&raw).unwrap(), None);
+    assert_eq!(Sidecar::load_as_file(&raw).unwrap(), None);
     greycard_core::testing::remove_dir_retry(&dir);
 }

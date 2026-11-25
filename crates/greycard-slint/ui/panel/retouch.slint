@@ -75,7 +75,7 @@ export component RetouchSection inherits Section {
     // with none, which is made again once its slider is let go.
     if root.retouch-mode != "" || root.fill-shown: VerticalLayout {
         spacing: Theme.space-2;
-        EditSlider {
+        size-slider := EditSlider {
             label: @tr("Size");
             minimum: 0.002;
             maximum: 0.3;
@@ -91,7 +91,7 @@ export component RetouchSection inherits Section {
             }
             changed moving => { if (!self.moving) { root.patch-settled(); } }
         }
-        EditSlider {
+        feather-slider := EditSlider {
             label: @tr("Feather");
             minimum: 0;
             maximum: 1;
@@ -107,7 +107,7 @@ export component RetouchSection inherits Section {
             }
             changed moving => { if (!self.moving) { root.patch-settled(); } }
         }
-        EditSlider {
+        opacity-slider := EditSlider {
             label: @tr("Opacity");
             minimum: 0;
             maximum: 1;
@@ -125,22 +125,19 @@ export component RetouchSection inherits Section {
         }
     }
     if root.fill-shown: Segmented {
+        // The panel's Tab is the window's: no stop here.
+        tab-stop: false;
+        name: @tr("Fill");
         options: ["Patch", "Fast", "Best"];
         labels: [@tr("Patch"), @tr("Fast"), @tr("Best")];
         tips: [@tr("From the picture around it, at once"), @tr("The remove in four steps: quicker, rougher on large areas"), @tr("The remove in full")];
         why-not: root.fill-why-not;
         current: root.fill-choice;
         picks: false;
-        accessible-role: list;
-        // Spoken as the label shown.
-        accessible-value: self.current == "Patch" ? @tr("Patch")
-            : self.current == "Fast" ? @tr("Fast")
-            : self.current == "Best" ? @tr("Best")
-            : self.current;
         selected(c) => { root.fill-chosen(c); }
     }
     // The Fill's strokes are painted first and made here, or by Enter.
-    if root.retouch-mode == "Fill": PanelButton {
+    if root.retouch-mode == "Fill": generate-button := PanelButton {
         // Retouch section: makes the Fill's painted strokes
         text: @tr("Generate");
         icon: @image-url("../icons/sparkles.svg");
@@ -164,6 +161,16 @@ export component RetouchSection inherits Section {
                 // The row's buttons inside it, so the row keeps its
                 // hover over them.
                 prow := TouchArea {
+                    // To a screen reader a button, named by the patch,
+                    // chosen or not.
+                    accessible-role: button;
+                    accessible-label: name;
+                    // Its key, for automation, and its bin's: the
+                    // patch's place in the list.
+                    accessible-id: i;
+                    accessible-item-selectable: true;
+                    accessible-item-selected: on;
+                    accessible-action-default => { root.patch-changed(i); }
                     mouse-cursor: MouseCursor.pointer;
                     changed has-hover => {
                         if (self.has-hover) {
@@ -179,6 +186,8 @@ export component RetouchSection inherits Section {
                         padding-right: Theme.space-1;
                         spacing: Theme.space-2;
                         Text {
+                            // Said by the row, which it names.
+                            accessible-role: none;
                             text: name;
                             color: on ? Theme.text : Theme.text-secondary;
                             font-size: Theme.font-xs;
@@ -193,10 +202,11 @@ export component RetouchSection inherits Section {
                             y: 2px;
                             clicked => { root.patch-another(); }
                         }
-                        if on: Rectangle {
+                        if on: patch-bin := Rectangle {
                             width: Theme.control-height - 4px;
                             accessible-role: button;
                             accessible-label: @tr("Remove {}", name);
+                            accessible-id: i;
                             accessible-action-default => { root.delete-patch(); }
                             Image {
                                 source: @image-url("../icons/trash-2.svg");

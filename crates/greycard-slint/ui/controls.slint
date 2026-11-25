@@ -199,6 +199,14 @@ export component Switch inherits Rectangle {
     accessible-checkable: true;
     accessible-checked: root.shown;
     accessible-enabled: root.enabled;
+    // A screen reader's press is a click.
+    accessible-action-default => {
+        if (root.enabled) {
+            fs.focus();
+            root.checked = !root.checked;
+            root.toggled();
+        }
+    }
     property <bool> active: enabled && (ta.has-hover || ta.pressed || fs.has-focus);
     background: !root.enabled ? Theme.border
         : root.shown ? (root.active ? Theme.accent-hover : Theme.accent)
@@ -425,9 +433,10 @@ export component Section inherits VerticalLayout {
     in property <bool> one-of-panel: false;
     property <int> fold-number: 0;
     // Opened under the rule: a section whose fold another tab shares
-    // folds that tab's sections here, which are not made to fold.
+    // folds that tab's sections here, which are not made to fold, and
+    // MASK its mask's, made with it in any order.
     callback opened-alone();
-    changed collapsed => {
+    function opened-under-the-rule() {
         if (!root.collapsed && root.one-of-panel && Folds.one-open) {
             if (root.fold-number == 0) {
                 Folds.count += 1;
@@ -438,6 +447,12 @@ export component Section inherits VerticalLayout {
             root.opened-alone();
         }
     }
+    changed collapsed => { root.opened-under-the-rule(); }
+    // Made already open (a mask chosen or made, a tab shown, the
+    // settings restored), a section has opened as much as by its
+    // header: a fold no section was made to hear, set while this one
+    // was unmade, leaves no second section open.
+    init => { root.opened-under-the-rule(); }
     property <int> fold-opened: Folds.opened;
     changed fold-opened => {
         if (root.one-of-panel && Folds.one-open && !root.collapsed
@@ -514,6 +529,15 @@ export component Section inherits VerticalLayout {
         background: root.lit ? Theme.hover : transparent;
         animate background { duration: Theme.quick; }
         row := TouchArea {
+            // To a screen reader the fold: a button named by the
+            // section's title, open or folded, whose press folds it as
+            // a click does.
+            accessible-role: button;
+            accessible-label: root.title;
+            accessible-expandable: true;
+            accessible-expanded: !root.collapsed;
+            accessible-action-default => { root.fold-clicked(); }
+            accessible-action-expand => { if (root.collapsed) { root.fold-clicked(); } }
             mouse-cursor: root.reorder-dragging ? MouseCursor.grabbing : MouseCursor.pointer;
             pointer-event(e) => { root.reorder-press(e, self.absolute-position.y + self.mouse-y); }
             moved => { root.reorder-motion(self.absolute-position.x + self.mouse-x,
@@ -546,7 +570,7 @@ export component Section inherits VerticalLayout {
                         height: Theme.icon;
                         y: (parent.height - self.height) / 2;
                     }
-                    if root.owner != "": Text {
+                    if root.owner != "": owner-text := Text {
                         text: root.owner;
                         min-width: 0px;
                         horizontal-stretch: 1;
@@ -556,7 +580,9 @@ export component Section inherits VerticalLayout {
                         vertical-alignment: center;
                         overflow: elide;
                     }
-                    Text {
+                    title-words := Text {
+                        // Said by the fold, which it names.
+                        accessible-role: none;
                         text: (root.owner == "" ? "" : "\u{00b7}  ") + root.title;
                         color: Theme.text;
                         font-size: Theme.font-xs;
@@ -581,7 +607,7 @@ export component Section inherits VerticalLayout {
                         min-width: 0px;
                     }
                 }
-                if root.note != "": Text {
+                if root.note != "": note-text := Text {
                     x: parent.width - self.width;
                     text: root.note;
                     color: Theme.text-muted;
@@ -599,6 +625,8 @@ export component Section inherits VerticalLayout {
                 accessible-label: root.action;
                 accessible-action-default => { root.action-clicked(); }
                 action-text := Text {
+                    // Said by its button, which it names.
+                    accessible-role: none;
                     text: root.action;
                     color: action-area.has-hover ? Theme.text : Theme.text-secondary;
                     font-size: Theme.font-xs;
@@ -616,7 +644,7 @@ export component Section inherits VerticalLayout {
             if root.has-reset: reset-slot := Rectangle {
                 property <bool> live: root.reset-live && !root.superseded;
                 width: root.reset-width;
-                if reset-slot.live: Rectangle {
+                if reset-slot.live: reset-button := Rectangle {
                     border-radius: Theme.radius-sm;
                     background: reset-area.pressed ? Theme.pressed : reset-area.has-hover ? Theme.hover : transparent;
                     animate background { duration: Theme.quick; }
@@ -643,7 +671,7 @@ export component Section inherits VerticalLayout {
                     clicked => { if (reset-slot.live) { root.reset-clicked(); } }
                 }
             }
-            if root.switchable: Switch {
+            if root.switchable: header-switch := Switch {
                 label: root.title;
                 checked <=> root.on;
                 enabled: !root.superseded;
@@ -1085,6 +1113,11 @@ export global Typing {
     // between boxes does not matter. While above zero, the pointer
     // crossing the picture leaves the keys with the box.
     in-out property <int> boxes: 0;
+    // The words that find a lens have the focus: a list of lenses that
+    // comes meanwhile is held until they let go. Set by that box, and
+    // let go of by `close-all` and when the panel's tab is taken away,
+    // since a box destroyed with the focus says nothing itself.
+    in-out property <bool> lens-filter: false;
     public function box-focus(has: bool) {
         self.boxes = has ? self.boxes + 1 : max(0, self.boxes - 1);
     }
@@ -1094,6 +1127,7 @@ export global Typing {
     // changed under the field.
     // A focused slider or text box lets go of the keys the same way.
     public function close-all() {
+        self.lens-filter = false;
         if (self.editing) {
             self.editing = false;
             self.cancel += 1;
@@ -1191,6 +1225,9 @@ export component ValueField inherits Rectangle {
         overflow: elide;
     }
     if root.editing: TextInput {
+        // The field itself is the text input a screen reader meets;
+        // this would say the same text again.
+        accessible-role: none;
         x: Theme.space-1;
         width: parent.width - 2 * Theme.space-1;
         height: 100%;
@@ -1325,6 +1362,13 @@ export component EditSlider inherits Rectangle {
     in property <string> text;
     in property <float> minimum: 0;
     in property <float> maximum: 1;
+    // The least a drag, a key, the wheel, or a typed number sets: the
+    // minimum, unless another setting leaves the range's foot doing
+    // nothing. That foot is drawn dimmed and keeps its place on the
+    // track, so the slider's zero does not move. A value already in it
+    // (`lowest` raised past a stored one) stays until moved into reach:
+    // nothing here writes it for the raise alone.
+    in property <float> lowest: root.minimum;
     in property <float> default: 0;
     // A wheel's click, and the step a screen reader is told of.
     in property <float> step: 0.01;
@@ -1356,7 +1400,7 @@ export component EditSlider inherits Rectangle {
     accessible-role: slider;
     accessible-label: root.label;
     accessible-value: root.text;
-    accessible-value-minimum: root.minimum;
+    accessible-value-minimum: root.lowest;
     accessible-value-maximum: root.maximum;
     accessible-value-step: root.step;
     accessible-enabled: root.enabled;
@@ -1370,9 +1414,14 @@ export component EditSlider inherits Rectangle {
     property <length> track-left: label-width;
     property <length> track-right: self.width - value-width;
     property <length> track-width: track-right - track-left;
-    property <float> fraction: root.logarithmic
-        ? log(value / minimum, 2) / log(maximum / minimum, 2)
-        : (value - minimum) / (maximum - minimum);
+    pure function fraction-of(v: float) -> float {
+        return root.logarithmic
+            ? log(v / minimum, 2) / log(maximum / minimum, 2)
+            : (v - minimum) / (maximum - minimum);
+    }
+    property <float> fraction: root.fraction-of(root.value);
+    // Where the reach starts on the track: 0 unless `lowest` is raised.
+    property <float> lowest-fraction: root.fraction-of(root.lowest);
     property <bool> active: enabled && (ta.has-hover || ta.pressed || fs.has-focus);
     property <float> scroll-acc: 0;
     property <length> scroll-delta;
@@ -1426,10 +1475,17 @@ export component EditSlider inherits Rectangle {
     property <bool> fine-drag: false;
     property <bool> fine-held: false;
 
+    // What a move to `v` sets: `v` within reach; out of it, the
+    // value as it is when that is out of reach too, else `lowest`. A
+    // value left out of reach by `lowest` stays until a move brings it
+    // in.
+    function reach(v: float) -> float {
+        return v >= root.lowest ? v : min(root.value, root.lowest);
+    }
     function set-fraction(f: float) {
-        value = root.logarithmic
+        value = root.reach(root.logarithmic
             ? clamp(minimum * pow(maximum / minimum, clamp(f, 0, 1)), minimum, maximum)
-            : clamp(minimum + clamp(f, 0, 1) * (maximum - minimum), minimum, maximum);
+            : clamp(minimum + clamp(f, 0, 1) * (maximum - minimum), minimum, maximum));
         changed(value);
     }
     function set-from(x: length) {
@@ -1463,9 +1519,11 @@ export component EditSlider inherits Rectangle {
     // step keys are still its own, taken and doing nothing.
     function nudge(by: float) {
         if (!root.enabled) { return; }
-        value = root.logarithmic
+        let to = root.logarithmic
             ? clamp(value * pow(2, by), minimum, maximum)
             : clamp(value + by, minimum, maximum);
+        // A step up from out of reach goes to its edge.
+        value = by > 0 ? max(to, root.lowest) : root.reach(to);
         root.step-count += 1;
         root.stepped = true;
         changed(value);
@@ -1557,7 +1615,9 @@ export component EditSlider inherits Rectangle {
         }
     }
 
-    Text {
+    label-words := Text {
+        // Said by the slider, which it names.
+        accessible-role: none;
         x: 0;
         width: label-width - Theme.space-2;
         text: root.label;
@@ -1588,6 +1648,16 @@ export component EditSlider inherits Rectangle {
                 : root.active ? Theme.accent-hover
                 : Theme.fill;
         }
+        // The foot out of reach, drawn as a disabled track over the
+        // fill.
+        if root.lowest-fraction > 0: Rectangle {
+            x: 0;
+            width: root.lowest-fraction * track.width;
+            height: 100%;
+            border-top-left-radius: parent.border-radius;
+            border-bottom-left-radius: parent.border-radius;
+            background: Theme.border;
+        }
     }
     handle := Rectangle {
         property <length> size: root.active ? 16px : 14px;
@@ -1596,7 +1666,10 @@ export component EditSlider inherits Rectangle {
         width: size;
         height: size;
         border-radius: self.width / 2;
-        background: !root.enabled ? Theme.text-muted : ta.pressed ? Theme.text-strong : Theme.text;
+        // Out of reach, a value that does nothing is drawn as a
+        // disabled one.
+        background: !root.enabled || root.value < root.lowest ? Theme.text-muted
+            : ta.pressed ? Theme.text-strong : Theme.text;
         border-width: fs.has-focus ? 2px : 0;
         border-color: Theme.focus-ring;
         animate width, height { duration: Theme.quick; }
@@ -1698,7 +1771,7 @@ export component EditSlider inherits Rectangle {
             if (root.owner-resets) {
                 root.reset();
             } else {
-                root.value = root.default;
+                root.value = max(root.default, root.lowest);
                 root.changed(root.value);
             }
         }
@@ -1749,7 +1822,7 @@ export component EditSlider inherits Rectangle {
         nudged(way, big) => { root.bump(way, big); }
         tabbed(way) => { root.ask(way, true); }
         committed(typed) => {
-            let entered = Typing.parse(typed, root.scale, root.minimum, root.maximum);
+            let entered = Typing.parse(typed, root.scale, root.lowest, root.maximum);
             if (entered.ok) {
                 root.value = entered.value;
                 root.changed(root.value);
@@ -2059,8 +2132,6 @@ export component Toggle inherits Rectangle {
     in-out property <bool> checked: false;
     in property <bool> enabled: true;
     in property <bool> follows: false;
-    /// Its tooltip; none while empty.
-    in property <string> tip;
     callback toggled();
     // To a screen reader a switch named by its label, on or off, and
     // whether it takes a hand; the label's Text says nothing itself,
@@ -2070,6 +2141,20 @@ export component Toggle inherits Rectangle {
     accessible-checkable: true;
     accessible-checked: root.checked;
     accessible-enabled: root.enabled;
+    // A screen reader's press is a click: a greyed switch, tip or
+    // not, flips nothing.
+    accessible-action-default => {
+        if (!root.enabled) { return; }
+        fs.focus();
+        if (!root.follows) {
+            root.checked = !root.checked;
+        }
+        root.toggled();
+    }
+    /// Why the switch stands down, when that wants saying: at the
+    /// pointer after a rest, greyed or not, and to a screen reader.
+    in property <string> tip;
+    accessible-description: root.tip;
     height: Theme.control-height;
     property <bool> active: enabled && (ta.has-hover || ta.pressed || fs.has-focus);
     /// The switch at the row's right edge, the label up against it on
@@ -2145,14 +2230,16 @@ export component Toggle inherits Rectangle {
         }
     }
     // The click's target, and the pointer's: the label, the gap, and
-    // the switch, never the empty run of the row past them.
+    // the switch, never the empty run of the row past them. A greyed
+    // switch with a tip still hears the pointer, for the tip alone.
     ta := TipArea {
-        words: root.tip;
         x: min(lbl.x, knob-track.x);
         width: knob-track.x + knob-track.width - self.x;
-        enabled: root.enabled;
+        words: root.tip;
+        enabled: root.enabled || root.tip != "";
         mouse-cursor: root.enabled ? MouseCursor.pointer : MouseCursor.default;
         clicked => {
+            if (!root.enabled) { return; }
             fs.focus();
             if (!root.follows) {
                 root.checked = !root.checked;
@@ -2177,6 +2264,10 @@ export component PanelButton inherits Rectangle {
     accessible-role: button;
     accessible-label: root.text != "" ? "" : root.words;
     accessible-enabled: root.enabled;
+    // A screen reader's press is a click.
+    accessible-action-default => {
+        if (root.enabled) { root.clicked(); }
+    }
     /// A menu of its own: a chevron at the right edge, which a click
     /// opens it from, as a right-click anywhere on the button does.
     in property <bool> has-menu: false;
@@ -2323,25 +2414,135 @@ export component Segmented inherits Rectangle {
     in property <bool> rounded: true;
     in property <bool> bordered: true;
     in property <bool> padded: true;
+    /// Whether Tab stops on it: one stop for the row, as a radio
+    /// group's, where Left and Right move the choice at once. A click
+    /// never gives it the keys, so the window's arrows stay the
+    /// window's after one.
+    in property <bool> tab-stop: true;
+    /// The row's name to a screen reader: the words beside it, bound
+    /// to that `Text`'s own, or a word of its own for a row with none.
+    /// Every row has one: a screen reader would say its options with
+    /// nothing to tell what they choose, and the window's walk of its
+    /// controls fails on a row without (`spoken_names`).
+    in property <string> name;
     callback selected(string);
+    /// Whether it has the keys.
+    out property <bool> focused: root.keys-here;
     height: Theme.control-height;
     border-radius: root.rounded ? Theme.radius-md : 0px;
     background: Theme.base;
-    border-width: root.bordered ? 1px : 0px;
-    border-color: Theme.border;
+    // With the keys and no option of its own to ring (`at` below), the
+    // ring goes round the row.
+    border-width: root.keys-here && root.at < 0 ? 2px : root.bordered ? 1px : 0px;
+    border-color: root.keys-here && root.at < 0 ? Theme.focus-ring : Theme.border;
     opacity: root.enabled ? 1 : 0.45;
+    // The current option's place among the first eight, -1 for none:
+    // Slint has no loop to look with, and no row has more than five.
+    // An option not found (none current, or one past the eighth)
+    // leaves the arrows nothing to do and rings no option.
+    pure function is-at(k: int) -> bool {
+        return k < root.options.length && root.options[k] == root.current;
+    }
+    property <int> at: root.current == "" ? -1
+        : root.is-at(0) ? 0
+        : root.is-at(1) ? 1
+        : root.is-at(2) ? 2
+        : root.is-at(3) ? 3
+        : root.is-at(4) ? 4
+        : root.is-at(5) ? 5
+        : root.is-at(6) ? 6
+        : root.is-at(7) ? 7 : -1;
+    // What a screen reader says the row is at: the current option's
+    // words.
+    property <string> spoken: root.at < 0 ? ""
+        : root.at < root.labels.length ? root.labels[root.at] : root.current;
+    pure function usable(i: int) -> bool {
+        return i >= 0 && i < root.options.length && root.why-not[i] == "";
+    }
+    // The next option that can be chosen from `from` by `by`, or
+    // `from` at the row's end.
+    pure function next(from: int, by: int) -> int {
+        if (root.usable(from + by)) { return from + by; }
+        if (root.usable(from + 2 * by)) { return from + 2 * by; }
+        if (root.usable(from + 3 * by)) { return from + 3 * by; }
+        if (root.usable(from + 4 * by)) { return from + 4 * by; }
+        if (root.usable(from + 5 * by)) { return from + 5 * by; }
+        if (root.usable(from + 6 * by)) { return from + 6 * by; }
+        if (root.usable(from + 7 * by)) { return from + 7 * by; }
+        return from;
+    }
+    function pick(i: int) {
+        let option = root.options[i];
+        Typing.close-all();
+        if (root.picks) { root.current = option; }
+        root.selected(option);
+    }
+    // Whether its scope has the keys.
+    property <bool> keys-here: false;
+    // Under the options, whose clicks are their own: an option's
+    // TipArea takes the press, so a click never reaches this scope
+    // and never gives it the keys (`focus-on-click` aside). Only a
+    // stop of the walk has one: the panel's rows take no keys at all.
+    if root.tab-stop: fs := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        changed has-focus => { root.keys-here = self.has-focus; }
+        // To a screen reader, a radio group named by its row, at its
+        // current option.
+        accessible-role: radio-group;
+        accessible-label: root.name;
+        accessible-value: root.spoken;
+        key-pressed(e) => {
+            let plain = !e.modifiers.control && !e.modifiers.alt && !e.modifiers.meta && !e.modifiers.shift;
+            if (plain && (e.text == Key.LeftArrow || e.text == Key.RightArrow)) {
+                // Turned off with the keys still here (a run started),
+                // or no option known to move from: taken, and nothing
+                // moved.
+                if (root.enabled && root.at >= 0) {
+                    let to = root.next(root.at, e.text == Key.RightArrow ? 1 : -1);
+                    if (to != root.at) { root.pick(to); }
+                }
+                return accept;
+            }
+            return ButtonKeys.pass(e) ? accept : reject;
+        }
+    }
+    // A row off the walk is a radio group to a screen reader all the
+    // same, named once, here, as the scope names a stop's. The Cull
+    // button, one option with no name, is a button and no group; a row
+    // down to one option (the denoise tiers' off alone) is its group.
+    if !root.tab-stop && (root.options.length > 1 || root.name != ""): Rectangle {
+        accessible-role: radio-group;
+        accessible-label: root.name;
+        accessible-value: root.spoken;
+    }
     HorizontalLayout {
         padding: root.padded ? 3px : 0px;
         spacing: 2px;
-        for option[i] in root.options: Rectangle {
+        for option[i] in root.options: seg := Rectangle {
             property <bool> on: option == root.current;
             property <bool> usable: root.why-not[i] == "";
             border-radius: root.rounded ? Theme.radius-sm : 0px;
             background: on ? Theme.raised : (t.has-hover && root.enabled && usable ? Theme.hover : transparent);
             animate background { duration: Theme.quick; }
+            // The keys' ring, on the option they move from.
+            border-width: root.keys-here && i == root.at ? 2px : 0;
+            border-color: Theme.focus-ring;
+            // Each option a radio button, named by its words; its key,
+            // for automation, the option itself.
+            accessible-role: radio-button;
+            accessible-label: label.text;
+            accessible-id: option;
+            accessible-checkable: true;
+            accessible-checked: on;
+            accessible-action-default => {
+                if (root.enabled && usable) { root.pick(i); }
+            }
             min-width: root.equal-width ? 0px : label.preferred-width + 2 * root.label-margin;
             preferred-width: root.equal-width ? 0px : label.preferred-width + 2 * root.label-margin;
             label := Text {
+                // Said once, by its radio button.
+                accessible-role: none;
                 text: i < root.labels.length ? root.labels[i] : option;
                 color: !usable ? Theme.text-muted : on ? Theme.text : Theme.text-secondary;
                 font-size: Theme.font-xs;
@@ -2463,11 +2664,26 @@ export component Swatches inherits Rectangle {
     // A hairline round each swatch, for shades one of which may be the
     // ground's own (a canvas grey on a section's box).
     in property <bool> ringed: false;
+    /// The row's name to a screen reader, as `Segmented`'s, and each
+    /// swatch's words by index: a color is nothing it can say.
+    in property <string> name;
+    in property <[string]> names;
     callback selected(int);
     height: Theme.control-height;
+    accessible-role: radio-group;
+    accessible-label: root.name;
+    accessible-value: root.current < root.names.length ? root.names[root.current] : "";
     HorizontalLayout {
         spacing: Theme.space-1;
         for color[i] in root.colors: Rectangle {
+            accessible-role: radio-button;
+            accessible-label: i < root.names.length ? root.names[i] : "";
+            accessible-checkable: true;
+            accessible-checked: on;
+            accessible-enabled: root.enabled;
+            accessible-action-default => {
+                if (root.enabled) { Typing.close-all(); root.current = i; root.selected(i); }
+            }
             property <bool> on: i == root.current;
             // A pale swatch (the white canvas) under a ring of the
             // text's color would show none on a dark theme.
@@ -2598,7 +2814,14 @@ export component ClipMark inherits Rectangle {
     in property <bool> lit;
     in property <color> mark;
     in property <bool> on;
+    /// Its name to a screen reader: which end's warning it turns.
+    in property <string> label;
     callback clicked();
+    accessible-role: button;
+    accessible-label: root.label;
+    accessible-checkable: true;
+    accessible-checked: root.on;
+    accessible-action-default => { root.clicked(); }
     width: 16px;
     height: 16px;
     border-radius: Theme.radius-sm;
@@ -2733,7 +2956,7 @@ export component ThumbMarks inherits Rectangle {
         if root.edited: Rectangle {
             width: root.glyph;
             height: root.height;
-            Image {
+            edited-mark := Image {
                 source: @image-url("icons/pencil.svg");
                 colorize: Theme.over-text-secondary;
                 width: root.glyph;
@@ -2747,7 +2970,7 @@ export component ThumbMarks inherits Rectangle {
         if root.exported: Rectangle {
             width: root.glyph;
             height: root.height;
-            Image {
+            exported-mark := Image {
                 source: @image-url("icons/image-down.svg");
                 colorize: Theme.over-text-secondary;
                 width: root.glyph;
@@ -3256,6 +3479,11 @@ export component ScrollPane {
     in property <length> bar-track-inset: 2px;
     in property <length> bar-thumb-inset: 4px;
     in property <length> bar-most: 1000px;
+    // Counted up at each scroll the user makes: the wheel or a flick
+    // on the view, a press or a drag on a bar. A move of the view with
+    // no such input (Slint revealing an item that took the focus, an
+    // owner's own scroll, the content changing height) leaves it.
+    out property <int> user-scrolls: 0;
     property <bool> past-y: flick.content-y < -root.max-y || flick.content-y > 0px;
     property <bool> past-x: flick.content-x < -root.max-x || flick.content-x > 0px;
     changed past-y => {
@@ -3293,6 +3521,8 @@ export component ScrollPane {
         mouse-drag-pan-enabled: false;
         width: parent.width;
         height: parent.height;
+        // At the input event itself, before an animated wheel moves it.
+        flicked => { root.user-scrolls += 1; }
         @children
     }
     ScrollBand {
@@ -3307,9 +3537,15 @@ export component ScrollPane {
         label: @tr("Scroll");
         scroll: -flick.content-y;
         max: root.max-y;
-        scroll-to(to) => { flick.content-y = -clamp(to, 0px, root.max-y); }
+        scroll-to(to) => {
+            root.user-scrolls += 1;
+            flick.content-y = -clamp(to, 0px, root.max-y);
+        }
         wheel(dx, dy, ctrl) => {
-            if (dy != 0px) { flick.content-y = clamp(flick.content-y + dy, -root.max-y, 0px); }
+            if (dy != 0px) {
+                root.user-scrolls += 1;
+                flick.content-y = clamp(flick.content-y + dy, -root.max-y, 0px);
+            }
         }
         bar-length(span, far) => { return root.thumb-length(span, far); }
         bar-offset(span, far, at) => {
@@ -3332,10 +3568,16 @@ export component ScrollPane {
         label: @tr("Scroll");
         scroll: -flick.content-x;
         max: root.max-x;
-        scroll-to(to) => { flick.content-x = -clamp(to, 0px, root.max-x); }
+        scroll-to(to) => {
+            root.user-scrolls += 1;
+            flick.content-x = -clamp(to, 0px, root.max-x);
+        }
         wheel(dx, dy, ctrl) => {
             let by = dx != 0px ? dx : dy;
-            if (by != 0px) { flick.content-x = clamp(flick.content-x + by, -root.max-x, 0px); }
+            if (by != 0px) {
+                root.user-scrolls += 1;
+                flick.content-x = clamp(flick.content-x + by, -root.max-x, 0px);
+            }
         }
         bar-length(span, far) => { return root.thumb-length(span, far); }
         bar-offset(span, far, at) => {

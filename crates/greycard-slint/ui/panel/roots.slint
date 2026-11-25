@@ -276,6 +276,8 @@ export component QueueHeader inherits Rectangle {
         }
         title := Text {
             text: @tr("Export queue").to-uppercase();
+            // Said by the header, which it names.
+            accessible-role: none;
             color: Theme.text;
             font-size: Theme.font-xs;
             font-weight: Theme.weight-semibold;
@@ -323,6 +325,8 @@ component AddLink inherits Rectangle {
         padding-left: 0;
         padding-right: Theme.space-2;
         Text {
+            // Said by the link, which it names.
+            accessible-role: none;
             text: root.text;
             color: ta.has-hover ? Theme.text : Theme.text-secondary;
             font-size: Theme.font-xs;
@@ -410,14 +414,16 @@ export component RootsSection inherits Section {
                 }
             }
         }
-        if root.roots.length > 0: RootRow {
+        if root.roots.length > 0: all-roots := RootRow {
             text: @tr("All roots");
             count: root.all-count;
             on: root.all-on;
             menu-shown => { return root.menu-shown(); }
             clicked => { root.picked(""); root.focus-keys(); }
         }
-        for r in root.roots: RootRow {
+        for r in root.roots: root-row := RootRow {
+            // Its key, for automation: the root's path.
+            accessible-id: r.path;
             text: r.name;
             count: r.count;
             on: r.on;
@@ -443,12 +449,12 @@ export component RootsSection inherits Section {
         HorizontalLayout {
             spacing: Theme.space-1;
             alignment: start;
-            if root.can-add-open: AddLink {
+            if root.can-add-open: add-open-link := AddLink {
                 text: @tr("+ Add this folder");
                 menu-shown => { return root.menu-shown(); }
                 clicked => { root.focus-keys(); root.add-open(); }
             }
-            AddLink {
+            add-root-link := AddLink {
                 text: @tr("+ Add a root...");
                 menu-shown => { return root.menu-shown(); }
                 clicked => { root.focus-keys(); root.add(); }

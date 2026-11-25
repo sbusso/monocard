@@ -589,7 +589,7 @@ fn an_offline_frame_is_culled_from_its_local_preview_and_its_file_is_not_read() 
             .put_at(
                 hash,
                 previews::SIZE,
-                crate::worker::thumb_tag((0, stamp)),
+                crate::worker::thumb_tag(&z, (0, stamp)),
                 &kept,
                 previews::QUALITY,
             )
@@ -656,7 +656,7 @@ fn an_offline_frame_is_culled_from_its_local_preview_and_its_file_is_not_read() 
         assert!(!shown.small());
     }
     let read = |p: &Path| {
-        crate::cull::FILE_READS
+        greycard_engine::camera::FILE_READS
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .iter()

@@ -15,7 +15,11 @@ arrow in a section's header puts back that section alone.
 
 1. Click **Crop**. The whole frame shows, with the area outside the
    crop shaded and a rule-of-thirds grid inside it. The button now
-   reads **Done**.
+   reads **Done**. **Guides** picks another guide for the grid's
+   place: the golden ratio, the golden spiral, diagonals, triangles,
+   or none. **O** steps through them, and **Shift+O** turns the
+   spiral and the triangles. The choice is the editor's, not the
+   picture's.
 2. Adjust the crop:
    - Drag a corner or an edge to resize it.
    - Drag inside the rectangle to move it.
@@ -63,10 +67,10 @@ When you pick another ratio or turn **Portrait**, the crop takes the
 new shape around the same center and keeps about the same area, so
 turning **Portrait** twice gives back the crop you had. When you change
 the angle, the crop stays where it is if it still fits; if not, it
-shrinks to fit around the same center. While the **Angle** slider
-moves, by drag, wheel, or key, a grid lies over the picture so a
-horizon or an edge can be brought level against its lines; it goes
-when the slider rests.
+shrinks to fit around the same center. While the **Angle**,
+**Vertical**, or **Horizontal** slider moves, by drag, wheel, or key, a
+grid lies over the picture so a horizon or an edge can be brought
+level or upright against its lines; it goes when the slider rests.
 
 ### Straightening
 

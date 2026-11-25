@@ -124,6 +124,7 @@ pub(super) fn merged(
         denoised: false,
         seconds,
         warnings: Vec::new(),
+        learned_skipped: None,
     })
 }
 
@@ -145,7 +146,7 @@ fn preview(plane: &mono_core::Plane) -> Result<image::RgbImage> {
         ..Edit::default()
     };
     let settings = crate::mono::preview_settings(Some(1024));
-    let r = greycard_render::mono::render(&frame, &edit, &settings, &Default::default());
+    let r = greycard_render::mono::render(&frame, &edit, &settings, &Default::default())?;
     crate::mono::preview(r)
 }
 

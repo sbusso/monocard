@@ -218,15 +218,18 @@ pub(crate) fn unseeded(edit: &Edit) -> Edit {
     plain
 }
 
-/// A line nothing was done to, with the start taken off its edit: what its
-/// marks are by.
-pub(crate) fn unseeded_line(line: &Line) -> std::borrow::Cow<'_, Line> {
-    if line.current.mono.is_none() || !line.history.is_empty() {
-        return std::borrow::Cow::Borrowed(line);
-    }
-    let mut plain = line.clone();
-    plain.current = unseeded(&line.current);
-    std::borrow::Cow::Owned(plain)
+/// [`greycard_library::line_marks`] of a line, the start taken off the edit
+/// of one nothing was done to.
+pub(crate) fn line_marks(
+    line: &Line,
+    raw: &std::path::Path,
+    iso: Option<Option<u32>>,
+) -> (bool, bool) {
+    let (edited, exported) = greycard_library::line_marks(line, raw, iso);
+    let started = line.history.is_empty() && line.snapshots.is_empty();
+    let edited = edited
+        && !(started && greycard_library::is_default_edit(&unseeded(line.current()), raw, iso));
+    (edited, exported)
 }
 
 /// The open frame with nothing done to it starts from `start`, its camera's
@@ -246,8 +249,10 @@ fn seed(st: &mut State, app: &App, start: impl FnOnce() -> Option<Box<MonoEdit>>
     let Some(start) = start() else {
         return;
     };
-    let Some(line) = st.line_mut(c) else { return };
-    line.current.mono = Some(start.clone());
+    let Some(mut line) = st.line_mut(c) else {
+        return;
+    };
+    line.seed(|e| e.mono = Some(start.clone()));
     if let Some((f, e)) = st.launch.overridden.as_mut()
         && *f == path
         && e.mono.is_none()
@@ -281,7 +286,7 @@ fn untouched(st: &State, c: usize, path: &std::path::Path) -> bool {
     st.line(c).is_some_and(|l| {
         l.history.is_empty()
             && l.snapshots.is_empty()
-            && greycard_library::is_default_edit(&l.current, path, None)
+            && greycard_library::is_default_edit(l.current(), path, None)
     })
 }
 
@@ -380,8 +385,8 @@ pub(crate) fn step_words(before: &Edit, after: &Edit) -> Option<String> {
 }
 
 /// Record `edit`, a change of the mono tools alone under its own words.
-pub(crate) fn record(line: &mut Line, edit: Edit) -> bool {
-    let words = step_words(&line.current, &edit);
+pub(crate) fn record(line: &mut greycard_edit::LineMut<'_>, edit: Edit) -> bool {
+    let words = step_words(line.current(), &edit);
     line.record_as(edit, words)
 }
 
@@ -1009,8 +1014,11 @@ fn follow(app: &App, from: &str, to: &str) {
         if let Some(c) = st.current
             && crate::rows::panel_is_frames(st, c)
             && st.path_at(c).is_some_and(no_file)
-            && let Some(line) = st.line_mut(c).filter(|l| l.history.is_empty())
-            && line.current.mono.as_deref_mut().is_some_and(renamed)
+            && st.line_mut(c).is_some_and(|mut l| {
+                l.seed(|e| {
+                    e.mono.as_deref_mut().map(renamed);
+                })
+            })
         {
             st.develop.edit.mono.as_deref_mut().map(renamed);
             HELD.with_borrow_mut(|h| renamed(&mut h.edit));

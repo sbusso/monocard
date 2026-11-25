@@ -10,7 +10,8 @@ lightbox, the rejects folder, and deleting frames.
 Every frame can carry:
 
 - **a rating**, 0 to 5 stars
-- **a flag**: pick, reject, or none
+- **a flag**: pick, reject, or none. A pick shows a flag on the frame's
+  tile and in the loupe, a reject a red X
 - **a color label**: red, yellow, green, blue or purple
 
 Set them with the keys, from the frame menu, or in Cull. The keys
@@ -325,9 +326,10 @@ top, until you open it.
 - **Move rejects** moves every rejected frame of the folder, including
   rejected frames behind a closed top. A frame moved out, or deleted,
   leaves its stack; Move back brings it back as a frame of its own.
-- Stacks are kept with your collections, on this machine. A stack
-  whose frame you rename in its folder follows it, and so does one
-  whose folder you rename under a root of the library, open or
+- Stacks are kept with your collections, and travel with them
+  ([Where collections are kept](library.md#where-collections-are-kept)).
+  A stack whose frame you rename in its folder follows it, and so does
+  one whose folder you rename under a root of the library, open or
   closed; a frame moved to another folder leaves its stack.
 
 `greycard library list` shows a closed stack's top alone, marked

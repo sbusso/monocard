@@ -519,7 +519,7 @@ fn a_monochrome_jpeg_is_the_cameras_until_it_is_edited() {
         let made = develop(f.clone(), edit, None).unwrap();
         let empty = WorkingImage::new(0, 0);
         let settings = preview_settings(None);
-        preview(crate::finish::render(&empty, edit, &made, &settings)).unwrap()
+        preview(crate::finish::render(&empty, edit, &made, &settings).unwrap()).unwrap()
     };
     let camera = image::ImageReader::open(&path)
         .unwrap()
@@ -715,12 +715,12 @@ fn a_sidecar_keeps_mono() {
     let raw = dir.join("a.dng");
     write_dng(&raw, &small());
     let mut sidecar = greycard_edit::Sidecar::default();
-    sidecar.line.current = busy();
+    assert!(sidecar.record(busy()));
     sidecar.save(&raw).unwrap();
-    let back = greycard_edit::Sidecar::load(&raw).unwrap().unwrap();
-    assert_eq!(back.line.current.mono, busy().mono);
+    let back = greycard_edit::Sidecar::load_as_file(&raw).unwrap().unwrap();
+    assert_eq!(back.line.current().mono, busy().mono);
     assert_eq!(
-        back.line.current.adjustments[0].mono,
+        back.line.current().adjustments[0].mono,
         busy().adjustments[0].mono
     );
     crate::testing::remove_dir_retry(&dir);
@@ -864,7 +864,7 @@ fn the_edits_pictures_are_the_exports() {
         detail: None,
         camera: d.camera,
     };
-    let made = crate::edited_pictures::make_mono(frame, &finish);
+    let made = crate::edited_pictures::make_mono(frame, &finish).unwrap();
     assert_eq!((made.big.width, made.big.height), (300, 400));
     assert!(
         made.big
@@ -1129,7 +1129,7 @@ fn a_26_mp_export_is_timed() {
             .map(|(n, s)| format!("{n} {s:.2}"))
             .collect();
         let empty = greycard_core::image::WorkingImage::new(0, 0);
-        let r = crate::finish::render(&empty, &edit, &w.finish_input(), &settings);
+        let r = crate::finish::render(&empty, &edit, &w.finish_input(), &settings).unwrap();
         let total = started.elapsed().as_secs_f64();
         println!(
             "{name}: {}x{} in {total:.2} s (finish {:.2} s; {})",

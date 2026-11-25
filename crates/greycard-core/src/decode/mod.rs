@@ -12,6 +12,7 @@ use crate::error::Result;
 use crate::raw::{Orientation, RawFrame};
 
 mod focus;
+mod pef;
 pub mod rawler_backend;
 pub mod ricoh;
 mod sensor;
@@ -41,6 +42,16 @@ pub trait Decoder {
 /// `rawler_backend::preview_path`.
 pub fn preview_path(path: impl AsRef<Path>) -> Result<Option<(image::RgbImage, Orientation)>> {
     rawler_backend::preview_path(path.as_ref())
+}
+
+/// [`preview_path`] for a picture made `long_edge` or smaller: a file
+/// with several previews gives the smallest that size or past it; see
+/// `rawler_backend::preview_path_at_least`.
+pub fn preview_path_at_least(
+    path: impl AsRef<Path>,
+    long_edge: u32,
+) -> Result<Option<(image::RgbImage, Orientation)>> {
+    rawler_backend::preview_path_at_least(path.as_ref(), long_edge)
 }
 
 /// Decode with the default backend.
@@ -140,6 +151,56 @@ pub fn camera_frame_path(path: impl AsRef<Path>) -> Result<Option<crate::raw::Ca
 /// Olympus's and OM System's. Another maker read later adds its own.
 const FRAMED_EXTENSIONS: [&str; 2] = ["orf", "ori"];
 
+/// Whether the file at `path` may decode with a saturation level above
+/// its white ([`crate::raw::Levels::saturation`]), by its name alone: a
+/// Canon CR3, the one format the table covers. What the keys of the
+/// pictures kept of a frame take [`HEADROOM`] in by, since they are made
+/// without a decode.
+pub fn may_have_headroom(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("cr3"))
+}
+
+/// The saturation table's version, for the keys of whatever is kept of
+/// a frame [`may_have_headroom`]: raise it when the table or how the
+/// develop reads the headroom changes. The pictures, fills, and mask
+/// bases kept of every CR3 are then made again (the keys know a file
+/// by its name, not its body, so the R6 II's and the R5 II's and every
+/// other Canon's alike); those of every other file are found again as
+/// they were. The index learns of it through `keys_made_under`, which
+/// takes this in: settling then clears the develop key of every row of
+/// the library, of every make, not only the CR3s', and each is made
+/// again from its sidecar when its folder is next read (an offline
+/// root's rows, when it is back).
+/// 1: the R6 II, R5 II, R5, R6, and R7 by ISO band, trusted to 0.98
+/// of their range (never shipped), 2026-11-17.
+/// 2: Canon's R6 II and R5 II, at the ISOs, shutters, and full frame
+/// measured blown in every channel and with no capture mode that could
+/// move the clip, trusted to 0.955 of their range, 2026-11-17.
+/// 3: and the 850D (Rebel T8i, Kiss X10i) first curtain at ISO 200,
+/// 2026-11-19.
+pub const HEADROOM: &str = "headroom-3";
+
+/// Whether the file at `path` may carry a `LinearizationTable`, by its
+/// name alone: a DNG, the one format whose decoder hands one over.
+/// What the keys of the pictures kept of a frame take [`LINEARIZATION`]
+/// in by, since they are made without a decode.
+pub fn may_have_linearization(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("dng"))
+}
+
+/// How a DNG's `LinearizationTable` is read, for the keys of whatever
+/// is kept of a frame [`may_have_linearization`]: raise it when that
+/// changes, and the pictures, fills, and mask bases kept of every DNG
+/// are made again, those of every other file found again as they were.
+/// The index learns of it through `keys_made_under`, as of
+/// [`HEADROOM`].
+/// 1: the table applied at decode, before the levels, 2026-11-19.
+pub const LINEARIZATION: &str = "linearization-1";
+
 /// Whether the file at `path` is of a kind [`camera_frame_path`] can
 /// find a frame in, by its name alone: what spares every other file a
 /// read of its head.
@@ -216,11 +277,11 @@ pub fn mosaic_path(path: impl AsRef<Path>) -> Result<Option<crate::raw::Mosaic>>
 /// The extensions taken for a raw the decoder opens. `ori` is an ORF
 /// under another name: the single frame an Olympus or OM System body
 /// saves beside a High Res Shot's `.ORF`, which never takes its stem's
-/// short names or JPEG ([`always_yields`]). The order is the one a
-/// camera JPEG picks its raw by among raws of one stem
-/// (`greycard_library::pairs::raw_rank`).
-pub const RAW_EXTENSIONS: [&str; 9] = [
-    "cr3", "cr2", "dng", "nef", "arw", "raf", "orf", "rw2", "ori",
+/// short names or JPEG ([`always_yields`]). `pef` is Pentax's own
+/// raw. The order is the one a camera JPEG picks its raw by among raws
+/// of one stem (`greycard_library::pairs::raw_rank`).
+pub const RAW_EXTENSIONS: [&str; 10] = [
+    "cr3", "cr2", "dng", "nef", "arw", "raf", "orf", "rw2", "pef", "ori",
 ];
 
 /// Whether a file's name begins with a dot, as a hidden file's does:
@@ -545,6 +606,29 @@ mod tests {
         )));
     }
 
+    /// Pentax's `.PEF` is a raw in any case, and an ordinary one: it
+    /// owns its stem's short names alone and shares them beside a DNG
+    /// of its stem, as a RAF does. Neither its focus point nor its
+    /// camera frame is read, so its name spares it those reads.
+    #[test]
+    fn a_pef_is_a_raw_of_its_own() {
+        use super::{ShortNames, short_names};
+        for name in ["K1.PEF", "k1.pef", "K1.Pef"] {
+            let p = Path::new("/shoot").join(name);
+            assert!(super::is_raw_path(&p), "{name}");
+            assert!(!super::always_yields(&p), "{name}");
+            assert!(!super::may_have_focus_point(&p), "{name}");
+            assert!(!super::may_have_camera_frame(&p), "{name}");
+        }
+        let of = |raw: &str, names: &[&str]| short_names(Path::new(raw), names);
+        assert_eq!(
+            of("K1.PEF", &["K1.PEF", "K1.JPG", "K1.xmp"]),
+            ShortNames::Alone
+        );
+        assert_eq!(of("K1.PEF", &["K1.PEF", "K1.DNG"]), ShortNames::Shared);
+        assert!(!super::is_raw_path(Path::new("/shoot/K1.PEF.xmp")));
+    }
+
     /// A merge of ours is told by its tag with no decode; a camera's
     /// frame and a file that is no TIFF have none.
     #[test]
@@ -598,25 +682,29 @@ mod tests {
         entries.sort_by_key(|e| e.path());
         for e in entries {
             let path = e.path();
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if !matches!(
-                ext.to_ascii_lowercase().as_str(),
-                "cr3" | "cr2" | "dng" | "nef" | "arw" | "raf"
-            ) {
+            if !super::is_raw_path(&path) {
                 continue;
             }
-            let t = std::time::Instant::now();
-            match super::preview_path(&path) {
-                Ok(Some((img, o))) => println!(
-                    "{}: {}x{} {:?} in {:.0} ms",
-                    path.file_name().unwrap().to_string_lossy(),
-                    img.width(),
-                    img.height(),
-                    o,
-                    t.elapsed().as_secs_f64() * 1000.0
-                ),
-                Ok(None) => println!("{}: no preview", path.display()),
-                Err(e) => println!("{}: {e}", path.display()),
+            // The largest, then the smallest at a grid cell's ask
+            // (128 px, five times over) and a view's.
+            for edge in [None, Some(640), Some(2048)] {
+                let t = std::time::Instant::now();
+                let read = match edge {
+                    None => super::preview_path(&path),
+                    Some(edge) => super::preview_path_at_least(&path, edge),
+                };
+                match read {
+                    Ok(Some((img, o))) => println!(
+                        "{} at {edge:?}: {}x{} {:?} in {:.0} ms",
+                        path.file_name().unwrap().to_string_lossy(),
+                        img.width(),
+                        img.height(),
+                        o,
+                        t.elapsed().as_secs_f64() * 1000.0
+                    ),
+                    Ok(None) => println!("{}: no preview", path.display()),
+                    Err(e) => println!("{}: {e}", path.display()),
+                }
             }
         }
     }

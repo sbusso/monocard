@@ -698,13 +698,13 @@ mod tests {
         save(&app, &state);
         assert_eq!(state.borrow().sidecars[0].states(), steps + 1);
         assert_eq!(
-            state.borrow().sidecars[0].current.retouch.patches[0].seed,
+            state.borrow().sidecars[0].current().retouch.patches[0].seed,
             1
         );
         app.invoke_patch_another();
         save(&app, &state);
         assert_eq!(
-            state.borrow().sidecars[0].current.retouch.patches[0].seed,
+            state.borrow().sidecars[0].current().retouch.patches[0].seed,
             2
         );
 
@@ -740,14 +740,13 @@ mod tests {
         assert_eq!(back, edit);
 
         let sidecar = greycard_edit::Sidecar {
-            line: greycard_edit::Line {
-                current: edit.clone(),
-                ..Default::default()
-            },
+            line: greycard_edit::Line::of(edit.clone(), 0).unwrap(),
             ..Default::default()
         };
-        let read = greycard_edit::Sidecar::from_json(&sidecar.to_json()).unwrap();
-        assert_eq!(read.current.retouch.patches[0].seed, 3);
+        let read =
+            greycard_edit::Sidecar::from_json(&sidecar.to_json(), &greycard_edit::Edit::default())
+                .unwrap();
+        assert_eq!(read.current().retouch.patches[0].seed, 3);
 
         edit.retouch.patches[0].seed = 0;
         edit.retouch.patches[0].remove = false;
@@ -1290,7 +1289,8 @@ mod tests {
         };
         let (chosen, chosen_feather) = outlines();
         assert!(!chosen.is_empty() && !chosen_feather.is_empty());
-        let (p, size) = crate::testing::labeled(&app, "Heal 2");
+        // The second patch's row, keyed by its place.
+        let (p, size) = crate::testing::by_key(&app, "RetouchSection::prow", 1);
         app.window().dispatch_event(WindowEvent::PointerMoved {
             position: slint::LogicalPosition::new(p.x + size.width / 2.0, p.y + size.height / 2.0),
         });
@@ -1312,7 +1312,7 @@ mod tests {
         });
         assert_eq!(app.get_patch_lit(), -1);
         // The whole row counts: the chosen row's bin too.
-        let (p, size) = crate::testing::labeled(&app, "Remove Heal 1");
+        let (p, size) = crate::testing::by_key(&app, "RetouchSection::patch-bin", 0);
         app.window().dispatch_event(WindowEvent::PointerMoved {
             position: slint::LogicalPosition::new(p.x + size.width / 2.0, p.y + size.height / 2.0),
         });

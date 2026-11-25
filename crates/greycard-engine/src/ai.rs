@@ -76,6 +76,70 @@ pub fn set_test_webgpu(on: Option<bool>) {
     TEST_WEBGPU.with(|t| t.set(on));
 }
 
+/// Whether the learned denoiser is on record as off this card: it lost
+/// the card while it ran (`greycard_ai::runtime::denoisers_off_card`),
+/// or what a test set with [`set_test_off_card`].
+pub fn learned_off_card() -> bool {
+    off_card_seam();
+    #[cfg(any(test, feature = "testing"))]
+    if let Some(off) = TEST_OFF_CARD.with(|t| t.get()) {
+        return off;
+    }
+    greycard_ai::runtime::denoisers_off_card()
+}
+
+/// [`learned_off_card`] as this process knows it now, the record never
+/// read for it (`greycard_ai::runtime::denoisers_off_card_known`): for
+/// the window's thread, where the first read would load ONNX Runtime
+/// and ask the adapter. The worker reads the record before its first
+/// develop, and the window asks again after each.
+pub fn learned_off_card_known() -> bool {
+    off_card_seam();
+    #[cfg(any(test, feature = "testing"))]
+    if let Some(off) = TEST_OFF_CARD.with(|t| t.get()) {
+        return off;
+    }
+    greycard_ai::runtime::denoisers_off_card_known()
+}
+
+#[cfg(any(test, feature = "testing"))]
+thread_local! {
+    static TEST_OFF_CARD: std::cell::Cell<Option<bool>> = const { std::cell::Cell::new(None) };
+}
+
+/// In this crate's tests, the off-card checks are a test's
+/// (`greycard_ai::runtime::off_card_for_tests`): none reads the user's
+/// store, ONNX Runtime, or an adapter. Nothing in a binary, which runs
+/// the real path; a crate built on this one opts its tests out itself.
+pub(crate) fn off_card_seam() {
+    #[cfg(test)]
+    greycard_ai::runtime::off_card_for_tests();
+}
+
+/// Try the learned denoiser on this card again (the Noise section's Try
+/// again): this card's entries taken off the record under `store_root`
+/// and the denoiser let back on in this process
+/// (`greycard_ai::runtime::forget_off_card`); a test's answer on this
+/// thread ([`set_test_off_card`]) goes with it.
+pub fn forget_learned_off_card(store_root: Option<&std::path::Path>) {
+    off_card_seam();
+    match store_root {
+        Some(root) => {
+            greycard_ai::runtime::forget_off_card(root, providers());
+        }
+        None => greycard_ai::runtime::let_denoisers_back_on(),
+    }
+    #[cfg(any(test, feature = "testing"))]
+    TEST_OFF_CARD.with(|t| t.set(None));
+}
+
+/// [`learned_off_card`]'s answer on this thread, for a test; `None`
+/// asks the record's again.
+#[cfg(any(test, feature = "testing"))]
+pub fn set_test_off_card(off: Option<bool>) {
+    TEST_OFF_CARD.with(|t| t.set(off));
+}
+
 /// Whether the GPU the models run on shares the machine's memory
 /// (`runtime::webgpu_unified`), false when it is not known.
 pub fn unified() -> bool {
@@ -511,12 +575,16 @@ pub struct Ai {
     /// seed, with the patch, the window and why: not run again for the
     /// open file, where each develop would wait on it again, until the
     /// patch or its seed changes.
-    failed: HashMap<(u64, u32), (Patch, Window, String)>,
+    failed: HashMap<(u64, u32), FillFailed>,
     /// Each Fill patch's window and depth ([`window_for`]), by patch
     /// id, with the patch and the picture's size they were found for:
     /// finding them reads the whole region, which a stroke across the
     /// frame makes about the frame.
     windows: HashMap<u64, (Patch, (usize, usize), Window, f32)>,
+    /// What the crop shows of the open file's picture where it may
+    /// reach a Fill's window, as the last walk's retouch had it
+    /// ([`Ai::set_shown`]).
+    shown: Option<crate::shown::Shown>,
     /// Each fill refused for the card's memory, by patch id, with the
     /// patch, its window, the card's free memory then, and why: neither
     /// counted ahead nor asked of the card again by a develop
@@ -524,6 +592,18 @@ pub struct Ai {
     /// card stays short of does not bring a fill round, and a
     /// give-back, on every develop.
     refused: HashMap<u64, (Patch, Window, u64, u64, String)>,
+    /// Removals of a window run at 1024 refused at 1024, by patch id,
+    /// with the patch and its window, before the card was given back
+    /// across the worker's models ([`Ai::card_given_back`]).
+    short_at_1024: HashMap<u64, (Patch, Window)>,
+    /// Those refused at 1024 with the card given back across the
+    /// worker's models since: the full way at 1024 gone, each is asked
+    /// again and runs at 512 where 1024 is still short
+    /// ([`Ai::room_for_remove`]).
+    due_at_512: HashMap<u64, (Patch, Window)>,
+    /// Whether a removal at 1024 short of the card runs at 512 at once
+    /// ([`Ai::set_fill_fallback`]).
+    fill_fallback: bool,
     /// The preview of base develop `stamp`, and its luma.
     preview: Option<(u64, Rgb8, Vec<f32>)>,
     embedding: Option<(u64, Embedding)>,
@@ -628,6 +708,22 @@ pub struct Ai {
     /// The card's whole memory, as a test has it ([`Ai::card_whole`]).
     #[cfg(any(test, feature = "testing"))]
     pub card_by_test: Option<Option<u64>>,
+    /// The card's budget each read of a test's free figure reads, kept
+    /// at its most as the backend's is ([`Ai::card_offer`]).
+    #[cfg(any(test, feature = "testing"))]
+    pub offer_by_test: Option<u64>,
+    /// The most of [`Ai::offer_by_test`] read so far, 0 for none.
+    #[cfg(any(test, feature = "testing"))]
+    offer_read_by_test: std::sync::atomic::AtomicU64,
+    /// Each fill begun, by name, and the side it ran at
+    /// ([`Ai::room_for_remove`]), a test's fill being made with no model.
+    #[cfg(any(test, feature = "testing"))]
+    pub(crate) ran_at_by_test: Vec<(String, usize)>,
+    /// A UNet held open for a queue, as a test has it: the side it runs
+    /// at and the bytes it holds of the card, given back when it is let
+    /// go ([`Ai::let_go_unet_by_test`]).
+    #[cfg(any(test, feature = "testing"))]
+    pub unet_by_test: Option<(usize, u64)>,
     /// The last run refused for the card's memory since it was taken
     /// ([`Ai::take_short`]): an export asks again on it, and fails its
     /// item when it stays short.
@@ -1172,10 +1268,15 @@ pub enum NoFill {
     Later,
 }
 
-/// A fill made: the patch, window and engine it was made for, the
+/// A fill made: the patch, window and engine it was made for, what
+/// the crop hid of the window ([`crate::shown::fingerprint`]), the
 /// print of the picture under the window ([`window_print`]), and the
 /// region's values.
-type FillMade = (Patch, Window, WindowPrint, Engine, Vec<f32>);
+type FillMade = (Patch, Window, Option<u64>, WindowPrint, Engine, Vec<f32>);
+
+/// A fill that failed: the patch and window it was asked for, what the
+/// crop hid of the window ([`crate::shown::fingerprint`]), and why.
+type FillFailed = (Patch, Window, Option<u64>, String);
 
 /// Which model makes a Fill.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1359,7 +1460,9 @@ impl NeverHere {
                 remove_f16_refusal(Some(&(false, card.clone()))).unwrap_or_default()
             }
             NeverHere::ShortCard(card, size, need) => {
-                short_of(card, *size, *need, "a removal at 512").unwrap_or_default()
+                // The whole card is all it offers.
+                let small = removal_small(512, Some(*size));
+                short_of(card, *size, *need, "a removal at 512", small).unwrap_or_default()
             }
             NeverHere::OtherSubject(true) => "its GPU copy runs here".into(),
             NeverHere::OtherSubject(false) => "the original runs here".into(),
@@ -1538,6 +1641,7 @@ pub fn warm_core_ml(store: &Store, model: &'static Model) {
         {
             log::info!("{}: its file for Core ML did not arrive: {e}", model.name);
         }
+        off_card_seam();
         Denoiser::from_store(store, model, providers())
             .map(|_| ())
             .map_err(|e| e.to_string())
@@ -1764,8 +1868,48 @@ pub fn remove_needs(size: usize, held: bool) -> u64 {
     peak + CARD_MARGIN
 }
 
+/// What an X-Trans tier's run asks of the card over the loaded tier,
+/// in tenths of a GiB, at tiles of 1024, 512, 384, and 256 (cut to
+/// 1200, 720, 576, and 432 a side): measured on an RTX 5070 Ti under
+/// ONNX Runtime's WebGPU provider, a 26 MP frame, the card's peak over
+/// the loaded tier, rounded up. At 1024 (`denoise_xtrans_speed`) 2.11,
+/// 3.43, and 5.05 GiB; at 512, 384, and 256 (`denoise_tiles`, one tile
+/// a process) 0.62, 0.34, and 0.17 for fast, 0.87, 0.47, and 0.25 for
+/// balanced, and 1.89, 0.58, and 0.49 for best. The best X-Trans tier
+/// asks 1.2 GiB more at 1024 than the Bayer best's table does: its head
+/// runs at the mosaic's full resolution.
+const XTRANS_PEAKS: [(&str, [u64; 4]); 3] = [
+    ("fast", [22, 7, 4, 2]),
+    ("balanced", [35, 9, 5, 3]),
+    ("best", [51, 19, 6, 5]),
+];
+
+/// The card's free memory the learned denoiser `model`'s run at `tile`
+/// needs, loaded: an X-Trans tier's own ([`XTRANS_PEAKS`]), any other
+/// the Bayer tiers' table ([`denoise_needs`]).
+pub fn denoise_needs_of(model: &Model, tile: usize) -> u64 {
+    let peaks = greycard_ai::tier_of(model)
+        .filter(|_| greycard_ai::takes_xtrans(model))
+        .and_then(|t| XTRANS_PEAKS.iter().find(|(n, _)| *n == t))
+        .map(|(_, p)| p);
+    let Some(peaks) = peaks else {
+        return denoise_needs(tile);
+    };
+    let tenths = if tile <= 256 {
+        peaks[3] as f64
+    } else if tile <= 384 {
+        peaks[2] as f64
+    } else if tile <= 512 {
+        peaks[1] as f64
+    } else {
+        // Past 1024 (`GREYCARD_DENOISE_TILE`), by the tile's area.
+        peaks[0] as f64 * (tile as f64 / 1024.0).powi(2).max(1.0)
+    };
+    (tenths * TENTH_GIB as f64) as u64 + CARD_MARGIN
+}
+
 /// The card's free memory the learned denoiser's run at `tile` needs,
-/// loaded.
+/// loaded: the Bayer tiers', by the best's peaks.
 pub fn denoise_needs(tile: usize) -> u64 {
     let peak = if tile <= 256 {
         DENOISE_PEAK_256
@@ -1789,16 +1933,100 @@ pub fn mask_needs(model: MaskModel) -> u64 {
 /// Why `what` is not begun on `card` with `free` bytes free when it
 /// needs `need`, or `None` when it fits: ONNX Runtime does not fail
 /// cleanly when the card runs out of memory, the driver takes the
-/// process down, so a run the card cannot hold is not begun.
-pub fn short_of(card: &str, free: u64, need: u64, what: &str) -> Option<String> {
+/// process down, so a run the card cannot hold is not begun. `small`
+/// is what the card is too small for, where the run is past what the
+/// card offers in total (`too_small`); else the free memory is
+/// another program's.
+pub fn short_of(
+    card: &str,
+    free: u64,
+    need: u64,
+    what: &str,
+    small: Option<&str>,
+) -> Option<String> {
     let gib = |b: u64| b as f64 / (1u64 << 30) as f64;
     (free < need).then(|| {
+        let why = match small {
+            Some(it) => format!("this card is too small for {it}"),
+            None => "another program may be using it".into(),
+        };
         format!(
-            "{card} has {:.1} GiB free, short of the {:.1} GiB {what} needs; another program may be using it",
+            "{card} has {:.1} GiB free, short of the {:.1} GiB {what} needs; {why}",
             gib(free),
             gib(need)
         )
     })
+}
+
+/// Whether `need` is past `offer`, the most the card has offered this
+/// process ([`greycard_ai::runtime::webgpu_budget_most`]): no room
+/// whatever of ours lets go. Not known, it is not.
+fn too_small(need: u64, offer: Option<u64>) -> bool {
+    offer.is_some_and(|o| need > o)
+}
+
+/// What a removal at `size` is said to be too small for where its
+/// cold need is past `offer` ([`short_of`]), else none: judged with no
+/// UNet held, as a card that can never run it has it. "a fill this
+/// large" only where a smaller window, run at 512, would fit.
+fn removal_small(size: usize, offer: Option<u64>) -> Option<&'static str> {
+    if !too_small(remove_needs(size, false), offer) {
+        return None;
+    }
+    Some(
+        if size > 512 && !too_small(remove_needs(512, false), offer) {
+            "a fill this large"
+        } else {
+            "it"
+        },
+    )
+}
+
+/// The least share of the card's whole heap its largest offer must
+/// reach to be the card's own size: below it, another program has held
+/// memory since before we first read the budget (a 16 GB card with 10
+/// held elsewhere offers 5.5), and "too small" would be false. Issue
+/// 142's 8 GB laptop card offers 7.0, 87.5%.
+const OFFER_OF_HEAP: f64 = 0.8;
+
+/// `offer` as the card's size for "too small", where it is at least
+/// [`OFFER_OF_HEAP`] of `heap`, the card's whole memory; else, or with
+/// the heap not known, none.
+fn offer_as_size(offer: Option<u64>, heap: Option<u64>) -> Option<u64> {
+    let heap = heap?;
+    offer.filter(|&o| o as f64 >= OFFER_OF_HEAP * heap as f64)
+}
+
+/// What the learned denoiser at `tile` is said to be too small for
+/// ([`short_of`]): where its least tile is past `offer` too, else none.
+fn denoise_small(model: &Model, tile: usize, offer: Option<u64>) -> Option<&'static str> {
+    too_small(denoise_needs_of(model, denoise_least(tile)), offer).then_some("it")
+}
+
+/// The least tile the learned denoiser at `tile` steps down to
+/// ([`DENOISE_SMALLER_TILES`]), or `tile` itself.
+fn denoise_least(tile: usize) -> usize {
+    DENOISE_SMALLER_TILES
+        .into_iter()
+        .filter(|&t| t < tile)
+        .min()
+        .unwrap_or(tile)
+}
+
+/// The most the card has offered this process
+/// ([`greycard_ai::runtime::webgpu_budget_most`]) against its whole
+/// heap ([`offer_as_size`]); none while a test has the free figure
+/// ([`set_free_by_test`]). Read after the free figure, so the reading
+/// that refuses is in it.
+fn card_offer_now() -> Option<u64> {
+    #[cfg(any(test, feature = "testing"))]
+    if FREE_BY_TEST.with(|f| f.borrow().is_some()) {
+        return None;
+    }
+    offer_as_size(
+        greycard_ai::runtime::webgpu_budget_most(),
+        greycard_ai::runtime::webgpu_memory(),
+    )
 }
 
 /// `bytes` in GiB for the log: to a tenth, or to a hundredth where a
@@ -1814,13 +2042,21 @@ pub fn gib_said(bytes: u64) -> String {
     }
 }
 
-/// [`short_of`] for a removal at `size`.
-pub fn short_of_memory(card: &str, free: u64, size: usize, held: bool) -> Option<String> {
+/// [`short_of`] for a removal at `size`, the card having offered
+/// `offer` at most.
+pub fn short_of_memory(
+    card: &str,
+    free: u64,
+    offer: Option<u64>,
+    size: usize,
+    held: bool,
+) -> Option<String> {
     short_of(
         card,
         free,
         remove_needs(size, held),
         &format!("a removal at {size}"),
+        removal_small(size, offer),
     )
 }
 
@@ -2033,6 +2269,10 @@ pub fn give_back_card(ais: &mut [&mut Ai], force: bool) -> bool {
         ai.drop_sessions();
     }
     let unet = greycard_ai::remove::let_go_unet();
+    #[cfg(any(test, feature = "testing"))]
+    let unet = ais
+        .iter_mut()
+        .fold(unet, |unet, ai| ai.let_go_unet_by_test() | unet);
     if !(held || unet) {
         return false;
     }
@@ -2063,10 +2303,14 @@ pub fn give_back_due(ais: &[&Ai]) -> bool {
 /// now, refused with why when it is short: the last word before its
 /// run, after [`Ai::denoise_room_for`] has given the card back and
 /// waited. Where the card's free memory is not known it may.
-pub fn denoise_room(tile: usize) -> Result<(), CardShort> {
+pub fn denoise_room(model: &Model, tile: usize) -> Result<(), CardShort> {
     let what = format!("the learned denoiser at a tile of {tile}");
-    match card_free_now().and_then(|(free, card)| short_of(&card, free, denoise_needs(tile), &what))
-    {
+    match card_free_now().and_then(|(free, card)| {
+        // Read after the free figure; too small only where its least
+        // tile is past the card too.
+        let small = denoise_small(model, tile, card_offer_now());
+        short_of(&card, free, denoise_needs_of(model, tile), &what, small)
+    }) {
         Some(why) => Err(CardShort(why)),
         None => Ok(()),
     }
@@ -2132,7 +2376,8 @@ struct Regrained {
 /// The frame's own noise put under a fill the model made smooth:
 /// `out` is the region's replacement in the picture's values, filled
 /// in `window` of `image`. The noise is measured on the window's known
-/// pixels, in the picture's values after the develop's own denoise, so
+/// pixels, those neither covered nor hidden by the crop (`hidden`, row
+/// by row), in the picture's values after the develop's own denoise, so
 /// a denoised frame is given back only what it kept, and on its luma
 /// and chroma axes, so its grain keeps the frame's color
 /// ([`noise::PictureNoise`]), and drawn to make up the frame's grain at
@@ -2140,11 +2385,14 @@ struct Regrained {
 /// region's coverage less what the fill carries already, and the
 /// retouch's blend feathers it with the coverage's own edge. Seeded
 /// by `seed` and the place in the frame, so a fill made again is the
-/// same. `None` when the frame measures no noise.
+/// same. `None` when the frame measures no noise, or nothing is known:
+/// a window whose every uncovered pixel the crop hides is left smooth,
+/// which is rare and out of sight.
 fn regrain(
     out: &mut [f32],
     region: &Region,
     window: Window,
+    hidden: Option<&[bool]>,
     image: &WorkingImage,
     seed: u64,
 ) -> Option<Regrained> {
@@ -2164,7 +2412,11 @@ fn regrain(
     for py in wy..wy + wh {
         let row = (py * image.width + wx) * 3;
         values.extend_from_slice(&image.data[row..row + ww * 3]);
-        known.extend((wx..wx + ww).map(|px| !covered(px, py)));
+        // What the crop hides is not measured: the user never saw it.
+        known
+            .extend((wx..wx + ww).map(|px| {
+                !covered(px, py) && !hidden.is_some_and(|h| h[(py - wy) * ww + px - wx])
+            }));
     }
     let frame = noise::estimate_picture_noise(&values, ww, wh, &known);
     if frame.is_silent() {
@@ -2272,7 +2524,11 @@ impl Ai {
             fills: HashMap::new(),
             failed: HashMap::new(),
             windows: HashMap::new(),
+            shown: None,
             refused: HashMap::new(),
+            short_at_1024: HashMap::new(),
+            due_at_512: HashMap::new(),
+            fill_fallback: false,
             preview: None,
             embedding: None,
             sam3: None,
@@ -2317,6 +2573,14 @@ impl Ai {
             unet_held_by_test: None,
             #[cfg(any(test, feature = "testing"))]
             card_by_test: None,
+            #[cfg(any(test, feature = "testing"))]
+            offer_by_test: None,
+            #[cfg(any(test, feature = "testing"))]
+            offer_read_by_test: std::sync::atomic::AtomicU64::new(0),
+            #[cfg(any(test, feature = "testing"))]
+            ran_at_by_test: Vec::new(),
+            #[cfg(any(test, feature = "testing"))]
+            unet_by_test: None,
             short: None,
             fills_ran: false,
             fill_short: false,
@@ -2357,6 +2621,11 @@ impl Ai {
     /// runtime and the model in the store. Asked without loading it, so
     /// a develop that keeps the network's answer never pays for a load.
     pub fn denoiser_there(&self, model: &'static Model) -> Result<(), NoDenoiser> {
+        // Any tier on a card a learned denoiser lost: not run there, nor
+        // fetched for it. A merge made again declines on it up front.
+        if learned_off_card() {
+            return Err(NoDenoiser::Failed(crate::stages::OFF_CARD.to_string()));
+        }
         // No runtime here: fetching the model would not help.
         greycard_ai::runtime::status().map_err(|why| NoDenoiser::Failed(why.to_string()))?;
         let store = self.store.as_ref().ok_or(NoDenoiser::Missing)?;
@@ -2387,6 +2656,7 @@ impl Ai {
             // lands while the tier loads is then still awaited, and the
             // tier loads again at the next develop.
             let had = store.core_ml_path(model).is_some();
+            off_card_seam();
             let denoiser = Denoiser::from_store(&store, model, &self.providers)
                 .map_err(|e| NoDenoiser::Failed(e.to_string()))?;
             core_ml_loaded(model.id);
@@ -2426,7 +2696,10 @@ impl Ai {
         self.fills.clear();
         self.failed.clear();
         self.windows.clear();
+        self.shown = None;
         self.refused.clear();
+        self.short_at_1024.clear();
+        self.due_at_512.clear();
         self.preview = None;
         self.embedding = None;
         self.scene = None;
@@ -2600,11 +2873,14 @@ impl Ai {
             .filter(|p| {
                 p.region(image.width, image.height).is_some_and(|region| {
                     let (window, _) = self.window_of(p, &region, image);
+                    let hidden = self.hidden_key(window, (image.width, image.height));
                     let in_memory = any_print
                         && self
                             .fills
                             .get(&(p.id, p.seed))
-                            .is_some_and(|(kept, w, _, _, _)| same_fill(kept, p) && *w == window);
+                            .is_some_and(|(kept, w, k, ..)| {
+                                same_fill(kept, p) && *w == window && *k == hidden
+                            });
                     !in_memory
                         && self.never_on_card(p, window).is_none()
                         && self.still_refused(p, window).is_none()
@@ -2620,9 +2896,10 @@ impl Ai {
     /// Why the patch's fill was refused for the card's memory, when it
     /// was as it is, in `window`, with no more free since and no
     /// give-back: a give-back, a patch or window changed, or more memory
-    /// free lets it be asked again. An export, patient, always asks.
+    /// free lets it be asked again. An export, patient, always asks, and
+    /// so does a removal due at 512 ([`Ai::card_given_back`]).
     fn still_refused(&mut self, patch: &Patch, window: Window) -> Option<String> {
-        if self.patience.is_some() {
+        if self.patience.is_some() || self.due_at_512_for(patch, window) {
             return None;
         }
         let (p, w, at, _, why) = self.refused.get(&patch.id)?;
@@ -2645,16 +2922,28 @@ impl Ai {
         image: &WorkingImage,
     ) -> Option<String> {
         let (window, _) = self.window_of(patch, region, image);
+        let hidden = self.hidden_key(window, (image.width, image.height));
         self.failed
             .get(&(patch.id, patch.seed))
-            .filter(|(p, w, _)| same_fill(p, patch) && *w == window)
-            .map(|(_, _, why)| why.clone())
+            .filter(|(p, w, k, _)| same_fill(p, patch) && *w == window && *k == hidden)
+            .map(|(_, _, _, why)| why.clone())
     }
 
-    /// The patch's fill, as it is now, failed with `why`.
-    fn remember_failure(&mut self, patch: &Patch, window: Window, why: String) -> NoFill {
-        self.failed
-            .insert((patch.id, patch.seed), (patch.clone(), window, why.clone()));
+    /// The patch's fill, as it is now, failed with `why` in `window`
+    /// of a picture of `size`: kept by what the crop hides of the
+    /// window too, so a crop that changes the hole asks again.
+    fn remember_failure(
+        &mut self,
+        patch: &Patch,
+        window: Window,
+        size: (usize, usize),
+        why: String,
+    ) -> NoFill {
+        let hidden = self.hidden_key(window, size);
+        self.failed.insert(
+            (patch.id, patch.seed),
+            (patch.clone(), window, hidden, why.clone()),
+        );
         NoFill::Failed(why)
     }
 
@@ -2664,8 +2953,27 @@ impl Ai {
         let (window, _) = self.window_of(patch, region, image);
         let print = window_print(image, region, window);
         let size = (image.width, image.height);
-        self.fill_in_memory(patch, window, &print).is_some()
+        self.fill_in_memory(patch, window, size, &print).is_some()
             || self.fill_from_disk(patch, region, size, window, &print)
+    }
+
+    /// What the crop shows of the open file's picture, for the fills
+    /// asked for from now: the retouch step's, set by the walk before
+    /// its fills are asked for. A Fill's window takes what the crop
+    /// hides as unknown, and its fill is keyed by it.
+    pub fn set_shown(&mut self, shown: Option<crate::shown::Shown>) {
+        self.shown = shown;
+    }
+
+    /// The pixels of `window`, in a picture of `size`, the crop hides:
+    /// none when it hides none.
+    fn hidden(&self, window: Window, size: (usize, usize)) -> Option<Vec<bool>> {
+        self.shown.as_ref()?.hidden(window, size)
+    }
+
+    /// [`Ai::hidden`]'s fingerprint, for the fill's keys.
+    fn hidden_key(&self, window: Window, size: (usize, usize)) -> Option<u64> {
+        crate::shown::fingerprint(self.hidden(window, size).as_deref())
     }
 
     /// The patch's fill, as it is now, kept in memory: made for this
@@ -2678,16 +2986,44 @@ impl Ai {
         &self,
         patch: &Patch,
         window: Window,
+        size: (usize, usize),
         print: &[[u16; 3]],
     ) -> Option<(Vec<f32>, Engine)> {
+        let hidden = self.hidden_key(window, size);
         self.fills
             .get(&(patch.id, patch.seed))
-            .filter(|(p, w, pr, _, _)| {
+            .filter(|(p, w, k, pr, _, _)| {
                 same_fill(p, patch)
                     && *w == window
+                    && *k == hidden
                     && prints_agree(pr, print, PRINT_TOLERANCE, Compare::Every)
             })
-            .map(|(_, _, _, engine, data)| (data.clone(), *engine))
+            .map(|(_, _, _, _, engine, data)| (data.clone(), *engine))
+    }
+
+    /// The fill in memory that stands in for the patch's while it is
+    /// remade because the crop changed what its window sees: made for
+    /// this patch, this window, and this picture under it, under
+    /// another crop. Kept until the new fill takes its place.
+    pub fn stand_in(
+        &mut self,
+        patch: &Patch,
+        region: &Region,
+        image: &WorkingImage,
+    ) -> Option<Vec<f32>> {
+        let (window, _) = self.window_of(patch, region, image);
+        let size = (image.width, image.height);
+        let hidden = self.hidden_key(window, size);
+        let print = window_print(image, region, window);
+        self.fills
+            .get(&(patch.id, patch.seed))
+            .filter(|(p, w, k, pr, _, _)| {
+                same_fill(p, patch)
+                    && *w == window
+                    && *k != hidden
+                    && prints_agree(pr, &print, PRINT_TOLERANCE, Compare::Every)
+            })
+            .map(|(.., data)| data.clone())
     }
 
     /// The patch's fill read from its slot on disk into memory, if it
@@ -2707,6 +3043,7 @@ impl Ai {
         if let Some(root) = path.parent() {
             sweep_stale_fills(root);
         }
+        self.let_go_of_earlier(patch, region, size, window);
         let dims = (region.width, region.height);
         let read = read_slot(&path, size, window, dims, |stored| {
             prints_agree(stored, print, PRINT_TOLERANCE, Compare::Every)
@@ -2720,9 +3057,10 @@ impl Ai {
             region.width,
             region.height
         );
+        let hidden = self.hidden_key(window, size);
         self.fills.insert(
             (patch.id, patch.seed),
-            (patch.clone(), window, stored, engine, data),
+            (patch.clone(), window, hidden, stored, engine, data),
         );
         true
     }
@@ -2759,14 +3097,30 @@ impl Ai {
         window: Window,
     ) -> Option<PathBuf> {
         let file = self.file.as_ref()?;
-        Some(fill_slot(
-            &self.fills_root()?,
-            file,
-            patch,
-            region,
-            size,
-            window,
+        Some(hidden_slot(
+            fill_slot(&self.fills_root()?, file, patch, region, size, window),
+            self.hidden_key(window, size),
         ))
+    }
+
+    /// The slots the patch's fill lived in under an earlier headroom
+    /// version, let go ([`earlier_fill_slots`]).
+    fn let_go_of_earlier(
+        &self,
+        patch: &Patch,
+        region: &Region,
+        size: (usize, usize),
+        window: Window,
+    ) {
+        if let (Some(file), Some(root)) = (self.file.as_ref(), self.fills_root()) {
+            let hidden = self.hidden_key(window, size);
+            let earlier: Vec<PathBuf> =
+                earlier_fill_slots(&root, file, patch, region, size, window)
+                    .into_iter()
+                    .map(|slot| hidden_slot(slot, hidden))
+                    .collect();
+            let_go_of_earlier_slots(&earlier);
+        }
     }
 
     /// The patch's fill made: kept in memory and on disk, at half
@@ -2786,6 +3140,7 @@ impl Ai {
         let size = (image.width, image.height);
         let print = window_print(image, region, window);
         if let Some(path) = self.fill_path(patch, region, size, window) {
+            self.let_go_of_earlier(patch, region, size, window);
             write_slot(
                 &path,
                 engine,
@@ -2796,9 +3151,10 @@ impl Ai {
                 &data,
             );
         }
+        let hidden = self.hidden_key(window, size);
         self.fills.insert(
             (patch.id, patch.seed),
-            (patch.clone(), window, print, engine, data.clone()),
+            (patch.clone(), window, hidden, print, engine, data.clone()),
         );
         data
     }
@@ -2871,20 +3227,157 @@ impl Ai {
     /// it and is not remembered as failed, so it is asked for again;
     /// the worker is told ([`Ai::take_fill_short`]). A removal never
     /// falls to the CPU, which takes minutes a fill, nor to LaMa, which
-    /// the user did not choose.
-    fn room_for_remove(&mut self, patch: &Patch, window: Window) -> Result<(), NoFill> {
+    /// the user did not choose. The answer is the side it runs at.
+    ///
+    /// A window run at 1024 runs at 512, taken down to it as one past
+    /// 1024 is taken to 1024, only as the last resort: on a card that
+    /// can never hold 1024, whatever is given back ([`Ai::never_holds`]);
+    /// or once the full way at 1024 is gone and it is still short. For
+    /// the window's fills that is the ask after the card was given back
+    /// across the worker's models ([`Ai::card_given_back`]); for an
+    /// export, its frame tried again or a frame of a set already short
+    /// ([`Ai::set_fill_fallback`]). Until then it is refused at 1024 as
+    /// it always was. Short at 512 too, it is refused at 512, the last
+    /// ask. A window past 2048, which 512 would take down by more than
+    /// [`greycard_ai::remove::FACTOR`], is asked at 1024 alone.
+    fn room_for_remove(&mut self, patch: &Patch, window: Window) -> Result<usize, NoFill> {
+        use greycard_ai::remove::{FACTOR, MAX};
+        const SMALL: usize = 512;
         let Some(size) = greycard_ai::remove::run_size(window.width, window.height) else {
-            return Ok(());
+            return Ok(MAX);
         };
+        if size <= SMALL || window.width.max(window.height) > FACTOR * SMALL {
+            return self.room_for_remove_at(patch, window, size).map(|()| size);
+        }
+        let cold = remove_needs(size, false);
+        if let Some(card) = self.never_holds(cold) {
+            tracing::info!(
+                "fill {}: a removal at {size} needs {} GiB, past the card's {} GiB: runs at 512, the window of {}x{} taken down to it",
+                patch.name(),
+                gib_said(cold),
+                gib_said(card),
+                window.width,
+                window.height
+            );
+            return self
+                .room_for_remove_at(patch, window, SMALL)
+                .map(|()| SMALL);
+        }
+        if !self.fill_fallback && !self.due_at_512_for(patch, window) {
+            let first = self.room_for_remove_at(patch, window, size);
+            if first.is_err() {
+                self.short_at_1024.insert(patch.id, (patch.clone(), window));
+            }
+            return first.map(|()| size);
+        }
+        // The last resort: as they were, for a run at 512 that is no
+        // refusal.
+        self.due_at_512.remove(&patch.id);
+        let said = (
+            self.short.clone(),
+            self.fill_short,
+            self.short_failed,
+            self.short_figures,
+        );
+        // Refused as it is with nothing free since, the window's ask at
+        // 1024 is not made again; an export's always is.
+        let free = self.free_memory().map(|(f, _)| f);
+        let hopeless = self.patience.is_none()
+            && self.refused.get(&patch.id).is_some_and(|(p, w, at, ..)| {
+                same_fill(p, patch) && *w == window && free.is_some_and(|f| f <= *at)
+            });
+        if !hopeless && self.room_for_remove_at(patch, window, size).is_ok() {
+            return Ok(size);
+        }
+        let need = remove_needs(size, self.unet_held(patch, size));
+        let at = self.free_memory().map_or(0, |(f, _)| f);
+        // Refused at 512 too, its words and figures are the last ask's.
+        self.room_for_remove_at(patch, window, SMALL)?;
+        tracing::info!(
+            "fill {}: a removal at {size} is still short, {} GiB free of the {} GiB it needs: runs at 512, the window of {}x{} taken down to it",
+            patch.name(),
+            gib_said(at),
+            gib_said(need),
+            window.width,
+            window.height
+        );
+        (
+            self.short,
+            self.fill_short,
+            self.short_failed,
+            self.short_figures,
+        ) = said;
+        self.refused.remove(&patch.id);
+        Ok(SMALL)
+    }
+
+    /// The card's memory, the least of a discrete card's whole
+    /// ([`Ai::card_whole`]) and the most it has offered this process,
+    /// where `need` is past it: a run of that need never fits, whatever
+    /// is given back. Not known, none; and none where the free memory is
+    /// not known (unified memory, an integrated GPU, whose adapter's
+    /// figure is the driver's carve-out), which is never short.
+    fn never_holds(&self, need: u64) -> Option<u64> {
+        // The offer is read after a free figure, as `room` reads it.
+        self.free_memory()?;
+        [self.card_whole(), self.card_offer()]
+            .into_iter()
+            .flatten()
+            .min()
+            .filter(|&card| need > card)
+    }
+
+    /// Whether `patch`'s removal, refused at 1024 by the ask just made,
+    /// is asked again, at 512 where 1024 is still short: a develop's
+    /// round says it still to come, not refused ([`Ai::card_given_back`]).
+    pub fn asks_again_at_512(&self, patch: &Patch) -> bool {
+        self.short_at_1024.contains_key(&patch.id)
+    }
+
+    /// Whether `patch`'s removal in `window` is due at 512 where 1024 is
+    /// still short ([`Ai::card_given_back`]).
+    fn due_at_512_for(&self, patch: &Patch, window: Window) -> bool {
+        self.due_at_512
+            .get(&patch.id)
+            .is_some_and(|(p, w)| same_fill(p, patch) && *w == window)
+    }
+
+    /// The card was given back across the worker's models after a
+    /// removal at 1024 was refused: the full way at 1024 is gone for
+    /// each so refused, and each is asked again, at 512 where 1024 is
+    /// still short ([`Ai::room_for_remove`]). True when any was, so
+    /// the worker asks again even where nothing was given back.
+    pub fn card_given_back(&mut self) -> bool {
+        let any = !self.short_at_1024.is_empty();
+        let refused: Vec<_> = self.short_at_1024.drain().collect();
+        self.due_at_512.extend(refused);
+        any
+    }
+
+    /// Whether a removal at 1024 still short of the card after its
+    /// give-backs and an export's waits runs at 512 at once: on for an
+    /// export's frame tried again after the card was given back, and
+    /// for a frame of a set whose frame before was short, as a learned
+    /// mask falls to the CPU ([`Ai::set_cpu_fallback`]); on for the
+    /// window's fills asked again after the card was given back across
+    /// the worker's models; off for the rest.
+    pub fn set_fill_fallback(&mut self, on: bool) {
+        self.fill_fallback = on;
+    }
+
+    /// [`Ai::room_for_remove`] at `size`, refused as it says.
+    fn room_for_remove_at(
+        &mut self,
+        patch: &Patch,
+        window: Window,
+        size: usize,
+    ) -> Result<(), NoFill> {
         let what = format!("a removal at {size}");
         let need = |ai: &Ai| remove_needs(size, ai.unet_held(patch, size));
         // A queue's UNet at the other size is kept: beside the others'
         // sessions, letting it go gives nothing back, and the queue's
         // next fill would open it again.
-        let keep_unet = self
-            .store
-            .as_ref()
-            .is_some_and(|s| greycard_ai::remove::unet_held_elsewhere(s, steps_for(patch), size));
+        let keep_unet = self.unet_held_elsewhere(patch, size);
         let refuse = |ai: &mut Ai, why: String| {
             ai.fill_short = true;
             ai.short_failed = true;
@@ -2896,7 +3389,8 @@ impl Ai {
                 .insert(patch.id, (patch.clone(), window, free, needs, why.clone()));
             NoFill::Failed(why)
         };
-        match self.room(&what, &need, keep_unet, true) {
+        let small = move |offer| removal_small(size, offer);
+        match self.room(&what, &need, &small, keep_unet, true) {
             Ok(()) => Ok(()),
             Err(why) => Err(refuse(self, why)),
         }
@@ -2922,8 +3416,9 @@ impl Ai {
             return Ok(());
         }
         let (short, hit_short) = (self.short.clone(), self.hit_short);
-        let Err(why) = self.room("a learned mask", &move |_| mask_needs(model), false, false)
-        else {
+        let need = move |_: &Ai| mask_needs(model);
+        let small = move |offer| too_small(mask_needs(model), offer).then_some("it");
+        let Err(why) = self.room("a learned mask", &need, &small, false, false) else {
             self.leave_cpu();
             return Ok(());
         };
@@ -3081,7 +3576,7 @@ impl Ai {
             return Ok(DenoiseOn::Card);
         }
         let tile = d.tiling().tile;
-        self.denoise_room_at(tile)
+        self.denoise_room_at(model, tile)
     }
 
     /// [`Ai::denoise_room_for`] for a denoiser on the card at `tile`.
@@ -3092,7 +3587,11 @@ impl Ai {
     /// and the engine's own denoise stands in, or an export fails. The
     /// log says what was chosen and why. Where the card's memory is not
     /// known it runs as it is.
-    pub(crate) fn denoise_room_at(&mut self, tile: usize) -> Result<DenoiseOn, CardShort> {
+    pub(crate) fn denoise_room_at(
+        &mut self,
+        model: &'static Model,
+        tile: usize,
+    ) -> Result<DenoiseOn, CardShort> {
         let what = format!("the learned denoiser at a tile of {tile}");
         let short = self.short.clone();
         // A canceled export lets nothing go.
@@ -3101,7 +3600,16 @@ impl Ai {
         // Asked at its own tile without an export's waits: a smaller tile
         // the card has the room for is no reason to wait.
         let patience = self.patience.take();
-        let first = self.room(&what, &|_| denoise_needs(tile), false, release);
+        // Too small for it only where its least tile is past the card too.
+        let least = denoise_least(tile);
+        let small = move |offer| denoise_small(model, tile, offer);
+        let first = self.room(
+            &what,
+            &|_| denoise_needs_of(model, tile),
+            &small,
+            false,
+            release,
+        );
         self.patience = patience;
         let Err(mut why) = first else {
             return Ok(DenoiseOn::Card);
@@ -3112,7 +3620,7 @@ impl Ai {
         // smallest does.
         let past_card = self
             .card_size()
-            .is_some_and(|size| denoise_needs(tile) > size);
+            .is_some_and(|size| denoise_needs_of(model, tile) > size);
         if past_card {
             self.give_back_own(false);
         }
@@ -3133,11 +3641,14 @@ impl Ai {
             std::iter::once(tile)
                 .chain(DENOISE_SMALLER_TILES)
                 .filter(|&t| t <= from)
-                .find(|&t| free.is_none_or(|f| f >= denoise_needs(t)))
+                .find(|&t| free.is_none_or(|f| f >= denoise_needs_of(model, t)))
         };
         // The need as it is compared: the refusal's tenth can round it
         // away.
-        let found = format!("{why} ({} GiB needed)", gib_said(denoise_needs(tile)));
+        let found = format!(
+            "{why} ({} GiB needed)",
+            gib_said(denoise_needs_of(model, tile))
+        );
         let at = |t: usize| {
             if t == tile {
                 DenoiseOn::Card
@@ -3149,7 +3660,7 @@ impl Ai {
         if let Some(t) = smaller {
             tracing::info!(
                 "{found}: the learned denoiser runs at a tile of {t}, which needs {} GiB",
-                gib_said(denoise_needs(t))
+                gib_said(denoise_needs_of(model, t))
             );
             // Handled, no refusal and no short met.
             self.short = short;
@@ -3157,15 +3668,16 @@ impl Ai {
         }
         // Short at every tile: an export waits its tries at the smallest,
         // then runs at the largest it has the room for.
-        let least = DENOISE_SMALLER_TILES
-            .into_iter()
-            .filter(|&t| t < tile)
-            .min()
-            .unwrap_or(tile);
         if self.patience.is_some() {
             let what = format!("the learned denoiser at a tile of {least}");
             if self
-                .room(&what, &|_| denoise_needs(least), false, false)
+                .room(
+                    &what,
+                    &|_| denoise_needs_of(model, least),
+                    &small,
+                    false,
+                    false,
+                )
                 .is_ok()
                 && let Some(t) = fitting(self, tile)
             {
@@ -3174,10 +3686,16 @@ impl Ai {
                 return Ok(at(t));
             }
             // Said at its own tile, as it always was, the card as it is.
-            if let Some(w) = self
-                .free_memory()
-                .and_then(|(free, card)| short_of(&card, free, denoise_needs(tile), &what_at(tile)))
-            {
+            if let Some(w) = self.free_memory().and_then(|(free, card)| {
+                let small = small(self.card_offer());
+                short_of(
+                    &card,
+                    free,
+                    denoise_needs_of(model, tile),
+                    &what_at(tile),
+                    small,
+                )
+            }) {
                 why = w;
             }
         }
@@ -3198,18 +3716,25 @@ impl Ai {
     /// a merge ([`Patience`]), asked again its tries in all, its wait
     /// apart, unless the export is canceled or a short was met already
     /// in this walk. Short past all of them, the walk has met it. Where
-    /// the free memory is not known it may.
+    /// the free memory is not known it may. Refused, `small` is given
+    /// what the card offers ([`Ai::card_offer`]), read after the free
+    /// figure, and answers what the card is too small for, if anything
+    /// ([`short_of`]); it never changes whether the run is refused.
     fn room(
         &mut self,
         what: &str,
         need: &dyn Fn(&Ai) -> u64,
+        small: &dyn Fn(Option<u64>) -> Option<&'static str>,
         keep_unet: bool,
         release: bool,
     ) -> Result<(), String> {
         let short = |ai: &Ai| -> Result<(), String> {
             let need = need(ai);
             match ai.free_memory() {
-                Some((free, card)) => short_of(&card, free, need, what).map_or(Ok(()), Err),
+                Some((free, card)) => {
+                    let small = small(ai.card_offer());
+                    short_of(&card, free, need, what, small).map_or(Ok(()), Err)
+                }
                 None => Ok(()),
             }
         };
@@ -3293,6 +3818,8 @@ impl Ai {
         let held = self.holds_sessions();
         self.drop_sessions();
         let unet = !keep_unet && greycard_ai::remove::let_go_unet();
+        #[cfg(any(test, feature = "testing"))]
+        let unet = unet | (!keep_unet && self.let_go_unet_by_test());
         if held || unet {
             greycard_ai::runtime::trim_heap();
             self.refused.clear();
@@ -3408,9 +3935,39 @@ impl Ai {
         if let Some(held) = self.unet_held_by_test {
             return held;
         }
+        #[cfg(any(test, feature = "testing"))]
+        if let Some((at, _)) = self.unet_by_test {
+            return at == size;
+        }
         self.store
             .as_ref()
             .is_some_and(|s| greycard_ai::remove::unet_held(s, steps_for(patch), size))
+    }
+
+    /// Whether a UNet for `patch`'s removals at a size other than `size`
+    /// is held, a queue's ([`greycard_ai::remove::unet_held_elsewhere`]),
+    /// or as a test has it.
+    fn unet_held_elsewhere(&self, patch: &Patch, size: usize) -> bool {
+        #[cfg(any(test, feature = "testing"))]
+        if let Some((at, _)) = self.unet_by_test {
+            return at != size;
+        }
+        self.store
+            .as_ref()
+            .is_some_and(|s| greycard_ai::remove::unet_held_elsewhere(s, steps_for(patch), size))
+    }
+
+    /// A test's UNet held for a queue ([`Ai::unet_by_test`]) let go, its
+    /// bytes given back to the test's card. True when one went.
+    #[cfg(any(test, feature = "testing"))]
+    fn let_go_unet_by_test(&mut self) -> bool {
+        let Some((_, bytes)) = self.unet_by_test.take() else {
+            return false;
+        };
+        if let Some(free) = self.free_memory_by_test.as_mut() {
+            *free += bytes;
+        }
+        true
     }
 
     /// Whether a fill's model ran since the card was last given back,
@@ -3441,6 +3998,12 @@ impl Ai {
     /// The shorts met so far forgotten: before each develop round, so
     /// one met by another job does not move the next.
     pub fn clear_shorts(&mut self) {
+        // Refused at 1024 by a round the worker did not ask again for
+        // (one given way to a newer develop): asked again at 1024 by the
+        // next, not held refused at 1024's figures ([`Ai::still_refused`]).
+        for (id, _) in self.short_at_1024.drain() {
+            self.refused.remove(&id);
+        }
         self.fill_short = false;
         self.mask_short = false;
         self.mask_cpu = false;
@@ -3511,7 +4074,11 @@ impl Ai {
             fills: _,
             failed: _,
             windows: _,
+            shown: _,
             refused: _,
+            short_at_1024: _,
+            due_at_512: _,
+            fill_fallback: _,
             preview: _,
             embedding: _,
             sam3,
@@ -3551,6 +4118,14 @@ impl Ai {
                 unet_held_by_test: _,
             #[cfg(any(test, feature = "testing"))]
                 card_by_test: _,
+            #[cfg(any(test, feature = "testing"))]
+                offer_by_test: _,
+            #[cfg(any(test, feature = "testing"))]
+                offer_read_by_test: _,
+            #[cfg(any(test, feature = "testing"))]
+                ran_at_by_test: _,
+            #[cfg(any(test, feature = "testing"))]
+                unet_by_test: _,
             short: _,
             fills_ran: _,
             fill_short: _,
@@ -3608,7 +4183,11 @@ impl Ai {
             fills: _,
             failed: _,
             windows: _,
+            shown: _,
             refused: _,
+            short_at_1024: _,
+            due_at_512: _,
+            fill_fallback: _,
             preview: _,
             embedding: _,
             sam3,
@@ -3648,6 +4227,14 @@ impl Ai {
                 unet_held_by_test: _,
             #[cfg(any(test, feature = "testing"))]
                 card_by_test: _,
+            #[cfg(any(test, feature = "testing"))]
+                offer_by_test: _,
+            #[cfg(any(test, feature = "testing"))]
+                offer_read_by_test: _,
+            #[cfg(any(test, feature = "testing"))]
+                ran_at_by_test: _,
+            #[cfg(any(test, feature = "testing"))]
+                unet_by_test: _,
             short: _,
             fills_ran: _,
             fill_short: _,
@@ -3706,9 +4293,30 @@ impl Ai {
     fn free_memory(&self) -> Option<(u64, String)> {
         #[cfg(any(test, feature = "testing"))]
         if self.free_memory_by_test.is_some() || self.fill_by_test.is_some() {
+            // The budget read with the free figure, as the backend's is.
+            if self.free_memory_by_test.is_some()
+                && let Some(offer) = self.offer_by_test
+            {
+                self.offer_read_by_test
+                    .fetch_max(offer, std::sync::atomic::Ordering::Relaxed);
+            }
             return self.free_memory_by_test.map(|b| (b, "the card".into()));
         }
         card_free_now()
+    }
+
+    /// The most the card has offered this process against its whole
+    /// heap ([`card_offer_now`]), or as a test has them, beside its free
+    /// figure ([`Ai::card_size`]): only what a free read has read.
+    fn card_offer(&self) -> Option<u64> {
+        #[cfg(any(test, feature = "testing"))]
+        if self.free_memory_by_test.is_some() || self.fill_by_test.is_some() {
+            let read = self
+                .offer_read_by_test
+                .load(std::sync::atomic::Ordering::Relaxed);
+            return offer_as_size((read > 0).then_some(read), self.card_size());
+        }
+        card_offer_now()
     }
 
     /// The patch's window and depth in `image`, found once for the
@@ -3757,11 +4365,11 @@ impl Ai {
         let (window, depth) = self.window_of(patch, region, image);
         let print = window_print(image, region, window);
         let size = (image.width, image.height);
-        if let Some(kept) = self.fill_in_memory(patch, window, &print) {
+        if let Some(kept) = self.fill_in_memory(patch, window, size, &print) {
             return Ok(kept);
         }
         if self.fill_from_disk(patch, region, size, window, &print)
-            && let Some(kept) = self.fill_in_memory(patch, window, &print)
+            && let Some(kept) = self.fill_in_memory(patch, window, size, &print)
         {
             return Ok(kept);
         }
@@ -3799,11 +4407,17 @@ impl Ai {
         }
         // Sure to start, the card is asked: given back on a short, and
         // waited on as an export's [`Patience`] says ([`Ai::room`]).
-        if self.held_to_card(patch, window, engine) {
-            self.room_for_remove(patch, window)?;
-        }
+        let side = if self.held_to_card(patch, window, engine) {
+            self.room_for_remove(patch, window)?
+        } else {
+            greycard_ai::remove::MAX
+        };
         self.refused.remove(&patch.id);
+        self.short_at_1024.remove(&patch.id);
+        self.due_at_512.remove(&patch.id);
         self.fills_ran = true;
+        #[cfg(any(test, feature = "testing"))]
+        self.ran_at_by_test.push((patch.name(), side));
         #[cfg(any(test, feature = "testing"))]
         if let Some(v) = self.fill_by_test {
             if v < 0.0 {
@@ -3854,25 +4468,21 @@ impl Ai {
         } = window;
         let to_srgb = greycard_render::export::Space::Srgb.matrix();
         let from_srgb = invert(&to_srgb);
-        // Coverage over the window, and the picture's values there.
-        let mut hole = vec![0.0f32; ww * wh];
+        // The hole the engine is given: the region's coverage, and what
+        // the crop hides of the window, which the user never saw, so
+        // the engine is not shown it either ([`crate::shown`]).
+        let hidden = self.hidden(window, (image.width, image.height));
+        let hole = engine_hole(region, window, hidden.as_deref());
+        // The picture's values over the window.
         let mut values = Vec::with_capacity(ww * wh * 3);
         let (mut luma_sum, mut luma_n) = (0.0f32, 0usize);
         for y in 0..wh {
             for x in 0..ww {
-                let (px, py) = (wx + x, wy + y);
-                let i = (py * image.width + px) * 3;
+                let i = ((wy + y) * image.width + wx + x) * 3;
                 let p = [image.data[i], image.data[i + 1], image.data[i + 2]];
                 let s = mul(&to_srgb, p).map(|v| v.max(0.0));
                 values.extend(s);
-                let covered = px >= region.x
-                    && px < region.x + region.width
-                    && py >= region.y
-                    && py < region.y + region.height
-                    && region.cover[(py - region.y) * region.width + (px - region.x)] > 0.0;
-                if covered {
-                    hole[y * ww + x] = 1.0;
-                } else {
+                if hole[y * ww + x] <= 0.0 {
                     luma_sum += 0.2126 * s[0] + 0.7152 * s[1] + 0.0722 * s[2];
                     luma_n += 1;
                 }
@@ -3887,6 +4497,14 @@ impl Ai {
         let gain = (0.18 / mean.max(1e-4)).clamp(0.25, 16.0);
         let encoded: Vec<f32> = values.iter().map(|v| encode(v * gain)).collect();
         let input = Rgbf::new(ww, wh, encoded);
+        // The hidden pixels made the hole deeper: LaMa's scale follows,
+        // so near a crop's edge LaMa may take the window down further
+        // and fill softer, the regrain making up the grain.
+        let depth = if hidden.is_some() {
+            greycard_ai::fill::depth(&hole, ww, wh)
+        } else {
+            depth
+        };
         let started = Instant::now();
         // The scale LaMa made the window at; the remove's answer is
         // regrained at any factor it was taken down by, so it counts
@@ -3907,7 +4525,7 @@ impl Ai {
                     Ok(f) => f,
                     Err(e) => {
                         tracing::debug!("fill: {e}");
-                        return Err(self.remember_failure(patch, window, e.to_string()));
+                        return Err(self.remember_failure(patch, window, size, e.to_string()));
                     }
                 };
                 let fill = self.fill.as_ref().expect("LaMa, loaded above");
@@ -3955,16 +4573,16 @@ impl Ai {
                 let remove = self.remove.as_mut().expect("the remove, loaded above");
                 remove.hold_unet(self.fills_queued);
                 if let Err(e) = remove.set_steps(steps_for(patch)) {
-                    return Err(self.remember_failure(patch, window, e.to_string()));
+                    return Err(self.remember_failure(patch, window, size, e.to_string()));
                 }
-                let made = match remove.remove_window_told(&input, &hole, remove_seed(patch), told)
-                {
-                    Ok(f) => f,
-                    Err(e) => {
-                        tracing::debug!("remove: {e}");
-                        return Err(self.remember_failure(patch, window, e.to_string()));
-                    }
-                };
+                let made =
+                    match remove.remove_window_at(&input, &hole, remove_seed(patch), side, told) {
+                        Ok(f) => f,
+                        Err(e) => {
+                            tracing::debug!("remove: {e}");
+                            return Err(self.remember_failure(patch, window, size, e.to_string()));
+                        }
+                    };
                 let remove = self.remove.as_ref().expect("the remove, loaded above");
                 let t = remove.times();
                 tracing::info!(
@@ -4051,6 +4669,7 @@ impl Ai {
                 &mut out,
                 region,
                 window,
+                hidden.as_deref(),
                 image,
                 patch.id ^ (u64::from(patch.seed) << 40),
             )
@@ -4718,6 +5337,84 @@ impl Ai {
             seconds: 0.0,
             part: None,
         })
+    }
+
+    /// [`Ai::raster_cached`] for the raster made again on the retouched
+    /// picture under the Fill patches of print `under`
+    /// ([`Retouched::print_over`]): in memory when it was made for this
+    /// shape under these patches on a base of `base`'s print, else read
+    /// from the print's own slot on disk (and kept in memory), as
+    /// [`Ai::raster_retouched`] would read it. No model loads or runs.
+    // `under` is the patches' print beside `raster_cached`'s own.
+    #[allow(clippy::too_many_arguments)]
+    pub fn remade_cached(
+        &mut self,
+        frame: (usize, usize),
+        base: Base,
+        turn: u8,
+        key: Key,
+        shape: &Shape,
+        model: Option<&'static Model>,
+        under: u64,
+    ) -> Option<Made> {
+        let made = |ai: &Self, raster: Arc<Raster>| Made {
+            note: ai.empty_note(shape, &raster),
+            raster,
+            provider: None,
+            seconds: 0.0,
+            part: None,
+        };
+        if let Some((s, p, b, r)) = self.retouched.get(&(key, turn))
+            && s == shape
+            && *p == under
+            && *b == base.print
+        {
+            return Some(made(self, r.clone()));
+        }
+        if !prompted(shape) {
+            return None;
+        }
+        let width = raster_width(shape, frame);
+        let aspect = frame.1 as f32 / frame.0.max(1) as f32;
+        let height = raster_height(width, aspect);
+        self.print = base.print;
+        self.salt = Some(under);
+        let path = self.cached_path_at(shape, model, turn, width);
+        self.salt = None;
+        let raster = Arc::new(Raster::from_data(
+            aspect,
+            width,
+            read_raster(&path?, width, height)?,
+        ));
+        self.retouched.insert(
+            (key, turn),
+            (shape.clone(), under, base.print, raster.clone()),
+        );
+        Some(made(self, raster))
+    }
+
+    /// Where the raster for `shape` of `file` at `turn`, asked with
+    /// `model` on a frame of `frame` (width, height), is kept on disk:
+    /// made on the base of `print`, or made again on the retouched
+    /// picture under the Fill patches of print `under`. For a test that
+    /// puts one there as the worker would.
+    #[cfg(test)]
+    pub(crate) fn cached_path_under(
+        &mut self,
+        file: &Path,
+        (shape, model): (&Shape, Option<&'static Model>),
+        frame: (usize, usize),
+        print: Print,
+        under: Option<u64>,
+    ) -> Option<PathBuf> {
+        if self.file.as_deref() != Some(file) {
+            self.forget(Some(file.to_path_buf()));
+        }
+        self.print = print;
+        self.salt = under;
+        let path = self.cached_path_at(shape, model, 0, raster_width(shape, frame));
+        self.salt = None;
+        path
     }
 
     // `base` to `turn` are `worker::masks::On`'s picture; moving it is its own change.
@@ -6268,8 +6965,10 @@ fn evict_other_bases(path: &Path) {
 /// mosaic's noise line drawn past its bins of texture, so a frame
 /// whose old line read its grain several times over is denoised less,
 /// and a fill made on the smoother base would sit smooth in a grainier
-/// surround.
-const FILL_VERSION: u8 = 6;
+/// surround; 7, the remove's sampler started from the window with the
+/// hole filled from round it, so a large colored object is no longer
+/// painted back ([`greycard_ai::remove::prefilled`]).
+const FILL_VERSION: u8 = 7;
 
 /// The version before the print was kept in the file, whose file holds
 /// none: what [`read_fill`] and [`write_fill`] tell the two layouts
@@ -6792,7 +7491,8 @@ fn read_fill(
 
 /// Where a fill lives on disk under `root`: named by a hash of the
 /// file, the patch as [`same_fill`] compares it, its seed, the
-/// picture's size, the region, the window, and both engines' models.
+/// picture's size, the region, the window, both engines' models, and
+/// the decode's version ([`decode_version`]).
 fn fill_slot(
     root: &Path,
     file: &Path,
@@ -6801,9 +7501,115 @@ fn fill_slot(
     size: (usize, usize),
     window: Window,
 ) -> PathBuf {
+    // A file that may decode with light over its white: the headroom's
+    // version, so its fills are made again when the table changes and
+    // no other file's are; a DNG the linearization's, likewise. The two
+    // are of different files, so one slot part holds either.
+    fill_slot_under(
+        root,
+        file,
+        patch,
+        region,
+        size,
+        window,
+        decode_version(file),
+    )
+}
+
+/// The version of the decode a fill of `file` is keyed with: the
+/// headroom's for a file that may have headroom, the linearization's
+/// for one that may carry a table, else none.
+fn decode_version(file: &Path) -> Option<&'static str> {
+    use greycard_core::decode::{
+        HEADROOM, LINEARIZATION, may_have_headroom, may_have_linearization,
+    };
+    if may_have_headroom(file) {
+        Some(HEADROOM)
+    } else if may_have_linearization(file) {
+        Some(LINEARIZATION)
+    } else {
+        None
+    }
+}
+
+/// The slots the fill of a file that may decode with headroom, or may
+/// carry a linearization table, lived in under each earlier version of
+/// that ([`decode_version`]), none first: what
+/// [`let_go_of_earlier_slots`] removes. Empty for any other file.
+fn earlier_fill_slots(
+    root: &Path,
+    file: &Path,
+    patch: &Patch,
+    region: &Region,
+    size: (usize, usize),
+    window: Window,
+) -> Vec<PathBuf> {
+    let earlier = match decode_version(file) {
+        Some(greycard_core::decode::HEADROOM) => earlier_headrooms(),
+        Some(_) => earlier_linearizations(),
+        None => return Vec::new(),
+    };
+    earlier
+        .iter()
+        .map(|h| fill_slot_under(root, file, patch, region, size, window, h.as_deref()))
+        .collect()
+}
+
+/// The headroom versions before [`greycard_core::decode::HEADROOM`],
+/// `headroom-N`: none (before there was one), then 1 to N - 1.
+fn earlier_headrooms() -> Vec<Option<String>> {
+    let now: u32 = greycard_core::decode::HEADROOM
+        .strip_prefix("headroom-")
+        .and_then(|n| n.parse().ok())
+        .expect("HEADROOM is headroom-N");
+    std::iter::once(None)
+        .chain((1..now).map(|k| Some(format!("headroom-{k}"))))
+        .collect()
+}
+
+/// The linearization versions before
+/// [`greycard_core::decode::LINEARIZATION`], `linearization-N`: none
+/// (before there was one), then 1 to N - 1.
+fn earlier_linearizations() -> Vec<Option<String>> {
+    let now: u32 = greycard_core::decode::LINEARIZATION
+        .strip_prefix("linearization-")
+        .and_then(|n| n.parse().ok())
+        .expect("LINEARIZATION is linearization-N");
+    std::iter::once(None)
+        .chain((1..now).map(|k| Some(format!("linearization-{k}"))))
+        .collect()
+}
+
+/// The files of the slots a fill lived in under an earlier headroom
+/// version removed: nothing reads them again, the folder's sweep goes
+/// by the fill's own version, and so it is done where the fill is
+/// looked up or written, a few removals of files mostly not there.
+fn let_go_of_earlier_slots(slots: &[PathBuf]) {
+    for file in slots.iter().flat_map(|s| slot_files(s)) {
+        match std::fs::remove_file(&file) {
+            Ok(()) => tracing::debug!("let go of {} from before the headroom", file.display()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => tracing::debug!("could not let go of {}: {e}", file.display()),
+        }
+    }
+}
+
+/// [`fill_slot`] with the headroom version given, or none.
+fn fill_slot_under(
+    root: &Path,
+    file: &Path,
+    patch: &Patch,
+    region: &Region,
+    size: (usize, usize),
+    window: Window,
+    headroom: Option<&str>,
+) -> PathBuf {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     file.hash(&mut h);
     "fill".hash(&mut h);
+    if let Some(headroom) = headroom {
+        headroom.hash(&mut h);
+    }
     patch.id.hash(&mut h);
     patch.seed.hash(&mut h);
     for p in &patch.points {
@@ -6831,6 +7637,43 @@ fn fill_slot(
     root.join(format!("{:016x}.fill", h.finish()))
 }
 
+/// The hole a Fill's engine is given over `window`, 1 or 0 a pixel:
+/// where `region` covers, and where the crop hides the window
+/// (`hidden`, row by row), which the engine makes up with the hole and
+/// never reads as its surround. Only the region's coverage is put back
+/// in the picture ([`greycard_core::develop::retouch::apply_replacement`]).
+fn engine_hole(region: &Region, window: Window, hidden: Option<&[bool]>) -> Vec<f32> {
+    let Window {
+        x: wx,
+        y: wy,
+        width: ww,
+        height: wh,
+    } = window;
+    (0..ww * wh)
+        .map(|i| {
+            let (px, py) = (wx + i % ww, wy + i / ww);
+            let covered = (region.x..region.x + region.width).contains(&px)
+                && (region.y..region.y + region.height).contains(&py)
+                && region.cover[(py - region.y) * region.width + (px - region.x)] > 0.0;
+            f32::from(u8::from(covered || hidden.is_some_and(|h| h[i])))
+        })
+        .collect()
+}
+
+/// The slot of a fill whose window the crop hides `hidden` of
+/// ([`crate::shown::fingerprint`]): `slot` itself when it hides none,
+/// so a fill no crop reaches keeps its slot; else another, of `slot`
+/// and the fingerprint.
+fn hidden_slot(slot: PathBuf, hidden: Option<u64>) -> PathBuf {
+    let Some(key) = hidden else {
+        return slot;
+    };
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    slot.file_name().hash(&mut h);
+    key.hash(&mut h);
+    slot.with_file_name(format!("{:016x}.fill", h.finish()))
+}
+
 /// What reads the fills kept on disk for a develop that makes none:
 /// the reduced develop's, for one file.
 #[derive(Debug, Clone)]
@@ -6854,13 +7697,19 @@ impl FillReader {
         image: &WorkingImage,
         factor: usize,
         full: (usize, usize),
+        shown: Option<&crate::shown::Shown>,
     ) -> Option<Vec<f32>> {
         if factor == 0 || !PRINT_BLOCK.is_multiple_of(factor) {
             return None;
         }
         let full_region = patch.region(full.0, full.1)?;
         let (window, _) = window_for(&full_region, full.0, full.1);
-        let path = fill_slot(&self.root, &self.file, patch, &full_region, full, window);
+        let hidden =
+            crate::shown::fingerprint(shown.and_then(|s| s.hidden(window, full)).as_deref());
+        let path = hidden_slot(
+            fill_slot(&self.root, &self.file, patch, &full_region, full, window),
+            hidden,
+        );
         let print = reduced_print(image, &full_region, window, factor);
         let (fw, fh) = (full_region.width, full_region.height);
         let (_, _, data) = read_slot(&path, full, window, (fw, fh), |stored| {
@@ -7343,7 +8192,7 @@ mod tests {
             REMOVE_FAST.id.hash(&mut h);
             root.join(format!("{:016x}.fill", h.finish()))
         };
-        let (root, file) = (Path::new("/cache"), Path::new("/f/IMG_0001.CR3"));
+        let (root, file) = (Path::new("/cache"), Path::new("/f/IMG_0001.NEF"));
         let mut patch = patch_at(3, 0.4, 2);
         patch.points.push([0.45, 0.3]);
         patch.remove = true;
@@ -7352,6 +8201,60 @@ mod tests {
         let (window, _) = window_for(&region, size.0, size.1);
         let slot = fill_slot(root, file, &patch, &region, size, window);
         assert_eq!(slot, old_slot(root, file, &patch, &region, size, window));
+        // A CR3's fills, made on a base the headroom moves, are made
+        // again; no other file's are.
+        let cr3 = Path::new("/f/IMG_0001.CR3");
+        assert_ne!(
+            fill_slot(root, cr3, &patch, &region, size, window),
+            old_slot(root, cr3, &patch, &region, size, window)
+        );
+        // The slot it had is the one let go of; another file has none.
+        let earlier = earlier_fill_slots(root, cr3, &patch, &region, size, window);
+        assert_eq!(
+            earlier[0],
+            old_slot(root, cr3, &patch, &region, size, window)
+        );
+        assert_eq!(
+            earlier[1],
+            fill_slot_under(root, cr3, &patch, &region, size, window, Some("headroom-1"))
+        );
+        assert_eq!(
+            earlier[2],
+            fill_slot_under(root, cr3, &patch, &region, size, window, Some("headroom-2"))
+        );
+        assert!(earlier_fill_slots(root, file, &patch, &region, size, window).is_empty());
+        // A DNG's, made on a base the linearization moves, likewise;
+        // before it there was no version.
+        let dng = Path::new("/f/L1000001.DNG");
+        assert_ne!(
+            fill_slot(root, dng, &patch, &region, size, window),
+            old_slot(root, dng, &patch, &region, size, window)
+        );
+        assert_eq!(
+            fill_slot(root, dng, &patch, &region, size, window),
+            fill_slot_under(
+                root,
+                dng,
+                &patch,
+                &region,
+                size,
+                window,
+                Some("linearization-1")
+            )
+        );
+        assert_eq!(
+            earlier_fill_slots(root, dng, &patch, &region, size, window),
+            [old_slot(root, dng, &patch, &region, size, window)]
+        );
+        assert_eq!(earlier_linearizations(), [None]);
+        assert_eq!(
+            earlier_headrooms(),
+            [
+                None,
+                Some("headroom-1".to_string()),
+                Some("headroom-2".to_string())
+            ]
+        );
         // The print hashes the patch's JSON, which is as it was.
         let json = serde_json::to_string(&patch).unwrap();
         assert!(!json.contains("more"), "{json}");
@@ -7907,7 +8810,8 @@ mod tests {
             NeverHere::ShortCard("RTX 2060".into(), 6 << 30, remove_needs(512, false))
         );
         assert!(
-            why.words().starts_with("RTX 2060 has 6.0 GiB"),
+            why.words().starts_with("RTX 2060 has 6.0 GiB")
+                && why.words().ends_with("; this card is too small for it"),
             "{}",
             why.words()
         );
@@ -8047,7 +8951,12 @@ mod tests {
         let region = patch.region(image.width, image.height).unwrap();
         assert!(ai.could_fill_more(&retouch(&patch), &image));
         let (window, _) = ai.window_of(&patch, &region, &image);
-        ai.remember_failure(&patch, window, "the card answered garbage".into());
+        ai.remember_failure(
+            &patch,
+            window,
+            (image.width, image.height),
+            "the card answered garbage".into(),
+        );
         assert!(!ai.could_fill_more(&retouch(&patch), &image));
         match ai.fill(&patch, &region, &image) {
             Err(NoFill::Failed(why)) => assert_eq!(why, "the card answered garbage"),
@@ -8074,7 +8983,12 @@ mod tests {
             patches: vec![patch.clone(), bigger.clone(), heal],
         };
         assert_eq!(ai.fills_unmade(&both, &image), 2);
-        ai.remember_failure(&patch, window, "refused".into());
+        ai.remember_failure(
+            &patch,
+            window,
+            (image.width, image.height),
+            "refused".into(),
+        );
         assert_eq!(ai.fills_unmade(&both, &image), 1);
         // On a picture the fill was not made from, the fill is ahead
         // of a develop (the count is asked before the retouch) but a
@@ -8126,6 +9040,18 @@ mod tests {
         let made: Vec<f32> = (0..region.width * region.height * 3)
             .map(|i| i as f32 * 0.001 + 0.1)
             .collect();
+        // Fills of the CR3's from before the headroom and from under
+        // headroom-1 and headroom-2, in their old slots: let go when the
+        // new one is written.
+        let size = (image.width, image.height);
+        let root = ai.fills_root().unwrap();
+        let earlier = earlier_fill_slots(&root, &file, &patch, &region, size, window);
+        assert_eq!(earlier.len(), 3, "none, headroom-1, and headroom-2");
+        let orphans: Vec<PathBuf> = earlier.iter().map(|s| slot_files(s)[1].clone()).collect();
+        for orphan in &orphans {
+            std::fs::create_dir_all(orphan.parent().unwrap()).unwrap();
+            std::fs::write(orphan, b"a fill from before").unwrap();
+        }
         let kept = ai.keep_fill(
             &patch,
             &region,
@@ -8134,10 +9060,12 @@ mod tests {
             Engine::Remove,
             made.clone(),
         );
+        for orphan in &orphans {
+            assert!(!orphan.exists(), "{} let go", orphan.display());
+        }
         for (k, m) in kept.iter().zip(&made) {
             assert!((k - m).abs() <= m * 1e-3, "{k} against {m}");
         }
-        let size = (image.width, image.height);
         let print = window_print(&image, &region, window);
         let slot = ai.fill_path(&patch, &region, size, window).expect("a slot");
         let path = slot_files(&slot)[0].clone();
@@ -8179,7 +9107,7 @@ mod tests {
         assert!(!ai.fill_kept(&lama, &region, &image));
         ai.forget(Some(file.clone()));
         assert!(ai.fill_kept(&patch, &region, &image));
-        assert!(ai.fill_in_memory(&fast, window, &print).is_none());
+        assert!(ai.fill_in_memory(&fast, window, size, &print).is_none());
         ai.forget(Some(file.clone()));
         // So is the patch on the picture developed otherwise: another
         // white balance, or a virtual copy's, under the window.
@@ -8192,7 +9120,7 @@ mod tests {
         // The fill now in memory is no more the warmer picture's than
         // the slot was: the base changed under the window, the fill
         // is made again.
-        assert!(ai.fill_in_memory(&patch, window, &print).is_some());
+        assert!(ai.fill_in_memory(&patch, window, size, &print).is_some());
         assert!(!ai.fill_kept(&patch, &region, &warmer));
         assert!(ai.fill_kept(&patch, &region, &image));
         // So is the patch on a picture of another size.
@@ -8216,7 +9144,7 @@ mod tests {
         // the fill is made again in the same slot.
         write_fill(
             &path,
-            FILL_VERSION - 2,
+            FILL_VERSION_HASHED,
             Engine::Remove,
             size,
             window,
@@ -8243,7 +9171,12 @@ mod tests {
         assert!(!ai.fill_kept(&patch, &region, &image));
 
         // A failure is not kept on disk.
-        ai.remember_failure(&varied, window, "refused".into());
+        ai.remember_failure(
+            &varied,
+            window,
+            (image.width, image.height),
+            "refused".into(),
+        );
         ai.forget(Some(file));
         assert!(ai.failed_before(&varied, &region, &image).is_none());
 
@@ -8251,6 +9184,78 @@ mod tests {
         let mut memory = Ai::for_test(Store::at(dir.join("models")), vec![Provider::Cpu]);
         memory.forget(Some(PathBuf::from("open.CR3")));
         assert!(memory.fill_path(&patch, &region, size, window).is_none());
+        crate::testing::remove_dir_retry(&dir);
+    }
+
+    /// What the crop hides of a Fill's window is the engine's to make
+    /// up with the hole, never its surround; and a fill is keyed by
+    /// what is hidden: made under one crop it is not served under
+    /// another that hides other pixels of its window, in memory or on
+    /// disk, and a crop that hides none of it keys it as no crop does.
+    #[test]
+    fn a_crop_over_a_fills_window_hides_it_and_keys_the_fill() {
+        let dir = crate::testing::scratch_dir("fill-cropped");
+        let mut ai = Ai::for_test_on_disk(Store::at(dir.join("models")));
+        ai.providers = vec![Provider::Cpu];
+        ai.forget(Some(PathBuf::from("open.CR3")));
+        let image = WorkingImage::new(200, 100);
+        let patch = Patch {
+            id: 3,
+            method: greycard_edit::retouch::Method::Fill,
+            points: vec![[0.9, 0.25]],
+            radius: 0.05,
+            feather: 0.0,
+            ..Default::default()
+        };
+        let region = patch.region(image.width, image.height).unwrap();
+        let (window, _) = ai.window_of(&patch, &region, &image);
+        let size = (image.width, image.height);
+        let crop = |c: [f32; 4]| {
+            let g = greycard_edit::Geometry {
+                crop: Some(greycard_edit::geometry::Crop::of(c)),
+                ..Default::default()
+            };
+            crate::shown::Shown::of(&g, 200.0, 100.0, None)
+        };
+
+        // The engine's hole: the coverage, and the hidden columns from
+        // x 190 on, and nothing else.
+        let near = crop([0.0, 0.0, 0.95, 1.0]);
+        let hidden = near.unwrap().hidden(window, size).expect("hides some");
+        let hole = engine_hole(&region, window, Some(&hidden));
+        let plain = engine_hole(&region, window, None);
+        for (i, (&h, &p)) in hole.iter().zip(&plain).enumerate() {
+            let px = window.x + i % window.width;
+            assert_eq!(h > 0.0, p > 0.0 || px >= 190, "{i}");
+        }
+        assert!(plain.iter().any(|&p| p > 0.0));
+
+        let made = |v: f32| vec![v; region.width * region.height * 3];
+        ai.keep_fill(&patch, &region, &image, window, Engine::Remove, made(0.1));
+        assert!(ai.fill_kept(&patch, &region, &image));
+        // Under the crop that hides the window's edge: not this fill.
+        ai.set_shown(near);
+        assert!(!ai.fill_kept(&patch, &region, &image));
+        ai.keep_fill(&patch, &region, &image, window, Engine::Remove, made(0.2));
+        assert!(ai.fill_kept(&patch, &region, &image));
+        // Another crop hiding other pixels of it: not that one either.
+        ai.set_shown(crop([0.0, 0.0, 0.97, 1.0]));
+        assert!(!ai.fill_kept(&patch, &region, &image));
+        // A crop that hides none of the window keys it as none does: the
+        // first fill, from disk.
+        ai.set_shown(crop([0.5, 0.0, 0.5, 1.0]));
+        assert!(ai.fill_kept(&patch, &region, &image));
+        ai.set_shown(None);
+        match ai.fill(&patch, &region, &image) {
+            Ok((data, _)) => assert!((data[0] - 0.1).abs() < 1e-3, "{}", data[0]),
+            Err(_) => panic!("the first fill, kept"),
+        }
+        // And the cropped one comes back under its crop.
+        ai.set_shown(near);
+        match ai.fill(&patch, &region, &image) {
+            Ok((data, _)) => assert!((data[0] - 0.2).abs() < 1e-3, "{}", data[0]),
+            Err(_) => panic!("the cropped fill, kept"),
+        }
         crate::testing::remove_dir_retry(&dir);
     }
 
@@ -8606,7 +9611,7 @@ mod tests {
         // Not on disk yet.
         assert!(
             reader
-                .fill_read_only(&patch, &small_region, &small, 2, full)
+                .fill_read_only(&patch, &small_region, &small, 2, full, None)
                 .is_none()
         );
         let kept = ai.keep_fill(&patch, &region, &big, window, Engine::Remove, fill);
@@ -8614,7 +9619,7 @@ mod tests {
             let small = reduced_by(&big, factor);
             let small_region = patch.region(small.width, small.height).unwrap();
             let read = reader
-                .fill_read_only(&patch, &small_region, &small, factor, full)
+                .fill_read_only(&patch, &small_region, &small, factor, full, None)
                 .unwrap_or_else(|| panic!("read at {factor}"));
             assert_eq!(read.len(), small_region.width * small_region.height * 3);
             let want = box_down(&kept, &region, &small_region, &small, factor);
@@ -8628,14 +9633,14 @@ mod tests {
             // Another file's slot is not this one's.
             assert!(
                 other_reader
-                    .fill_read_only(&patch, &small_region, &small, factor, full)
+                    .fill_read_only(&patch, &small_region, &small, factor, full, None)
                     .is_none()
             );
             // A picture the fill was not made from.
             let moved = scaled(&small, 1.0 + REDUCED_PRINT_TOLERANCE * 2.0);
             assert!(
                 reader
-                    .fill_read_only(&patch, &small_region, &moved, factor, full)
+                    .fill_read_only(&patch, &small_region, &moved, factor, full, None)
                     .is_none()
             );
         }
@@ -8644,17 +9649,65 @@ mod tests {
         let third_region = patch.region(third.width, third.height).unwrap();
         assert!(
             reader
-                .fill_read_only(&patch, &third_region, &third, 3, (402, 240))
+                .fill_read_only(&patch, &third_region, &third, 3, (402, 240), None)
                 .is_none()
         );
         assert!(
             reader
-                .fill_read_only(&patch, &third_region, &third, 3, full)
+                .fill_read_only(&patch, &third_region, &third, 3, full, None)
                 .is_none()
         );
         // Off the disk, no reader.
         let memory = Ai::for_test(Store::at(dir.join("models")), vec![Provider::Cpu]);
         assert!(memory.fill_reader(&file).is_none());
+        crate::testing::remove_dir_retry(&dir);
+    }
+
+    /// A fill kept under a crop that hides part of its window is read
+    /// by a reduced develop under that crop, and not under none: the
+    /// reduced develop keys it as the full one does.
+    #[test]
+    fn a_reduced_develop_reads_a_fill_kept_under_its_crop() {
+        let dir = crate::testing::scratch_dir("fill-reduced-crop");
+        let mut ai = Ai::for_test_on_disk(Store::at(dir.join("models")));
+        ai.providers = vec![Provider::Cpu];
+        let file = PathBuf::from("open.CR3");
+        ai.forget(Some(file.clone()));
+        let mut big = WorkingImage::new(400, 240);
+        big.data.fill(0.3);
+        let full = (big.width, big.height);
+        let patch = Patch {
+            id: 4,
+            method: greycard_edit::retouch::Method::Fill,
+            points: vec![[0.92, 0.5]],
+            radius: 0.04,
+            remove: true,
+            ..Default::default()
+        };
+        let geometry = greycard_edit::Geometry {
+            crop: Some(greycard_edit::geometry::Crop::of([0.0, 0.0, 0.96, 1.0])),
+            ..Default::default()
+        };
+        let shown = crate::shown::Shown::of(&geometry, 400.0, 240.0, None);
+        let region = patch.region(full.0, full.1).unwrap();
+        let (window, _) = ai.window_of(&patch, &region, &big);
+        assert!(
+            shown.unwrap().hidden(window, full).is_some(),
+            "the crop hides some of it"
+        );
+        ai.set_shown(shown);
+        let made = vec![0.6; region.width * region.height * 3];
+        ai.keep_fill(&patch, &region, &big, window, Engine::Remove, made);
+        let reader = ai.fill_reader(&file).expect("on disk");
+        let small = reduced_by(&big, 2);
+        let small_region = patch.region(small.width, small.height).unwrap();
+        let read = |shown: Option<&crate::shown::Shown>| {
+            reader.fill_read_only(&patch, &small_region, &small, 2, full, shown)
+        };
+        let under = read(shown.as_ref()).expect("read under its crop");
+        let centre = (small_region.height / 2 * small_region.width + small_region.width / 2) * 3;
+        assert!((under[centre] - 0.6).abs() < 1e-3, "{}", under[centre]);
+        assert!(read(None).is_none(), "not under no crop");
         crate::testing::remove_dir_retry(&dir);
     }
 
@@ -8747,7 +9800,7 @@ mod tests {
         // Not exactly flat: the middle's evening carries a trace of the
         // band's own grain into the hole, a hundredth of the grain.
         assert!(spread(&out) < 0.02 * sigma, "flat before: {}", spread(&out));
-        let r = regrain(&mut out, &region, window, &image, 3).expect("the frame has noise");
+        let r = regrain(&mut out, &region, window, None, &image, 3).expect("the frame has noise");
         let want = sigma * (1.0f32 + 0.09 / 3.0).sqrt();
         let after = spread(&out);
         assert!((after / want - 1.0).abs() < 0.2, "{after} against {want}");
@@ -8871,8 +9924,8 @@ mod tests {
         });
         let before = spread(&out, &middle);
         let mut again = out.clone();
-        regrain(&mut out, &region, window, &image, 7).expect("the frame has noise");
-        regrain(&mut again, &region, window, &image, 7).unwrap();
+        regrain(&mut out, &region, window, None, &image, 7).expect("the frame has noise");
+        regrain(&mut again, &region, window, None, &image, 7).unwrap();
         assert_eq!(out, again);
         let mut patched = image.clone();
         greycard_core::develop::retouch::apply_replacement(&mut patched, &region, &out, 1.0);
@@ -10453,19 +11506,84 @@ mod tests {
     #[test]
     fn a_removal_needs_its_peak_free() {
         const GIB: u64 = 1 << 30;
-        assert!(short_of_memory("the card", 6 * GIB, 512, false).is_some());
-        assert!(short_of_memory("the card", 7 * GIB, 512, false).is_none());
-        assert!(short_of_memory("the card", 7 * GIB, 1024, false).is_some());
-        assert!(short_of_memory("the card", 8 * GIB, 1024, false).is_none());
-        assert!(short_of_memory("the card", 2 * GIB, 512, true).is_some());
-        assert!(short_of_memory("the card", 3 * GIB, 512, true).is_none());
-        assert!(short_of_memory("the card", 5 * GIB, 1024, true).is_some());
-        assert!(short_of_memory("the card", 6 * GIB, 1024, true).is_none());
-        let why = short_of_memory("the card", 3 * GIB, 1024, false).unwrap();
+        assert!(short_of_memory("the card", 6 * GIB, None, 512, false).is_some());
+        assert!(short_of_memory("the card", 7 * GIB, None, 512, false).is_none());
+        assert!(short_of_memory("the card", 7 * GIB, None, 1024, false).is_some());
+        assert!(short_of_memory("the card", 8 * GIB, None, 1024, false).is_none());
+        assert!(short_of_memory("the card", 2 * GIB, None, 512, true).is_some());
+        assert!(short_of_memory("the card", 3 * GIB, None, 512, true).is_none());
+        assert!(short_of_memory("the card", 5 * GIB, None, 1024, true).is_some());
+        assert!(short_of_memory("the card", 6 * GIB, None, 1024, true).is_none());
+        let why = short_of_memory("the card", 3 * GIB, None, 1024, false).unwrap();
         assert_eq!(
             why,
             "the card has 3.0 GiB free, short of the 7.1 GiB a removal at 1024 needs; another program may be using it"
         );
+    }
+
+    /// Issue 142's 8 GB laptop card offers 7.0 GiB at most: a removal
+    /// at 1024 (7.1) is past it, and the card is said too small, not
+    /// another program's. One the card could hold, or a card whose
+    /// offer is not known, keeps the words it had.
+    #[test]
+    fn a_removal_past_what_the_card_offers_says_the_card_is_too_small() {
+        const GIB: u64 = 1 << 30;
+        let said = |offer, size| short_of_memory("the card", 6 * GIB, offer, size, false).unwrap();
+        assert_eq!(
+            said(Some(7 * GIB), 1024),
+            "the card has 6.0 GiB free, short of the 7.1 GiB a removal at 1024 needs; this card is too small for a fill this large"
+        );
+        let busy = "the card has 6.0 GiB free, short of the 7.1 GiB a removal at 1024 needs; another program may be using it";
+        assert_eq!(said(Some(8 * GIB), 1024), busy);
+        assert_eq!(said(None, 1024), busy);
+        // At 512, the least, it is the card that is too small.
+        assert_eq!(
+            said(Some(6 * GIB), 512),
+            "the card has 6.0 GiB free, short of the 6.3 GiB a removal at 512 needs; this card is too small for it"
+        );
+    }
+
+    /// An offer under 80% of the card's whole heap is another program's
+    /// hold from before our first read, not the card's size: a 16 GiB
+    /// card offering 5.5 keeps the old words for a removal at 512 (6.3);
+    /// issue 142's card, 7.0 of 8.0, is too small at 1024; a heap not
+    /// known keeps the old words.
+    #[test]
+    fn a_low_offer_beside_a_large_heap_is_not_the_cards_size() {
+        const GIB: u64 = 1 << 30;
+        let offer = |o: u64, heap| offer_as_size(Some(o), heap);
+        let said = |offer, size| short_of_memory("the card", 5 * GIB, offer, size, false).unwrap();
+        let busy = "another program may be using it";
+        assert!(said(offer(55 * GIB / 10, Some(16 * GIB)), 512).ends_with(busy));
+        assert!(
+            said(offer(7 * GIB, Some(8 * GIB)), 1024).ends_with("too small for a fill this large")
+        );
+        assert!(said(offer(55 * GIB / 10, None), 512).ends_with(busy));
+        assert_eq!(offer(8 * GIB, Some(10 * GIB)), Some(8 * GIB));
+        assert_eq!(offer(8 * GIB - 1, Some(10 * GIB)), None);
+    }
+
+    /// With its UNet held a removal at 1024 needs less of the card free
+    /// (5.7), but a card offering 7.0 can never run it cold (7.1): too
+    /// small all the same, the refusal itself as it was.
+    #[test]
+    fn a_held_unet_does_not_hide_a_card_too_small() {
+        const GIB: u64 = 1 << 30;
+        let why = short_of_memory("the card", 5 * GIB, Some(7 * GIB), 1024, true).unwrap();
+        assert!(
+            why.ends_with("; this card is too small for a fill this large"),
+            "{why}"
+        );
+        assert!(short_of_memory("the card", 6 * GIB, Some(7 * GIB), 1024, true).is_none());
+    }
+
+    /// Where 512 is past the offer too, a smaller window would not run
+    /// either: the card is too small for it, not for a fill this large.
+    #[test]
+    fn a_fill_this_large_only_where_a_smaller_one_fits() {
+        const GIB: u64 = 1 << 30;
+        let why = short_of_memory("the card", 5 * GIB, Some(6 * GIB), 1024, false).unwrap();
+        assert!(why.ends_with("; this card is too small for it"), "{why}");
     }
 
     /// The learned denoiser's need follows its tile, measured at 256,
@@ -10478,17 +11596,24 @@ mod tests {
         assert!(denoise_needs(384) < denoise_needs(512));
         assert_eq!(denoise_needs(500), denoise_needs(512));
         // The 4 GB card's 1.8 GiB: short at 512, room at 384.
-        assert!(short_of("c", 18 * GIB / 10, denoise_needs(512), "d").is_some());
-        assert!(short_of("c", 18 * GIB / 10, denoise_needs(384), "d").is_none());
-        assert!(short_of("c", 2 * GIB, denoise_needs(512), "d").is_none());
-        assert!(short_of("c", 4 * GIB, denoise_needs(1024), "d").is_some());
-        assert!(short_of("c", 5 * GIB, denoise_needs(1024), "d").is_none());
+        assert!(short_of("c", 18 * GIB / 10, denoise_needs(512), "d", None).is_some());
+        assert!(short_of("c", 18 * GIB / 10, denoise_needs(384), "d", None).is_none());
+        assert!(short_of("c", 2 * GIB, denoise_needs(512), "d", None).is_none());
+        assert!(short_of("c", 4 * GIB, denoise_needs(1024), "d", None).is_some());
+        assert!(short_of("c", 5 * GIB, denoise_needs(1024), "d", None).is_none());
         assert!(denoise_needs(2048) > 4 * denoise_needs(1024) - 4 * CARD_MARGIN);
-        assert!(short_of("c", 4 * GIB, mask_needs(MaskModel::People), "m").is_some());
-        assert!(short_of("c", 2 * GIB, mask_needs(MaskModel::Sky), "m").is_none());
-        assert!(short_of("c", 5 * GIB, mask_needs(MaskModel::People), "m").is_none());
-        assert!(short_of("c", 6 * GIB, mask_needs(MaskModel::Subject), "m").is_some());
-        let why = short_of("the card", GIB, denoise_needs(1024), "the learned denoiser").unwrap();
+        assert!(short_of("c", 4 * GIB, mask_needs(MaskModel::People), "m", None).is_some());
+        assert!(short_of("c", 2 * GIB, mask_needs(MaskModel::Sky), "m", None).is_none());
+        assert!(short_of("c", 5 * GIB, mask_needs(MaskModel::People), "m", None).is_none());
+        assert!(short_of("c", 6 * GIB, mask_needs(MaskModel::Subject), "m", None).is_some());
+        let why = short_of(
+            "the card",
+            GIB,
+            denoise_needs(1024),
+            "the learned denoiser",
+            None,
+        )
+        .unwrap();
         assert!(
             why.starts_with("the card has 1.0 GiB free, short of the 4.3 GiB"),
             "{why}"
@@ -10596,7 +11721,7 @@ mod tests {
         assert_eq!(released.load(Ordering::Relaxed), 0);
         assert_eq!(told.load(Ordering::Relaxed), 0);
         // What the log says of each.
-        let why = short_of("the card", need - GIB / 2, need, "a learned mask").unwrap();
+        let why = short_of("the card", need - GIB / 2, need, "a learned mask", None).unwrap();
         assert_eq!(
             second_ask_said(&why, &sets, Some(GIB), Some(5 * GIB / 2), true),
             "a learned mask: begun on the card once the engine let go of the sharpen's \
@@ -10882,6 +12007,351 @@ mod tests {
         assert!(unknown.holds_sessions());
     }
 
+    /// A window of 1000 by 800, run at 1024.
+    const LARGE: Window = Window {
+        x: 0,
+        y: 0,
+        width: 1000,
+        height: 800,
+    };
+
+    /// An Ai on a test's card with `free` bytes free and no UNet held.
+    fn cold_on(free: u64) -> Ai {
+        let mut ai = on_card(free, 0);
+        ai.unet_held_by_test = Some(false);
+        ai
+    }
+
+    fn refused_why(got: Result<usize, NoFill>) -> String {
+        match got {
+            Err(NoFill::Failed(why)) => why,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// A window run at 1024 runs at 512 only as the last resort: short
+    /// of 1024 it is refused at 1024 as it always was, and the worker
+    /// told; once the card was given back across the worker's models it
+    /// is asked again, and short of 1024 still runs at 512, nothing said
+    /// refused. With the room for 1024 then, it runs at 1024. Its free
+    /// memory not known, as on unified memory, it runs at 1024; a window
+    /// of 512 or less is asked at 512 alone, as before.
+    #[test]
+    fn a_large_fill_runs_at_512_only_once_the_card_was_given_back() {
+        let patch = remove_patch(31);
+        assert_eq!(
+            cold_on(8 * GIB).room_for_remove(&patch, LARGE).ok(),
+            Some(1024)
+        );
+        let mut ai = cold_on(65 * GIB / 10);
+        let why = refused_why(ai.room_for_remove(&patch, LARGE));
+        assert_eq!(
+            why,
+            "the card has 6.5 GiB free, short of the 7.1 GiB a removal at 1024 needs; another program may be using it"
+        );
+        assert!(ai.take_fill_short());
+        assert_eq!(ai.take_short().as_deref(), Some(why.as_str()));
+        // Asked again with nothing given back, it is the same refusal.
+        assert!(ai.room_for_remove(&patch, LARGE).is_err());
+        assert!(ai.card_given_back());
+        assert!(!ai.card_given_back(), "taken");
+        ai.clear_shorts();
+        assert_eq!(ai.room_for_remove(&patch, LARGE).ok(), Some(512));
+        assert!(!ai.take_fill_short() && ai.take_short().is_none());
+        assert!(ai.short_figures.is_none() && ai.refused.is_empty());
+        // Due at 512 once: asked again after, it is at 1024 first.
+        assert!(ai.room_for_remove(&patch, LARGE).is_err());
+        // The card given back with room for 1024 then: 1024.
+        let mut ai = cold_on(65 * GIB / 10);
+        assert!(ai.room_for_remove(&patch, LARGE).is_err());
+        ai.free_memory_by_test = Some(8 * GIB);
+        assert!(ai.card_given_back());
+        assert_eq!(ai.room_for_remove(&patch, LARGE).ok(), Some(1024));
+        let mut ai = cold_on(0);
+        ai.free_memory_by_test = None;
+        assert_eq!(ai.room_for_remove(&patch, LARGE).ok(), Some(1024));
+        let small = Window {
+            width: 400,
+            height: 300,
+            ..LARGE
+        };
+        assert_eq!(
+            cold_on(65 * GIB / 10).room_for_remove(&patch, small).ok(),
+            Some(512)
+        );
+    }
+
+    /// Short of 512 too on the last ask, a removal is refused at 512 in
+    /// the words the card's memory has for it, its figures 512's: no
+    /// "too small for a fill this large" where 512 would run with the
+    /// memory free.
+    #[test]
+    fn a_large_fill_short_of_both_is_refused_at_512() {
+        let patch = remove_patch(33);
+        let mut ai = cold_on(6 * GIB);
+        assert!(ai.room_for_remove(&patch, LARGE).is_err());
+        assert!(ai.card_given_back());
+        ai.clear_shorts();
+        let why = refused_why(ai.room_for_remove(&patch, LARGE));
+        assert_eq!(
+            why,
+            "the card has 6.0 GiB free, short of the 6.3 GiB a removal at 512 needs; another program may be using it"
+        );
+        assert!(ai.take_fill_short());
+        assert_eq!(ai.take_short().as_deref(), Some(why.as_str()));
+        let figures = (remove_needs(512, false), 6 * GIB);
+        assert_eq!(ai.short_figures, Some(figures));
+        let (_, _, at, need, said) = &ai.refused[&patch.id];
+        assert_eq!(((*need, *at), said), (figures, &why));
+        // On a card that never offered 1024's need but offers 512's, the
+        // first ask is at 512, and refused in 512's words.
+        let mut ai = cold_on(6 * GIB);
+        ai.card_by_test = Some(Some(8 * GIB));
+        ai.offer_by_test = Some(7 * GIB);
+        assert_eq!(refused_why(ai.room_for_remove(&patch, LARGE)), why);
+        assert_eq!(ai.short_figures, Some(figures));
+    }
+
+    /// A card that can never hold 1024, its whole memory or the most it
+    /// has offered under 1024's need, runs a large window at 512 on the
+    /// first ask, nothing refused; one whose offer is another program's
+    /// hold (under 80% of its whole) is asked at 1024 first.
+    #[test]
+    fn a_card_that_never_holds_1024_runs_at_512_at_once() {
+        let patch = remove_patch(34);
+        let mut ai = cold_on(65 * GIB / 10);
+        ai.card_by_test = Some(Some(7 * GIB));
+        assert_eq!(ai.room_for_remove(&patch, LARGE).ok(), Some(512));
+        assert!(!ai.take_fill_short() && ai.refused.is_empty());
+        let mut ai = cold_on(65 * GIB / 10);
+        ai.card_by_test = Some(Some(8 * GIB));
+        ai.offer_by_test = Some(7 * GIB);
+        assert_eq!(ai.room_for_remove(&patch, LARGE).ok(), Some(512));
+        let mut ai = cold_on(65 * GIB / 10);
+        ai.card_by_test = Some(Some(16 * GIB));
+        ai.offer_by_test = Some(7 * GIB);
+        assert!(ai.room_for_remove(&patch, LARGE).is_err());
+    }
+
+    /// An export short of 1024 for a few reads waits at 1024 as it
+    /// always did and runs at 1024 once the card has the room; short at
+    /// every read it is refused at 1024 after its tries. Its frame tried
+    /// again with the fallback on runs at 512 where 1024 is still short.
+    #[test]
+    fn an_export_waits_for_1024_before_it_falls_to_512() {
+        let patch = remove_patch(41);
+        let patient = |ai: &mut Ai| {
+            ai.set_patience(Some(Patience {
+                tries: 5,
+                wait: std::time::Duration::ZERO,
+                canceled: Arc::new(|| false),
+            }))
+        };
+        let mut ai = Ai::for_test(Store::at("no-store"), vec![Provider::WebGpu, Provider::Cpu]);
+        ai.unet_held_by_test = Some(false);
+        patient(&mut ai);
+        let mut figures = vec![Some(65 * GIB / 10); 6];
+        figures.push(Some(8 * GIB));
+        set_free_by_test(Some(figures));
+        let before = waits_by_test();
+        let got = ai.room_for_remove(&patch, LARGE);
+        let waits = waits_by_test() - before;
+        set_free_by_test(None);
+        assert_eq!(got.ok(), Some(1024));
+        assert!(waits > 0, "waited");
+        // Short at every read: refused at 1024 after its tries.
+        let mut ai = Ai::for_test(Store::at("no-store"), vec![Provider::WebGpu, Provider::Cpu]);
+        ai.unet_held_by_test = Some(false);
+        patient(&mut ai);
+        set_free_by_test(Some(vec![Some(65 * GIB / 10)]));
+        let before = waits_by_test();
+        let why = refused_why(ai.room_for_remove(&patch, LARGE));
+        assert_eq!(waits_by_test() - before, 4);
+        assert!(why.contains("a removal at 1024 needs"), "{why}");
+        assert!(ai.short_failed());
+        // The frame tried again, the fallback on: 512.
+        ai.retry_patiently();
+        ai.set_fill_fallback(true);
+        let got = ai.room_for_remove(&patch, LARGE);
+        set_free_by_test(None);
+        assert_eq!(got.ok(), Some(512));
+        assert!(!ai.short_failed() && ai.take_short().is_none());
+    }
+
+    /// A queue of fills holding the UNet at 512 on a 16 GiB card: a
+    /// large fill after the small ones keeps that UNet and is refused at
+    /// 1024, not run at 512 beside it; the worker's give-back lets it go
+    /// and the fill, asked again, runs at 1024.
+    #[test]
+    fn a_queues_unet_at_512_is_let_go_for_a_large_fill_at_1024() {
+        let unet = greycard_ai::remove::UNET_ON_CARD;
+        let mut ai = on_card(3 * GIB, 0);
+        ai.card_by_test = Some(Some(16 * GIB));
+        ai.unet_by_test = Some((512, unet));
+        let small = Window {
+            width: 400,
+            height: 300,
+            ..LARGE
+        };
+        assert_eq!(ai.room_for_remove(&remove_patch(1), small).ok(), Some(512));
+        let patch = remove_patch(2);
+        assert!(ai.room_for_remove(&patch, LARGE).is_err());
+        assert_eq!(ai.unet_by_test, Some((512, unet)), "the queue's UNet kept");
+        assert!(give_back_card(&mut [&mut ai], true));
+        assert!(ai.card_given_back());
+        assert_eq!(ai.room_for_remove(&patch, LARGE).ok(), Some(1024));
+    }
+
+    /// A window past 2048, which 512 would take down by more than four,
+    /// is asked at 1024 alone: refused at 1024, never due at 512, on a
+    /// card short of it now and on one that never holds it.
+    #[test]
+    fn a_window_past_2048_never_falls_to_512() {
+        let patch = remove_patch(35);
+        let wide = Window {
+            width: 2100,
+            height: 1000,
+            ..LARGE
+        };
+        let mut ai = cold_on(65 * GIB / 10);
+        let why = refused_why(ai.room_for_remove(&patch, wide));
+        assert!(why.contains("a removal at 1024 needs"), "{why}");
+        assert!(!ai.card_given_back());
+        assert!(ai.room_for_remove(&patch, wide).is_err());
+        ai.set_fill_fallback(true);
+        assert!(ai.room_for_remove(&patch, wide).is_err());
+        let mut ai = cold_on(65 * GIB / 10);
+        ai.card_by_test = Some(Some(7 * GIB));
+        let why = refused_why(ai.room_for_remove(&patch, wide));
+        assert!(why.contains("a removal at 1024 needs"), "{why}");
+        // At 2048 it may.
+        let edge = Window {
+            width: 2048,
+            ..wide
+        };
+        assert_eq!(ai.room_for_remove(&patch, edge).ok(), Some(512));
+    }
+
+    /// An integrated GPU: its free memory not known, its adapter's
+    /// figure the driver's carve-out. A large window runs at 1024 there,
+    /// as wherever the free memory is not known, not at 512.
+    #[test]
+    fn an_integrated_gpus_carve_out_is_not_the_cards_size() {
+        let patch = remove_patch(51);
+        let mut ai = cold_on(0);
+        ai.free_memory_by_test = None;
+        ai.card_by_test = Some(Some(2 * GIB));
+        assert_eq!(ai.room_for_remove(&patch, LARGE).ok(), Some(1024));
+    }
+
+    /// In a round asked again after the card was given back across the
+    /// worker's models (the fallback on), a large fill asked there for
+    /// the first time and short of 1024 runs at 512 in the same ask,
+    /// nothing said refused and nothing left due for a round that will
+    /// not come; short of 512 too, it is refused at 512.
+    #[test]
+    fn a_large_fill_first_asked_in_the_round_asked_again_runs_at_512() {
+        let patch = remove_patch(52);
+        let mut ai = cold_on(65 * GIB / 10);
+        ai.set_fill_fallback(true);
+        assert_eq!(ai.room_for_remove(&patch, LARGE).ok(), Some(512));
+        assert!(!ai.take_fill_short() && ai.refused.is_empty());
+        assert!(!ai.asks_again_at_512(&patch) && !ai.card_given_back());
+        let mut ai = cold_on(6 * GIB);
+        ai.set_fill_fallback(true);
+        let why = refused_why(ai.room_for_remove(&patch, LARGE));
+        assert!(why.contains("a removal at 512 needs"), "{why}");
+        assert!(!ai.asks_again_at_512(&patch));
+    }
+
+    /// A refusal at 1024 a window's round left, its round given up for
+    /// another job, is not an export frame's: a frame's patience clears
+    /// it, so the frame is not tried again for it.
+    #[test]
+    fn a_window_rounds_refusal_at_1024_is_not_an_export_frames() {
+        let patch = remove_patch(53);
+        let mut ai = cold_on(65 * GIB / 10);
+        assert!(ai.room_for_remove(&patch, LARGE).is_err());
+        assert!(ai.asks_again_at_512(&patch));
+        ai.set_patience(Some(Patience {
+            tries: 1,
+            wait: std::time::Duration::ZERO,
+            canceled: Arc::new(|| false),
+        }));
+        assert!(!ai.asks_again_at_512(&patch));
+        assert!(!ai.card_given_back());
+    }
+
+    /// A fill round refuses a large fill at 1024 and gives way to a newer
+    /// develop before the worker asks again: the newer develop's round
+    /// asks 1024 again, not holding it refused at 1024's figures, so it
+    /// is still to come and the round asked again runs it at 512.
+    #[test]
+    fn a_refusal_at_1024_a_round_gave_way_on_is_asked_again() {
+        let image = WorkingImage::new(3000, 2000);
+        let big = Patch {
+            radius: 0.15,
+            ..remove_patch(54)
+        };
+        let region = big.region(image.width, image.height).unwrap();
+        let mut ai = cold_on(65 * GIB / 10);
+        ai.clear_shorts();
+        assert!(ai.fill(&big, &region, &image).is_err());
+        assert!(ai.asks_again_at_512(&big));
+        // Given way: the newer develop's round.
+        ai.clear_shorts();
+        assert!(ai.fill(&big, &region, &image).is_err());
+        assert!(ai.take_fill_short(), "the card asked again");
+        assert!(ai.asks_again_at_512(&big), "still to come");
+        assert!(ai.card_given_back());
+        ai.clear_shorts();
+        ai.fill(&big, &region, &image).expect("made at 512");
+        assert_eq!(ai.ran_at_by_test, [(big.name(), 512)]);
+    }
+
+    /// Through the fill: a large window refused at 1024 is left for the
+    /// worker; asked again after the card was given back it is made at
+    /// 512 and kept, the side it ran at the fill's; with the room, at
+    /// 1024; a card whose whole is short of 512 is refused before any
+    /// ask.
+    #[test]
+    fn a_large_fill_is_made_at_the_side_it_ran_at() {
+        let image = WorkingImage::new(3000, 2000);
+        let big = Patch {
+            radius: 0.15,
+            ..remove_patch(32)
+        };
+        let region = big.region(image.width, image.height).unwrap();
+        let mut ai = cold_on(65 * GIB / 10);
+        let (window, _) = ai.window_of(&big, &region, &image);
+        assert_eq!(
+            greycard_ai::remove::run_size(window.width, window.height),
+            Some(1024),
+            "{window:?}"
+        );
+        assert!(matches!(
+            ai.fill(&big, &region, &image),
+            Err(NoFill::Failed(_))
+        ));
+        assert!(ai.ran_at_by_test.is_empty());
+        // Refused as it is, it is not asked of the card again.
+        assert!(ai.fill(&big, &region, &image).is_err());
+        assert!(ai.card_given_back());
+        ai.fill(&big, &region, &image).expect("made at 512");
+        assert_eq!(ai.ran_at_by_test, [(big.name(), 512)]);
+        assert!(ai.fill_kept(&big, &region, &image));
+        let mut ai = cold_on(8 * GIB);
+        ai.fill(&big, &region, &image).expect("made at 1024");
+        assert_eq!(ai.ran_at_by_test, [(big.name(), 1024)]);
+        let mut ai = cold_on(65 * GIB / 10);
+        ai.card_by_test = Some(Some(6 * GIB));
+        assert!(matches!(
+            ai.fill(&big, &region, &image),
+            Err(NoFill::Card { .. })
+        ));
+        assert!(ai.ran_at_by_test.is_empty());
+    }
+
     /// A removal short of the card after its own give-back has the
     /// engine let go of what a develop makes again and asks once more:
     /// with the room then, it begins and nothing is refused; short
@@ -10958,6 +12428,37 @@ mod tests {
             Err(NoFill::Failed(_))
         ));
         assert_eq!(calls.load(Ordering::Relaxed), 0);
+    }
+
+    /// A removal refused on a card that never offered its need is said
+    /// too small for it; one that offered it, or whose offer is not
+    /// known, is said as before. The offer is read after the free
+    /// figure: on a fresh card the refusing read is the first, and its
+    /// budget is in the offer judged.
+    #[test]
+    fn a_removal_past_the_cards_offer_is_refused_as_too_small() {
+        let image = WorkingImage::new(200, 100);
+        let patch = remove_patch(22);
+        let region = patch.region(image.width, image.height).unwrap();
+        let refused = |offer| {
+            let mut ai = on_card(59 * GIB / 10, 0);
+            ai.card_by_test = Some(Some(7 * GIB));
+            ai.offer_by_test = offer;
+            // No budget read before the refusal's own.
+            assert_eq!(ai.card_offer(), None);
+            match ai.fill(&patch, &region, &image) {
+                Err(NoFill::Failed(why)) => why,
+                other => panic!("{:?}", other.map(|(_, e)| e)),
+            }
+        };
+        let said = "the card has 5.9 GiB free, short of the 6.3 GiB a removal at 512 needs";
+        assert_eq!(
+            refused(Some(6 * GIB)),
+            format!("{said}; this card is too small for it")
+        );
+        let busy = format!("{said}; another program may be using it");
+        assert_eq!(refused(Some(7 * GIB)), busy);
+        assert_eq!(refused(None), busy);
     }
 
     /// Short of a removal because of its own sessions, the Ai gives the
@@ -11039,15 +12540,15 @@ mod tests {
     #[test]
     fn the_denoiser_is_refused_on_a_short_card() {
         set_free_by_test(Some(vec![Some(GIB)]));
-        let short = denoise_room(1024).expect_err("short");
+        let short = denoise_room(&greycard_ai::DENOISE_BEST, 1024).expect_err("short");
         assert!(
             short.0.contains("the learned denoiser at a tile of 1024"),
             "{short}"
         );
         set_free_by_test(Some(vec![Some(3 * GIB)]));
-        assert!(denoise_room(512).is_ok());
+        assert!(denoise_room(&greycard_ai::DENOISE_BEST, 512).is_ok());
         set_free_by_test(Some(vec![None]));
-        assert!(denoise_room(1024).is_ok());
+        assert!(denoise_room(&greycard_ai::DENOISE_BEST, 1024).is_ok());
         set_free_by_test(None);
         let e = anyhow::Error::new(CardShort("short".into()));
         assert!(matches!(
@@ -11077,6 +12578,102 @@ mod tests {
         (ai, calls)
     }
 
+    /// Each X-Trans tier asks the card for its own peak: on a 6 GB card
+    /// with 4.5 GiB free the best tier (5.6 GiB at 1024) runs at 512,
+    /// the fast one (2.7) at its own 1024; the Bayer tiers' answers, by
+    /// the Bayer best's table (4.35), are what they were.
+    #[test]
+    fn each_xtrans_tier_asks_for_its_own_peak() {
+        let six = || {
+            let (mut ai, _) = denoiser_on_card(45 * GIB / 10, 0);
+            ai.card_by_test = Some(Some(6 * GIB));
+            ai
+        };
+        use greycard_ai::{
+            DENOISE_BALANCED, DENOISE_BEST, DENOISE_FAST, DENOISE_XTRANS_BALANCED,
+            DENOISE_XTRANS_BEST, DENOISE_XTRANS_FAST,
+        };
+        let on = |model| six().denoise_room_at(model, 1024).unwrap();
+        assert_eq!(on(&DENOISE_XTRANS_BEST), DenoiseOn::Tile(512));
+        assert_eq!(on(&DENOISE_XTRANS_BALANCED), DenoiseOn::Card);
+        assert_eq!(on(&DENOISE_XTRANS_FAST), DenoiseOn::Card);
+        for bayer in [&DENOISE_FAST, &DENOISE_BALANCED, &DENOISE_BEST] {
+            assert_eq!(on(bayer), DenoiseOn::Card);
+            for tile in [256, 384, 512, 1024, 2048] {
+                assert_eq!(denoise_needs_of(bayer, tile), denoise_needs(tile));
+            }
+        }
+        assert_eq!(
+            gib_said(denoise_needs_of(&DENOISE_XTRANS_BEST, 1024)),
+            "5.6"
+        );
+        assert_eq!(
+            gib_said(denoise_needs_of(&DENOISE_XTRANS_FAST, 1024)),
+            "2.7"
+        );
+        // The measured smaller tiles: best's 1.89 at 512 is 2.4 with the
+        // margin, fast's 0.17 at 256 is 0.7.
+        assert_eq!(gib_said(denoise_needs_of(&DENOISE_XTRANS_BEST, 512)), "2.4");
+        assert_eq!(gib_said(denoise_needs_of(&DENOISE_XTRANS_FAST, 256)), "0.7");
+        // Issue 130's 4 GB card, 1.8 GiB free: best steps down to 384
+        // (1.1), fast to 512 (1.2); a Bayer tier at 512 runs at 384.
+        let four = || {
+            let (mut ai, _) = denoiser_on_card(18 * GIB / 10, 0);
+            ai.card_by_test = Some(Some(4 * GIB));
+            ai
+        };
+        let at = |model, tile| four().denoise_room_at(model, tile).unwrap();
+        assert_eq!(at(&DENOISE_XTRANS_BEST, 1024), DenoiseOn::Tile(384));
+        assert_eq!(at(&DENOISE_XTRANS_FAST, 1024), DenoiseOn::Tile(512));
+        assert_eq!(at(&DENOISE_BEST, 512), DenoiseOn::Tile(384));
+        // Each tier's need falls with its tile, and grows with the tier.
+        for tiers in [[256, 384], [384, 512], [512, 1024]] {
+            for m in [
+                &DENOISE_XTRANS_FAST,
+                &DENOISE_XTRANS_BALANCED,
+                &DENOISE_XTRANS_BEST,
+            ] {
+                assert!(denoise_needs_of(m, tiers[0]) < denoise_needs_of(m, tiers[1]));
+            }
+        }
+        for tile in [256, 384, 512, 1024] {
+            assert!(
+                denoise_needs_of(&DENOISE_XTRANS_FAST, tile)
+                    < denoise_needs_of(&DENOISE_XTRANS_BALANCED, tile)
+            );
+            assert!(
+                denoise_needs_of(&DENOISE_XTRANS_BALANCED, tile)
+                    < denoise_needs_of(&DENOISE_XTRANS_BEST, tile)
+            );
+        }
+    }
+
+    /// A tester's 2 GB card, 1.5 GiB free with nothing of the engine's
+    /// to let go: short of 512's 1.95, the denoiser runs at 384 (1.05),
+    /// and the tiling the run is handed is 384, whatever the session
+    /// reloaded after the give-back chose for the card's whole. The
+    /// floor (short at every tile) is not reached there; it is under
+    /// 256's 0.95.
+    #[test]
+    fn a_two_gigabyte_cards_denoiser_runs_at_the_smaller_tile() {
+        let (mut ai, _) = denoiser_on_card(15 * GIB / 10, 0);
+        ai.card_by_test = Some(Some(2 * GIB));
+        let on = ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).unwrap();
+        assert_eq!(on, DenoiseOn::Tile(384));
+        let reloaded = greycard_ai::denoise::Tiling {
+            tile: 512,
+            margin: greycard_ai::denoise::DEFAULT_MARGIN,
+        };
+        assert_eq!(crate::worker::run_tiling(on, reloaded).tile, 384);
+        assert!(ai.take_short().is_none());
+        // Under the smallest tile's need: refused, the engine's own
+        // denoise in its place.
+        let (mut ai, _) = denoiser_on_card(9 * GIB / 10, 0);
+        ai.card_by_test = Some(Some(2 * GIB));
+        assert!(ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).is_err());
+        assert_eq!(gib_said(denoise_needs(256)), "0.95");
+    }
+
     /// The learned denoiser short of the card at its tile of 512, as on
     /// issue 130's 4 GB card (1.8 GiB free, 1.95 needed), takes its
     /// rungs in order: the engine lets go of what a develop makes again
@@ -11090,28 +12687,46 @@ mod tests {
         let free = 18 * GIB / 10;
         // 0.5 let go: 2.3 free, room at 512.
         let (mut ai, calls) = denoiser_on_card(free, GIB / 2);
-        assert_eq!(ai.denoise_room_at(512).unwrap(), DenoiseOn::Card);
+        assert_eq!(
+            ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).unwrap(),
+            DenoiseOn::Card
+        );
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         assert!(ai.take_short().is_none());
         assert!(!ai.short_failed());
         // Nothing let go: 384 needs 1.05.
         let (mut ai, _) = denoiser_on_card(free, 0);
-        assert_eq!(ai.denoise_room_at(512).unwrap(), DenoiseOn::Tile(384));
+        assert_eq!(
+            ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).unwrap(),
+            DenoiseOn::Tile(384)
+        );
         assert!(ai.take_short().is_none());
         assert!(!ai.short_failed());
         // Not enough let go for 512: the smaller tile still.
         let (mut ai, _) = denoiser_on_card(GIB, GIB / 10);
-        assert_eq!(ai.denoise_room_at(512).unwrap(), DenoiseOn::Tile(384));
+        assert_eq!(
+            ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).unwrap(),
+            DenoiseOn::Tile(384)
+        );
         // Room at 256 alone.
         let (mut ai, _) = denoiser_on_card(GIB, 0);
-        assert_eq!(ai.denoise_room_at(512).unwrap(), DenoiseOn::Tile(256));
+        assert_eq!(
+            ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).unwrap(),
+            DenoiseOn::Tile(256)
+        );
         // From 1024, 512 is the first smaller tile asked.
         let (mut ai, _) = denoiser_on_card(2 * GIB, 0);
-        assert_eq!(ai.denoise_room_at(1024).unwrap(), DenoiseOn::Tile(512));
+        assert_eq!(
+            ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 1024)
+                .unwrap(),
+            DenoiseOn::Tile(512)
+        );
         // Short at every tile: refused in the words the window has
         // always shown, a failure for the set.
         let (mut ai, _) = denoiser_on_card(GIB / 2, GIB / 10);
-        let short = ai.denoise_room_at(512).expect_err("refused");
+        let short = ai
+            .denoise_room_at(&greycard_ai::DENOISE_BEST, 512)
+            .expect_err("refused");
         assert_eq!(
             short.0,
             "the card has 0.6 GiB free, short of the 1.9 GiB the learned denoiser at a tile of 512 needs; another program may be using it"
@@ -11125,26 +12740,45 @@ mod tests {
         ));
         // The card with the room, or its memory not known: no rung.
         let (mut ai, calls) = denoiser_on_card(3 * GIB, GIB);
-        assert_eq!(ai.denoise_room_at(512).unwrap(), DenoiseOn::Card);
+        assert_eq!(
+            ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).unwrap(),
+            DenoiseOn::Card
+        );
         assert_eq!(calls.load(Ordering::Relaxed), 0);
         let mut unknown = Ai::for_test(Store::at("no-store"), vec![Provider::WebGpu]);
-        assert_eq!(unknown.denoise_room_at(512).unwrap(), DenoiseOn::Card);
+        assert_eq!(
+            unknown
+                .denoise_room_at(&greycard_ai::DENOISE_BEST, 512)
+                .unwrap(),
+            DenoiseOn::Card
+        );
         // Its own sessions given back first: room then, nothing let go.
         let (mut ai, calls) = denoiser_on_card(free, GIB);
         ai.freed_by_test = GIB;
-        assert_eq!(ai.denoise_room_at(512).unwrap(), DenoiseOn::Card);
+        assert_eq!(
+            ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).unwrap(),
+            DenoiseOn::Card
+        );
         assert_eq!(calls.load(Ordering::Relaxed), 0);
         // Its own tile past the whole card: the engine lets go before the
         // smaller tiles are judged (0.8 and 0.4 let go: room at 384).
         let (mut ai, calls) = denoiser_on_card(8 * GIB / 10, 4 * GIB / 10);
         ai.card_by_test = Some(Some(4 * GIB));
-        assert_eq!(ai.denoise_room_at(1024).unwrap(), DenoiseOn::Tile(384));
+        assert_eq!(
+            ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 1024)
+                .unwrap(),
+            DenoiseOn::Tile(384)
+        );
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         // Its own sessions given back there too (0.4 of them).
         let (mut ai, calls) = denoiser_on_card(8 * GIB / 10, 0);
         ai.card_by_test = Some(Some(4 * GIB));
         ai.freed_by_test = 4 * GIB / 10;
-        assert_eq!(ai.denoise_room_at(1024).unwrap(), DenoiseOn::Tile(384));
+        assert_eq!(
+            ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 1024)
+                .unwrap(),
+            DenoiseOn::Tile(384)
+        );
         assert_eq!(calls.load(Ordering::Relaxed), 1);
         // A canceled export lets nothing go.
         let (mut ai, calls) = denoiser_on_card(GIB / 2, GIB);
@@ -11153,8 +12787,44 @@ mod tests {
             wait: std::time::Duration::ZERO,
             canceled: Arc::new(|| true),
         }));
-        assert!(ai.denoise_room_at(512).is_err());
+        assert!(ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).is_err());
         assert_eq!(calls.load(Ordering::Relaxed), 0);
+    }
+
+    /// The learned denoiser short at every tile is said too small for
+    /// the card only where its least tile (256, 0.95 GiB) is past what
+    /// the card offers too, in an export's ask as in a develop's.
+    #[test]
+    fn a_denoiser_past_the_cards_offer_at_every_tile_is_said_too_small() {
+        // Short of 512's 1.95 is past these whole cards: the free figure
+        // said is as the ladder leaves it.
+        let said = "GiB free, short of the 1.9 GiB the learned denoiser at a tile of 512 needs";
+        for patient in [false, true] {
+            let refused = |offer: Option<u64>| {
+                let (mut ai, _) = denoiser_on_card(GIB / 2, GIB / 10);
+                ai.card_by_test = Some(Some(offer.map_or(GIB, |o| o + GIB / 10)));
+                ai.offer_by_test = offer;
+                if patient {
+                    ai.set_patience(Some(Patience {
+                        tries: 1,
+                        wait: std::time::Duration::ZERO,
+                        canceled: Arc::new(|| false),
+                    }));
+                }
+                ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512)
+                    .expect_err("refused")
+                    .0
+            };
+            let small = format!("{said}; this card is too small for it");
+            let why = refused(Some(9 * GIB / 10));
+            assert!(why.ends_with(&small), "{why}");
+            // Its own tile is past 1.5 GiB, its least is not.
+            let busy = format!("{said}; another program may be using it");
+            let why = refused(Some(15 * GIB / 10));
+            assert!(why.ends_with(&busy), "{why}");
+            let why = refused(None);
+            assert!(why.ends_with(&busy), "{why}");
+        }
     }
 
     /// A patient walk (an export) short of the denoiser's tile runs at a
@@ -11176,7 +12846,10 @@ mod tests {
             }),
         }));
         let waits = waits_by_test();
-        assert_eq!(ai.denoise_room_at(512).unwrap(), DenoiseOn::Tile(384));
+        assert_eq!(
+            ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).unwrap(),
+            DenoiseOn::Tile(384)
+        );
         // A smaller tile fits: no wait, nothing met.
         assert_eq!(waits_by_test(), waits, "no wait");
         assert_eq!(looked.load(Ordering::SeqCst), 0);
@@ -11185,12 +12858,14 @@ mod tests {
         // Short at every tile: it waits its tries at the smallest, then
         // is refused at its own, a failure met for the set.
         ai.free_memory_by_test = Some(GIB / 2);
-        let short = ai.denoise_room_at(512).expect_err("refused");
+        let short = ai
+            .denoise_room_at(&greycard_ai::DENOISE_BEST, 512)
+            .expect_err("refused");
         assert_eq!(waits_by_test(), waits + 2);
         assert!(short.0.contains("at a tile of 512"), "{short}");
         assert!(ai.hit_short() && ai.short_failed());
         // The next ask of the walk waits for nothing.
-        assert!(ai.denoise_room_at(512).is_err());
+        assert!(ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).is_err());
         assert_eq!(waits_by_test(), waits + 2, "once a set");
     }
 
@@ -11249,7 +12924,10 @@ mod tests {
         for _ in 0..3 {
             ai.free_memory_by_test = Some(18 * GIB / 10);
             ai.set_patience(patience());
-            assert_eq!(ai.denoise_room_at(512).unwrap(), DenoiseOn::Card);
+            assert_eq!(
+                ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).unwrap(),
+                DenoiseOn::Card
+            );
             assert!(!ai.hit_short() && !ai.short_failed());
         }
         // A card a smaller tile fits: no wait either.
@@ -11257,7 +12935,10 @@ mod tests {
         for _ in 0..3 {
             ai.free_memory_by_test = Some(18 * GIB / 10);
             ai.set_patience(patience());
-            assert_eq!(ai.denoise_room_at(512).unwrap(), DenoiseOn::Tile(384));
+            assert_eq!(
+                ai.denoise_room_at(&greycard_ai::DENOISE_BEST, 512).unwrap(),
+                DenoiseOn::Tile(384)
+            );
         }
         assert_eq!(calls.load(Ordering::Relaxed), 3, "let go each frame");
         let image = WorkingImage::new(200, 100);

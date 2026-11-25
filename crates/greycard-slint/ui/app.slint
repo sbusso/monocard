@@ -12,7 +12,7 @@ export { Theme, ScrollBars, LabelColumn } from "theme.slint";
 import { Tips, EdgeArrow, PanelButton, Segmented, Typing, SliderKeys, ButtonKeys, Folds, ScrollPane, DragEdge, HeldKeys, SectionStack, SectionSlot, SectionDrag } from "controls.slint";
 // The typed numbers are read on the Rust side (`entry.rs`).
 export { Typing, TypedNumber, SliderKeys, ButtonKeys } from "controls.slint";
-import { GridHead, GridPlace, StripPlace, StripSpan, LightroomRoot, ReportLine, Pt, ScopeMark, WheelGuide, Thumb, ThumbCell, MaskBox, MaskPick, PersonBox, CompareTile, FilterChip, FacetRow, FacetRange, FacetChip, RootChip, CollectionChip, SortMenu, RecentFolder, FolderRow, FolderTile, HistoryRow, SectionResets, LookRow, ProfileRow, MatchGroup, CarryRow, PresetRow, KeyRow, BindRow, ModelLine, KeywordChip, QueueRow, Panes, TabPanes } from "structs.slint";
+import { GridHead, GridPlace, StripPlace, StripSpan, LightroomRoot, ReportLine, Pt, ScopeMark, WheelGuide, Thumb, ThumbCell, MaskBox, MaskPick, PersonBox, CompareTile, FilterChip, FacetRow, FacetRange, FacetChip, RootChip, CollectionChip, CollectionChoice, SortMenu, RecentFolder, FolderRow, FolderTile, HistoryRow, SectionResets, LookRow, ProfileRow, MatchGroup, CarryRow, PresetRow, KeyRow, BindRow, ModelLine, KeywordChip, QueueRow, Panes, TabPanes } from "structs.slint";
 import { CullSection } from "panel/cull.slint";
 import { AdjustmentsList, AdjustmentsSection } from "panel/mask.slint";
 import { CameraSection, LookSection } from "panel/assets.slint";
@@ -60,6 +60,7 @@ import { RootsSection, QueueHeader } from "panel/roots.slint";
 import { CollectionsSection } from "panel/collections.slint";
 import { MetaSection } from "panel/meta.slint";
 import { CollectionSheet } from "panel/collection-sheet.slint";
+import { CollectionPickerSheet } from "panel/collection-picker-sheet.slint";
 import { KeysSheet } from "panel/keys-sheet.slint";
 import { Mono } from "../../mono-ui/ui/state.slint";
 import { MonoPanels } from "../../mono-ui/ui/panels.slint";
@@ -925,6 +926,9 @@ export component App inherits Window {
     /// one added to, or takes it out when it is all in it already.
     in property <[string]> collection-names: [];
     in property <string> collection-open: "";
+    in property <[CollectionChoice]> collection-quick;
+    property <bool> collection-picker-open;
+    pure callback search-collections([string], string) -> [CollectionChoice];
     callback collection-menu-add(int);
     callback collection-menu-remove();
     callback collection-key();
@@ -1016,6 +1020,12 @@ export component App inherits Window {
     /// its row, which brings that row into the list's view.
     in property <int> folder-tree-open-row: -1;
     in property <int> folder-tree-reveal: 0;
+    /// Where each of the tree's rows went when folders came or went
+    /// above it, a count that goes up then, and the open mark held from
+    /// fading across the move (`FoldersSection`).
+    in property <[int]> folder-tree-moved;
+    in property <int> folder-tree-moves: 0;
+    in-out property <bool> folder-tree-still: false;
     /// The FOLDERS section's fold, kept for each view: the section
     /// folds as on screen, and the view off screen keeps its own for
     /// when it comes back (see `changed grid-open`). Whose the
@@ -1053,6 +1063,7 @@ export component App inherits Window {
         // the keys, which Slint would drop at the next press.
         Typing.close-all();
         root.look-list-gone();
+        root.turn-sliders-gone();
     }
     changed strip-hidden => { root.tip-text = ""; }
     // What a TipArea has to say, from the controls' own global, and the
@@ -1199,13 +1210,27 @@ export component App inherits Window {
     // fresh crop wherever it starts. Put down on leaving crop mode,
     // and by the level or a guide taken up in its place.
     in-out property <bool> crop-draw-armed: false;
+    // The guide drawn inside the crop, by its name in
+    // `panel::crop::overlay` ("Thirds" to "None"), and how far the
+    // spiral or the triangles are turned, which each reads modulo its
+    // own ways. A view's, kept in the settings file, never the edit's.
+    in-out property <string> crop-overlay: "Thirds";
+    in-out property <int> crop-overlay-turn: 0;
+    // Chosen from the CROP section's list: kept in the file.
+    callback crop-overlay-chosen();
+    // O, or Shift+O to turn it (`true`): stepped and kept in Rust.
+    callback crop-overlay-key(bool);
+    // The spiral's path at a turn, on a tall crop or not, over a view
+    // box of one by one.
+    pure callback crop-spiral(int, bool) -> string;
     changed crop-mode => { if (!root.crop-mode) { root.crop-draw-armed = false; } }
     changed level-mode => { if (root.level-mode) { root.crop-draw-armed = false; } }
     changed guide-mode => { if (root.guide-mode != "") { root.crop-draw-armed = false; } }
     // Local adjustments: the list (Global first), which one the panel
     // edits (0 is global), that one's own controls, and the kind of
-    // shape being drawn in the viewport, if any.
-    in-out property <[string]> adjustment-names: ["Global"];
+    // shape being drawn in the viewport, if any. The list's words are
+    // Rust's, from the start (`startup::show_unopened`).
+    in-out property <[string]> adjustment-names;
     in-out property <int> target: 0;
     // Which tab the panel shows: Develop, Crop, Masks or Retouch.
     in-out property <string> panel-tab: "Develop";
@@ -1329,6 +1354,19 @@ export component App inherits Window {
         } else if (root.shown-tab == "Develop") {
             root.collapsed-mask = true;
         }
+    }
+    // MASK made open with a mask chosen or made is what the user asked
+    // for: the mask's other sections, made with it in either order,
+    // fold, whether they are made yet or not.
+    function alone-as-mask() {
+        root.collapsed-wb = true;
+        root.collapsed-light = true;
+        root.collapsed-color = true;
+        root.collapsed-curves = true;
+        root.collapsed-mixer = true;
+        root.collapsed-grading = true;
+        root.collapsed-tint = true;
+        root.collapsed-detail = true;
     }
     function alone-with-cull() {
         if (root.shown-tab == "Cull") {
@@ -1770,6 +1808,7 @@ export component App inherits Window {
     in-out property <[string]> landscape-offers;
     in-out property <[string]> landscape-kinds;
     in-out property <bool> landscape-menu-shown: false;
+    pure callback landscape-menu-wanted() -> bool;
     // "Use this person on all N pictures" after a person picked, or "".
     in-out property <string> people-offer;
     in-out property <int> people-offer-mask;
@@ -1833,9 +1872,37 @@ export component App inherits Window {
     in-out property <float> vignette-midpoint: 0.5;
     in-out property <float> vignette-feather: 0.5;
     in-out property <float> vignette-roundness: 0;
+    in-out property <string> vignette-place: "Scene";
     in-out property <float> geo-angle: 0;
-    // The Angle slider in a drag, for the viewport's grid.
-    in-out property <bool> angle-dragging: false;
+    // The Angle slider being set, and the Vertical or the Horizontal
+    // one; either lays the viewport's grid on.
+    in-out property <bool> angle-moving: false;
+    in-out property <bool> perspective-moving: false;
+    // Only a slider's own `changed moving` clears these, so a slider
+    // dropped mid-move, its timer with it, would leave the grid on:
+    // the Crop tab left, the panel put away, the sections reordered.
+    // A drag of a section moves its row in the model rather than set
+    // a new one, so `order::moved` calls this itself.
+    // The Custom aspect being typed, its box gone with its section, is
+    // over too.
+    public function turn-sliders-gone() {
+        // The change a slider held or a box typed made is over all the
+        // same.
+        if (root.angle-moving || root.perspective-moving || root.aspect-typing) {
+            root.angle-moving = false;
+            root.perspective-moving = false;
+            root.aspect-typing = false;
+            root.geometry-settled();
+        }
+    }
+    // The tab shown changed, by a tab or by a frame frozen in the export
+    // queue: Find a lens, if it had the focus, is gone with its section.
+    changed shown-tab => {
+        root.turn-sliders-gone();
+        Typing.lens-filter = false;
+        LabelColumn.masks = root.shown-tab == "Masks";
+    }
+    changed crop-order => { root.turn-sliders-gone(); }
     in-out property <float> geo-vertical: 0;
     in-out property <float> geo-horizontal: 0;
     in-out property <int> geo-turns: 0;
@@ -1887,6 +1954,10 @@ export component App inherits Window {
     callback crop-draw-dragged(length, length);
     callback crop-draw-released();
     callback geometry-changed();
+    /// A change of the geometry over (`CropSection::geometry-settled`).
+    callback geometry-settled();
+    /// The Custom aspect being typed.
+    in-out property <bool> aspect-typing: false;
     callback geometry-reset();
     callback level-end(length, length, length, length);
     /// The Straighten button: the picture's dominant line leveled.
@@ -2052,12 +2123,22 @@ export component App inherits Window {
     in-out property <float> local-clarity: 0;
     in-out property <float> local-structure: 0;
     in-out property <float> local-sharpen: 0;
+    in-out property <float> local-output-sharpen: 0;
+    // Its own Radius and Threshold, and whether each is its own or the
+    // picture's (`Detail::output_sharpen_radius`).
+    in-out property <float> local-output-sharpen-radius: 1;
+    in-out property <bool> local-output-sharpen-radius-own: false;
+    in-out property <float> local-output-sharpen-threshold: 0.01;
+    in-out property <bool> local-output-sharpen-threshold-own: false;
     in-out property <float> local-dehaze: 0;
     in-out property <bool> sharpen: true;
     // The lens: what the database found for the file, whether it
     // found anything, whether there is a database at all, and the
     // edit's choices.
     in property <string> lens-profile: "";
+    // Where the lens profile comes from: the database or an Adobe
+    // profile; empty where the line names no profile.
+    in property <string> lens-source: "";
     // Whether the open file is a raw: the sections before the lens
     // have nothing to act on in a picture that is not.
     in property <bool> raw-input: true;
@@ -2085,6 +2166,10 @@ export component App inherits Window {
     // Why the learned denoiser's tiers rest while the profiled
     // denoise works, or "" when they do not: an X-Trans raw.
     in property <string> learned-unavailable: "";
+    // The card was lost under the learned denoiser: the section offers
+    // Try again beside its hint, which takes the card's record off.
+    in property <bool> learned-retry: false;
+    callback retry-learned();
     // The Noise section's row that makes a merge again: shown on a
     // merge of ours whose frames are beside it, in a session that
     // writes sidecars; and whether a merge is running, which holds it.
@@ -2100,8 +2185,9 @@ export component App inherits Window {
     in property <bool> lens-database: false;
     // The lens picker: "From the file" first, then the database's
     // lenses for the body and the Adobe profiles; the edit's choice
-    // as its key, and its row.
-    in property <[string]> lens-choice-labels: ["From the file"];
+    // as its key, and its row. The labels are Rust's, from the start
+    // (`startup::show_unopened`).
+    in property <[string]> lens-choice-labels;
     in property <[string]> lens-choice-keys: [""];
     in-out property <string> lens-choice: "";
     in-out property <int> lens-choice-index: 0;
@@ -2110,6 +2196,13 @@ export component App inherits Window {
     in property <[string]> lens-makers: ["All"];
     in-out property <int> lens-maker-index: 0;
     in-out property <string> lens-filter: "";
+    // Find a lens has the keys (`Typing.lens-filter`): a list of lenses
+    // that comes meanwhile is held, and shown as soon as it lets go,
+    // however it does (the box destroyed with a tab or the grid too).
+    out property <bool> lens-filter-focused: Typing.lens-filter;
+    changed lens-filter-focused => {
+        if (!root.lens-filter-focused) { root.lens-rows-changed(); }
+    }
     in-out property <bool> lens-profile-on: true;
     in-out property <bool> lens-distortion: true;
     in-out property <bool> lens-ca: true;
@@ -2117,6 +2210,11 @@ export component App inherits Window {
     // profile's stands down: the switch has nothing to do.
     in property <bool> lens-ca-measured: false;
     in-out property <bool> lens-vignetting: true;
+    // Which corrections the profile picked has for the frame: a switch
+    // with nothing to apply stands down, its setting kept.
+    in property <bool> lens-has-distortion: true;
+    in property <bool> lens-has-ca: true;
+    in property <bool> lens-has-vignetting: true;
     in-out property <float> lens-manual: 0;
     in-out property <float> lens-ca-red: 0;
     in-out property <float> lens-ca-blue: 0;
@@ -2136,6 +2234,12 @@ export component App inherits Window {
     in-out property <float> lens-defringe-green-amount: 1;
     callback fetch-lenses();
     callback lens-rows-changed();
+    // Asked for when the LENS section is opened, so a lens profile put
+    // in the profile folder while the editor runs is listed.
+    callback lens-profiles-wanted();
+    changed collapsed-lens => {
+        if (!root.collapsed-lens) { root.lens-profiles-wanted(); }
+    }
     in-out property <bool> sharpen-auto-radius: true;
     in-out property <float> sharpen-radius: 0.75;
     in-out property <float> sharpen-iterations: 20;
@@ -2152,6 +2256,14 @@ export component App inherits Window {
     in-out property <string> demosaic-stored: "amaze-vng4";
     // Why the menu rests while the open raw's mosaic is not known, or "".
     in property <string> demosaic-hint: "";
+    // The learned highlight fill's switch, and whether the open frame
+    // takes the fill: one that does not greys the switch.
+    in-out property <bool> highlight-fill: false;
+    in property <bool> highlight-fill-takes: true;
+    // Whether the switch is drawn at all: only with GREYCARD_HIGHLIGHT_FILL
+    // set to 1 at the start, while the model is not yet good enough to
+    // offer. An edit that carries the fill develops with it either way.
+    in property <bool> highlight-fill-shown: false;
     callback demosaic-picked(string);
     demosaic-picked(v) => {
         root.demosaic-stored = v;
@@ -2594,6 +2706,8 @@ export component App inherits Window {
     pure callback export-name-example(string, string, string, string, int, int, int) -> string;
     pure callback export-name-refused(string) -> bool;
     callback export-sheet-opened();
+    /// A frame the sheet would export has an Output sharpen that acts.
+    in-out property <bool> export-output-sharpened: false;
     /// What the file says of where it came from: All, No edit, None.
     in-out property <string> export-metadata: "All";
     /// The watermark: Off, Text or Image, and its settings; the size
@@ -2616,8 +2730,11 @@ export component App inherits Window {
     /// Ask the desktop for the watermark's PNG.
     callback export-mark-choose();
     /// The export presets by name, the one chosen (empty for none)
-    /// and whether the sheet has moved from it since.
+    /// and whether the sheet has moved from it since; the picker's
+    /// words for them, and the place of the one chosen.
     in-out property <[string]> export-presets: [];
+    in property <[string]> export-preset-labels: [];
+    in-out property <int> export-preset-index: 0;
     in-out property <string> export-preset: "";
     in-out property <bool> export-preset-edited: false;
     callback export-preset-chosen(string);
@@ -2659,7 +2776,9 @@ export component App inherits Window {
     in-out property <string> import-subfolder: "{date}";
     in-out property <string> import-name: "{name}";
     in property <[string]> import-presets: [];
-    in-out property <string> import-preset: "None";
+    in property <[string]> import-preset-labels: [];
+    in-out property <int> import-preset-index: 0;
+    in-out property <string> import-preset: "";
     in property <string> import-note: "";
     in property <string> import-preview: "";
     /// A word on the folders: the backup on the destination's drive.
@@ -2970,7 +3089,7 @@ export component App inherits Window {
     /// parent, which lets that one go by; for the frame menu, a
     /// zero-sized corner, it reaches nothing. Its release goes to
     /// whatever is under the pointer, which ignores a release it had no
-    /// press for. Slint 1.18 does not say whether a ContextMenuArea's
+    /// press for. Slint 1.19 does not say whether a ContextMenuArea's
     /// menu is open, so it is read two ways. Off the keys: Slint's own
     /// menu takes the focus from them while it is up and gives it back
     /// when it closes, however it closes. And from Slint's own list of
@@ -3001,6 +3120,22 @@ export component App inherits Window {
         triggered => {
             self.running = false;
             if (root.menu-up || !keys.has-focus) { keys.focus(); }
+        }
+    }
+    // Let the submenu close before changing its recent items or opening a sheet.
+    collection-menu-delay := Timer {
+        property <int> index;
+        property <bool> browse;
+        interval: 1ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            keys.focus();
+            if (self.browse) {
+                root.collection-picker-open = true;
+            } else {
+                root.collection-menu-add(self.index);
+            }
         }
     }
     function frame-menu-at(row: int, x: length, y: length) {
@@ -3038,6 +3173,7 @@ export component App inherits Window {
     init => {
         root.ceilings();
         LabelColumn.panel-width = root.right-w;
+        LabelColumn.masks = root.shown-tab == "Masks";
     }
     changed width => { root.ceilings(); }
     changed height => { root.ceilings(); }
@@ -3075,7 +3211,7 @@ export component App inherits Window {
             || root.delete-open || root.look-remove-open || root.look-rename-open || root.overwrite-open || root.archive-open || root.archive-rejects-open
             || root.time-shift-open
             || root.settings-open || root.sync-open || root.import-open || root.match-open
-            || root.root-sheet-open || root.collection-sheet-open || root.preset-group-sheet-open || root.preset-report-open
+            || root.root-sheet-open || root.collection-picker-open || root.collection-sheet-open || root.preset-group-sheet-open || root.preset-report-open
             || root.lr-open || root.rt-open || root.keys-open || root.camera-open;
     }
     // Monocard's camera window.
@@ -3171,7 +3307,7 @@ export component App inherits Window {
         + (root.archive-rejects-open ? 1 : 0) + (root.time-shift-open ? 1 : 0)
         + (root.settings-open ? 1 : 0) + (root.sync-open ? 1 : 0) + (root.import-open ? 1 : 0)
         + (root.match-open ? 1 : 0) + (root.root-sheet-open ? 1 : 0)
-        + (root.collection-sheet-open ? 1 : 0) + (root.preset-group-sheet-open ? 1 : 0)
+        + (root.collection-picker-open ? 1 : 0) + (root.collection-sheet-open ? 1 : 0) + (root.preset-group-sheet-open ? 1 : 0)
         + (root.preset-report-open ? 1 : 0) + (root.lr-open ? 1 : 0) + (root.rt-open ? 1 : 0)
         + (root.keys-open ? 1 : 0) + (root.camera-open ? 1 : 0);
     property <int> sheets-were: 0;
@@ -3305,6 +3441,7 @@ export component App inherits Window {
                 return accept;
             }
             if (chord == "Esc" && root.root-sheet-open) { root.root-sheet-open = false; return accept; }
+            if (chord == "Esc" && root.collection-picker-open) { root.collection-picker-open = false; return accept; }
             if (chord == "Esc" && root.collection-sheet-open) { root.collection-sheet-open = false; return accept; }
             if (chord == "Esc" && root.preset-group-sheet-open) { root.preset-group-sheet-open = false; return accept; }
             if (chord == "Esc" && root.rejects-open) { root.rejects-answered(false); return accept; }
@@ -3803,6 +3940,16 @@ export component App inherits Window {
                 }
                 return accept;
             }
+            // O and Shift+O in crop mode, Lightroom's crop keys: the
+            // next guide inside the crop, and the spiral or the
+            // triangles turned. Crop mode is the Crop tab's alone, so
+            // the Show mask below never wants O at the same time.
+            // Held, one step.
+            if ((chord == "O" || chord == "Shift+O") && root.crop-mode && !root.grid-open
+                && !root.cull-mode) {
+                if (!e.repeat) { root.crop-overlay-key(chord == "Shift+O"); }
+                return accept;
+            }
             // O, Lightroom's overlay key: the chosen mask's Show mask,
             // as a click on it.
             if (chord == "O" && !root.grid-open && !root.cull-mode
@@ -3962,17 +4109,21 @@ export component App inherits Window {
                 mask-dragged(a, b, c, d, e) => { root.mask-dragged(a, b, c, d, e); }
                 mask-dropped => { root.mask-dropped(); }
                 mask-body-at(a, b, c) => { return root.mask-body-at(a, b, c); }
-                angle-dragging: root.angle-dragging;
+                geo-moving: (root.angle-moving || root.perspective-moving)
+                    && root.shown-tab == "Crop" && !root.right-hidden;
                 crop-left: root.crop-left;
                 crop-top: root.crop-top;
                 crop-width: root.crop-width;
                 crop-height: root.crop-height;
-                crop-pressed(a) => { root.crop-pressed(a); }
+                crop-overlay: root.crop-overlay;
+                crop-overlay-turn: root.crop-overlay-turn;
+                crop-spiral(a, b) => { return root.crop-spiral(a, b); }
+                crop-pressed(a) => { root.hold-crop(); root.crop-pressed(a); }
                 crop-dragged(a, b, c) => { root.crop-dragged(a, b, c); }
-                crop-released => { root.crop-released(); }
-                crop-draw-pressed(a, b) => { root.crop-draw-pressed(a, b); }
+                crop-released => { root.crop-held = false; root.crop-released(); root.aspect-settle(); }
+                crop-draw-pressed(a, b) => { root.hold-crop(); root.crop-draw-pressed(a, b); }
                 crop-draw-dragged(a, b) => { root.crop-draw-dragged(a, b); }
-                crop-draw-released => { root.crop-draw-released(); }
+                crop-draw-released => { root.crop-held = false; root.crop-draw-released(); root.aspect-settle(); }
                 crop-done => { if (root.crop-mode) { root.crop-in-or-out(); } }
                 crop-draw-armed <=> root.crop-draw-armed;
                 level-end(a, b, c, d) => { root.level-end(a, b, c, d); }
@@ -4080,13 +4231,15 @@ export component App inherits Window {
                     padding-right: Theme.space-1;
                     padding-top: root.frozen && root.selected < 0 ? 0 : Theme.space-2;
                     spacing: Theme.space-2;
-                    if root.frozen && root.selected >= 0: Text {
+                    if root.frozen && root.selected >= 0: frozen-note := Text {
                         text: @tr("Queued for export, shown as it will export. Edit it from its folder.");
                         color: Theme.text-muted;
                         font-size: Theme.font-xs;
                         wrap: word-wrap;
                     }
-                    if !root.frozen: Segmented {
+                    if !root.frozen: cull-mode-button := Segmented {
+                        // The panel's Tab is the window's: no stop here.
+                        tab-stop: false;
                         width: 40px;
                         options: ["Cull"];
                         // The Loupe's mode button at the top of the develop panel
@@ -4109,7 +4262,12 @@ export component App inherits Window {
                             root.cull-asked();
                         }
                     }
-                    if !root.frozen: Segmented {
+                    if !root.frozen: panel-tabs := Segmented {
+                        // The panel's Tab is the window's: no stop here.
+                        tab-stop: false;
+                        // Spoken by a screen reader: the Loupe's row of
+                        // Develop, Crop, Masks, and Retouch
+                        name: @tr("Panel tabs");
                         options: ["Develop", "Crop", "Masks", "Retouch"];
                         // The Loupe's mode buttons at the top of the develop panel
                         labels: [@tr("Develop"), @tr("Crop"), @tr("Masks"), @tr("Retouch")];
@@ -4128,7 +4286,7 @@ export component App inherits Window {
                 // another mask is one click away. The sections scroll
                 // under it, and the scroll counts from its foot, so
                 // the list's own height never moves what they show.
-                if root.shown-tab == "Masks": VerticalLayout {
+                if root.shown-tab == "Masks": list-block := VerticalLayout {
                     padding-left: Theme.space-1;
                     padding-right: Theme.space-1;
                     padding-top: Theme.space-2;
@@ -4172,7 +4330,7 @@ export component App inherits Window {
                 }
                 // The list's foot, so a section scrolled up under it
                 // reads as going under and not as round New mask.
-                if root.shown-tab == "Masks": Rectangle { height: 1px; background: Theme.border; }
+                if root.shown-tab == "Masks": list-foot := Rectangle { height: 1px; background: Theme.border; }
                 // Named so the tests find the view's own edges.
                 panel-view := ScrollPane {
                     content-y <=> root.panel-scroll;
@@ -4186,11 +4344,20 @@ export component App inherits Window {
                     }
                     // A slider reached by a key, scrolled into view,
                     // and kept there as the layout moves it. Moved by
-                    // the wheel, it is not chased: out of view, it
-                    // lets go of the keys, which Slint would drop at
-                    // the next event and give to nobody.
+                    // the user's scroll, it is not chased: out of view,
+                    // it lets go of the keys, which Slint would drop at
+                    // the next event and give to nobody. The user's
+                    // scroll is told by its input (`user-scrolls`), not
+                    // by the view moving: Slint moves it too, animating
+                    // its reveal of an item that took the focus. A
+                    // wheel's move is animated as well, so the scroll
+                    // stays the user's over the frames it moves in,
+                    // until a key reaches a slider or the slider moves
+                    // with the view still.
                     property <int> reveal: SliderKeys.reveal;
                     property <length> held-scroll;
+                    property <int> held-user-scrolls;
+                    property <bool> user-scrolling;
                     changed reveal => {
                         // A sheet's own sliders are not the panel's.
                         if (root.sheet-open()) { return; }
@@ -4198,8 +4365,13 @@ export component App inherits Window {
                         if (SliderKeys.reveal-x < left || SliderKeys.reveal-x > left + self.width) { return; }
                         let top = SliderKeys.reveal-y - self.absolute-position.y;
                         let bottom = top + SliderKeys.reveal-height;
-                        let wheeled = !SliderKeys.by-key
-                            && self.in-reach(root.panel-scroll) != self.in-reach(self.held-scroll);
+                        let moved = self.in-reach(root.panel-scroll) != self.in-reach(self.held-scroll);
+                        if (self.user-scrolls != self.held-user-scrolls) {
+                            self.held-user-scrolls = self.user-scrolls;
+                            self.user-scrolling = true;
+                        }
+                        if (SliderKeys.by-key || !moved) { self.user-scrolling = false; }
+                        let wheeled = self.user-scrolling;
                         self.held-scroll = root.panel-scroll;
                         if (wheeled) {
                             if (bottom <= 0 || top >= self.visible-height) { Typing.close-all(); }
@@ -4216,15 +4388,19 @@ export component App inherits Window {
                     // A section opened by its header under One section
                     // open at a time: the whole of it in view if it
                     // fits, else its header at the top.
-                    // Moved since the last reveal, by the wheel: the
-                    // section is let go of rather than fought for.
+                    // Moved since the last reveal by the user's scroll
+                    // (its input, as above): the section is let go of
+                    // rather than fought for.
                     property <int> fold-reveal: Folds.reveal;
                     property <length> revealed-scroll;
+                    property <int> revealed-user-scrolls;
                     changed fold-reveal => {
                         if (root.sheet-open()) { return; }
+                        let scrolled = self.user-scrolls != self.revealed-user-scrolls;
+                        self.revealed-user-scrolls = self.user-scrolls;
                         if (Folds.reveal-first) {
                             Folds.reveal-first = false;
-                        } else if (self.in-reach(root.panel-scroll) != self.in-reach(self.revealed-scroll)) {
+                        } else if (scrolled && self.in-reach(root.panel-scroll) != self.in-reach(self.revealed-scroll)) {
                             Folds.let-go += 1;
                             return;
                         }
@@ -4428,6 +4604,7 @@ export component App inherits Window {
                                     show-mask <=> root.show-mask;
                                     show-mask-toggled => { root.show-mask-toggled(); }
                                     collapsed-mask <=> root.collapsed-mask;
+                                    opened-alone => { root.alone-as-mask(); }
                                     placing <=> root.placing;
                                     adjustment-name <=> root.adjustment-name;
                                     name-wanted <=> root.mask-name-wanted;
@@ -4455,6 +4632,7 @@ export component App inherits Window {
                                     landscape-offers <=> root.landscape-offers;
                                     landscape-kinds <=> root.landscape-kinds;
                                     landscape-menu-shown <=> root.landscape-menu-shown;
+                                    landscape-menu-wanted => { return root.landscape-menu-wanted(); }
                                     people-offer: root.people-offer;
                                     people-offer-mask: root.people-offer-mask;
                                     people-offer-used => { root.people-offer-used(); }
@@ -4623,6 +4801,10 @@ export component App inherits Window {
                                     auto-shown: root.target == 0;
                                     light-auto => { root.light-auto(); }
                                     view-changed => { root.view-changed(); }
+                                    highlight-fill <=> root.highlight-fill;
+                                    highlight-fill-takes: root.highlight-fill-takes;
+                                    show-highlight-fill: root.target == 0 && root.highlight-fill-shown;
+                                    develop-changed => { root.develop-changed(); }
                                 }
                                 if section == "color" && (root.shown-tab == "Develop" || (root.shown-tab == "Masks" && root.target > 0)): ColorSection {
                                     reorderable: develop-stack.movable;
@@ -4807,7 +4989,8 @@ export component App inherits Window {
                                 // Structure, Dehaze, and Sharpen: a look
                                 // control, put on at the finish from the bands
                                 // and the sharpen's delta the develop keeps
-                                // beside the picture.
+                                // beside the picture; and its share of the
+                                // output sharpen, put on at the finish.
                                 if section == "detail" && root.shown-tab == "Masks" && root.target > 0: DetailSection {
                                     reorderable: develop-stack.movable;
                                     reorder-started => { develop-stack.start(i); }
@@ -4827,6 +5010,15 @@ export component App inherits Window {
                                     detail-dehaze <=> root.local-dehaze;
                                     local: true;
                                     detail-sharpen <=> root.local-sharpen;
+                                    detail-output-sharpen <=> root.local-output-sharpen;
+                                    // As `OutputSharpen::is_off`.
+                                    picture-output-off: !root.output-sharpen-enabled || root.output-sharpen-amount <= 0;
+                                    picture-output-radius: root.output-sharpen-radius;
+                                    picture-output-threshold: root.output-sharpen-threshold;
+                                    detail-output-radius <=> root.local-output-sharpen-radius;
+                                    detail-output-radius-own <=> root.local-output-sharpen-radius-own;
+                                    detail-output-threshold <=> root.local-output-sharpen-threshold;
+                                    detail-output-threshold-own <=> root.local-output-sharpen-threshold-own;
                                     develop-changed => { root.view-changed(); }
                                 }
                                 if section == "noise" && root.shown-tab == "Develop": NoiseSection {
@@ -4848,6 +5040,8 @@ export component App inherits Window {
                                     denoise-learned-chroma-strength <=> root.denoise-learned-chroma-strength;
                                     unavailable: root.noise-unavailable;
                                     learned-unavailable: root.learned-unavailable;
+                                    learned-retry: root.learned-retry;
+                                    retry-learned => { root.retry-learned(); }
                                     again-shown: root.merge-again-shown;
                                     again-tier <=> root.merge-again-tier;
                                     merging: root.merge-running;
@@ -4869,6 +5063,7 @@ export component App inherits Window {
                                     pick-started(a) => { root.pick-started(a); }
                                     hue-circle: root.hue-circle;
                                     lens-profile: root.lens-profile;
+                                    lens-source: root.lens-source;
                                     lens-available: root.lens-available;
                                     lens-database: root.lens-database;
                                     lens-choice-labels: root.lens-choice-labels;
@@ -4884,6 +5079,9 @@ export component App inherits Window {
                                     lens-ca <=> root.lens-ca;
                                     lens-ca-measured: root.lens-ca-measured;
                                     lens-vignetting <=> root.lens-vignetting;
+                                    lens-has-distortion: root.lens-has-distortion;
+                                    lens-has-ca: root.lens-has-ca;
+                                    lens-has-vignetting: root.lens-has-vignetting;
                                     lens-manual <=> root.lens-manual;
                                     lens-ca-red <=> root.lens-ca-red;
                                     lens-ca-blue <=> root.lens-ca-blue;
@@ -4978,6 +5176,7 @@ export component App inherits Window {
                                     vignette-midpoint <=> root.vignette-midpoint;
                                     vignette-feather <=> root.vignette-feather;
                                     vignette-roundness <=> root.vignette-roundness;
+                                    vignette-place <=> root.vignette-place;
                                     view-changed => { root.view-changed(); }
                                 }
                                 if section == "grain" && root.shown-tab == "Develop": GrainSection {
@@ -5027,6 +5226,7 @@ export component App inherits Window {
                                     choose-display-file => { root.choose-display-file(); }
                                     canvas-choice <=> root.canvas-choice;
                                     canvas-colors: root.canvas-colors;
+                                    canvas-names: root.canvas-names;
                                     canvas-changed => { root.canvas-changed(); }
                                 }
                                 if section == "demosaic" && root.shown-tab == "Develop": DemosaicSection {
@@ -5115,10 +5315,14 @@ export component App inherits Window {
                                     collapsed-crop <=> root.collapsed-crop;
                                     aspect-name <=> root.aspect-name;
                                     aspect-custom <=> root.aspect-custom;
+                                    aspect-typing <=> root.aspect-typing;
+                                    geometry-settled => { root.geometry-settled(); }
                                     portrait <=> root.portrait;
                                     portrait-shown: root.portrait-shown;
                                     portrait-live: root.portrait-live;
                                     crop-draw-armed <=> root.crop-draw-armed;
+                                    crop-overlay <=> root.crop-overlay;
+                                    crop-overlay-chosen => { root.crop-overlay-chosen(); }
                                     crop-clicked => { root.crop-in-or-out(); }
                                     crop-toggled => { root.crop-toggled(); }
                                     geometry-changed => { root.geometry-changed(); }
@@ -5140,7 +5344,8 @@ export component App inherits Window {
                                     guide-mode <=> root.guide-mode;
                                     collapsed-rotate <=> root.collapsed-rotate;
                                     geo-angle <=> root.geo-angle;
-                                    angle-dragging <=> root.angle-dragging;
+                                    angle-moving <=> root.angle-moving;
+                                    geometry-settled => { root.geometry-settled(); }
                                     geometry-turned(a) => { root.geometry-turned(a); }
                                     geometry-flipped(a) => { root.geometry-flipped(a); }
                                     crop-toggled => { root.crop-toggled(); }
@@ -5167,6 +5372,8 @@ export component App inherits Window {
                                     collapsed-perspective <=> root.collapsed-perspective;
                                     geo-vertical <=> root.geo-vertical;
                                     geo-horizontal <=> root.geo-horizontal;
+                                    perspective-moving <=> root.perspective-moving;
+                                    geometry-settled => { root.geometry-settled(); }
                                     crop-toggled => { root.crop-toggled(); }
                                     geometry-changed => { root.geometry-changed(); }
                                     geometry-reset => { root.geometry-reset(); }
@@ -5241,7 +5448,7 @@ export component App inherits Window {
                         // A click fits; the chevron or a right-click
                         // offers the zooms, each about the view's
                         // center, as the keys' are.
-                        PanelButton {
+                        fit-button := PanelButton {
                             text: @tr("zoom" => "Fit");
                             icon: @image-url("icons/maximize.svg");
                             has-menu: true;
@@ -5348,6 +5555,45 @@ export component App inherits Window {
     // picture; under the grid and the sheets, which are declared
     // after. With all three away they go quiet (see EdgeArrow).
     property <length> view-mid: (root.height - root.strip-h) / 2;
+    // The crop the arrows step off: the crop as it stands, or while a
+    // handle is held or a crop drawn, the crop at the press. Read live,
+    // a dragged edge crossing an arrow's band moved the arrow aside and
+    // back with every pixel of the pointer, so it flashed from side to
+    // side under the drag; held, it moves once, when the drag ends.
+    // The Viewport ends a handle's drag itself when the handles go
+    // mid-drag (its `crop-shown`), and a drawn crop's press area
+    // outlives them, so each hold meets its release.
+    property <bool> crop-held;
+    property <length> held-crop-left;
+    property <length> held-crop-top;
+    property <length> held-crop-width;
+    property <length> held-crop-height;
+    property <length> arrow-crop-left: root.crop-held ? root.held-crop-left : root.crop-left;
+    property <length> arrow-crop-top: root.crop-held ? root.held-crop-top : root.crop-top;
+    property <length> arrow-crop-width: root.crop-held ? root.held-crop-width : root.crop-width;
+    property <length> arrow-crop-height: root.crop-held ? root.held-crop-height : root.crop-height;
+    // The Custom aspect typed and not yet accepted when a crop handle
+    // is taken: the press takes no focus, so its typing is over here,
+    // and what it does to a Fill is asked at the release, never along
+    // the drag.
+    property <bool> aspect-settle-due: false;
+    function aspect-settle() {
+        if (root.aspect-settle-due) {
+            root.aspect-settle-due = false;
+            root.geometry-settled();
+        }
+    }
+    function hold-crop() {
+        if (root.aspect-typing) {
+            root.aspect-typing = false;
+            root.aspect-settle-due = true;
+        }
+        root.held-crop-left = root.crop-left;
+        root.held-crop-top = root.crop-top;
+        root.held-crop-width = root.crop-width;
+        root.held-crop-height = root.crop-height;
+        root.crop-held = true;
+    }
     // With the crop in hand, an arrow over the crop's handles on its
     // edge (a full-width crop's) moves along the edge until it clears
     // them: the arrows are drawn over the viewport, so a handle under
@@ -5357,9 +5603,9 @@ export component App inherits Window {
     pure function arrow-clears(top: length) -> bool {
         if (top < 0 || top + 40px > root.height - root.strip-h) { return false; }
         // A handle is 20 px; 2 px more of air either side.
-        let ct = root.crop-top;
-        let cm = root.crop-top + root.crop-height / 2;
-        let cb = root.crop-top + root.crop-height;
+        let ct = root.arrow-crop-top;
+        let cm = root.arrow-crop-top + root.arrow-crop-height / 2;
+        let cb = root.arrow-crop-top + root.arrow-crop-height;
         return !(ct > top - 12px && ct < top + 52px) && !(cm > top - 12px && cm < top + 52px)
             && !(cb > top - 12px && cb < top + 52px);
     }
@@ -5369,16 +5615,16 @@ export component App inherits Window {
             || root.arrow-clears(rest)) {
             return rest;
         }
-        let cm = root.crop-top + root.crop-height / 2;
+        let cm = root.arrow-crop-top + root.arrow-crop-height / 2;
         if (root.arrow-clears(cm + 12px)) { return cm + 12px; }
         if (root.arrow-clears(cm - 52px)) { return cm - 52px; }
-        if (root.arrow-clears(root.crop-top + root.crop-height + 12px)) { return root.crop-top + root.crop-height + 12px; }
-        if (root.arrow-clears(root.crop-top - 52px)) { return root.crop-top - 52px; }
+        if (root.arrow-clears(root.arrow-crop-top + root.arrow-crop-height + 12px)) { return root.arrow-crop-top + root.arrow-crop-height + 12px; }
+        if (root.arrow-clears(root.arrow-crop-top - 52px)) { return root.arrow-crop-top - 52px; }
         return rest;
     }
-    EdgeArrow {
+    right-arrow := EdgeArrow {
         x: root.width - root.right-w - self.width;
-        y: root.arrow-top(self.x, root.left-w + root.crop-left + root.crop-width);
+        y: root.arrow-top(self.x, root.left-w + root.arrow-crop-left + root.arrow-crop-width);
         width: 16px;
         height: 40px;
         quiet: root.all-hidden();
@@ -5394,28 +5640,28 @@ export component App inherits Window {
     // full-height crop's bottom handles.
     pure function strip-arrow-clears(left: length) -> bool {
         if (left < root.left-w || left + 40px > root.width - root.right-w) { return false; }
-        let cl = root.left-w + root.crop-left;
-        let cm = cl + root.crop-width / 2;
-        let cr = cl + root.crop-width;
+        let cl = root.left-w + root.arrow-crop-left;
+        let cm = cl + root.arrow-crop-width / 2;
+        let cr = cl + root.arrow-crop-width;
         return !(cl > left - 12px && cl < left + 52px) && !(cm > left - 12px && cm < left + 52px)
             && !(cr > left - 12px && cr < left + 52px);
     }
     pure function strip-arrow-left() -> length {
         let rest = root.left-w + (root.width - root.left-w - root.right-w - 40px) / 2;
-        let cb = root.crop-top + root.crop-height;
+        let cb = root.arrow-crop-top + root.arrow-crop-height;
         if (!root.crop-mode || root.grid-open || root.placeholder
             || abs(cb - (root.height - root.strip-h - 8px)) >= 18px || root.strip-arrow-clears(rest)) {
             return rest;
         }
-        let cl = root.left-w + root.crop-left;
-        let cm = cl + root.crop-width / 2;
+        let cl = root.left-w + root.arrow-crop-left;
+        let cm = cl + root.arrow-crop-width / 2;
         if (root.strip-arrow-clears(cm + 12px)) { return cm + 12px; }
         if (root.strip-arrow-clears(cm - 52px)) { return cm - 52px; }
-        if (root.strip-arrow-clears(cl + root.crop-width + 12px)) { return cl + root.crop-width + 12px; }
+        if (root.strip-arrow-clears(cl + root.arrow-crop-width + 12px)) { return cl + root.arrow-crop-width + 12px; }
         if (root.strip-arrow-clears(cl - 52px)) { return cl - 52px; }
         return rest;
     }
-    EdgeArrow {
+    strip-arrow := EdgeArrow {
         x: root.strip-arrow-left();
         y: root.height - root.strip-h - self.height;
         width: 40px;
@@ -5626,7 +5872,7 @@ export component App inherits Window {
             padding-top: Theme.space-3;
             padding-bottom: Theme.space-3;
             spacing: Theme.space-2;
-            PanelButton {
+            library-view-button := PanelButton {
                 // The view button at the top left: the grid
                 text: @tr("Library");
                 icon: @image-url("icons/library.svg");
@@ -5644,7 +5890,7 @@ export component App inherits Window {
                     if (root.queue-view-on) { root.queue-leave(false); }
                 }
             }
-            PanelButton {
+            loupe-view-button := PanelButton {
                 // The view button at the top left: one frame
                 text: @tr("Loupe");
                 icon: @image-url("icons/image.svg");
@@ -5743,7 +5989,7 @@ export component App inherits Window {
                         clicked => { keys.focus(); root.open-folder(); }
                     }
                     if root.open-folder-name != "" || root.open-folder-note != ""
-                        || root.recent-folders.length > 0: FolderName {
+                        || root.recent-folders.length > 0: folder-name := FolderName {
                         name: root.open-folder-name;
                         root-name: root.open-folder-root;
                         path: root.open-folder-path;
@@ -5793,7 +6039,7 @@ export component App inherits Window {
                     // of them. While a card import runs it is that
                     // import's Stop, and while a catalog writes its
                     // face says so and it waits.
-                    PanelButton {
+                    import-button := PanelButton {
                         text: root.import-running ? (root.import-stopping ? @tr("Stopping...") : @tr("Stop import"))
                             : root.lr-running ? @tr("Importing the catalog...") : @tr("Import...");
                         icon: @image-url("icons/camera.svg");
@@ -5831,7 +6077,7 @@ export component App inherits Window {
                             }
                         }
                     }
-                    if root.import-status != "": Text {
+                    if root.import-status != "": import-status-line := Text {
                         text: root.import-status;
                         color: Theme.text-secondary;
                         font-size: Theme.font-xs;
@@ -5933,6 +6179,9 @@ export component App inherits Window {
                                 rows: root.folder-tree;
                                 open-row: root.folder-tree-open-row;
                                 reveal: root.folder-tree-reveal;
+                                moved: root.folder-tree-moved;
+                                moves: root.folder-tree-moves;
+                                still-marks <=> root.folder-tree-still;
                                 subfolders <=> root.folder-tree-subfolders;
                                 collapsed-folders <=> root.collapsed-folders;
                                 animated <=> root.folders-animated;
@@ -5985,7 +6234,7 @@ export component App inherits Window {
                         // first under the collections, rather than among the
                         // roots, since it is no folder; with nothing to fold,
                         // so folding one never hides the one way into its view.
-                        if section == "queue" && root.grid-open: QueueHeader {
+                        if section == "queue" && root.grid-open: queue-header := QueueHeader {
                             reorderable: left-stack.movable;
                             reorder-started => { left-stack.start(i); }
                             reorder-moved(x, y) => { left-stack.move(x, y); }
@@ -6205,7 +6454,7 @@ export component App inherits Window {
             // Help: the keys sheet, the guide in the browser, and the
             // report, which also has its own button below, where the
             // guide has always said it is.
-            PanelButton {
+            help-button := PanelButton {
                 text: @tr("Help");
                 icon: @image-url("icons/circle-help.svg");
                 accessible-role: button;
@@ -6304,7 +6553,7 @@ export component App inherits Window {
     // pictures until the pointer asks; there its ground is the canvas.
     EdgeArrow {
         x: root.left-w;
-        y: root.grid-open ? (root.height - self.height) / 2 : root.arrow-top(self.x, root.left-w + root.crop-left);
+        y: root.grid-open ? (root.height - self.height) / 2 : root.arrow-top(self.x, root.left-w + root.arrow-crop-left);
         width: 16px;
         height: 40px;
         quiet: (root.all-hidden() && !root.grid-open) || (root.lightbox && root.grid-open);
@@ -6625,6 +6874,15 @@ export component App inherits Window {
         rt-write => { root.rt-write(); }
     }
 
+    if root.collection-picker-open: CollectionPickerSheet {
+        open <=> root.collection-picker-open;
+        choices: root.search-collections(root.collection-names, self.query);
+        picked(i) => {
+            root.collection-menu-add(i);
+            root.collection-picker-open = false;
+        }
+    }
+
     // The collection sheet: a name for a new collection, a smart one
     // or a renamed one, or whether to delete one.
     if root.collection-sheet-open: CollectionSheet {
@@ -6717,6 +6975,7 @@ export component App inherits Window {
         export-name-example(a, b, c, d, e, f, g) => { return root.export-name-example(a, b, c, d, e, f, g); }
         export-name-refused(a) => { return root.export-name-refused(a); }
         sheet-opened => { root.export-sheet-opened(); }
+        output-sharpened: root.export-output-sharpened;
         export-metadata <=> root.export-metadata;
         export-mark <=> root.export-mark;
         export-mark-text <=> root.export-mark-text;
@@ -6731,6 +6990,8 @@ export component App inherits Window {
         export-border-color <=> root.export-border-color;
         export-mark-choose => { root.export-mark-choose(); }
         export-presets <=> root.export-presets;
+        export-preset-labels: root.export-preset-labels;
+        export-preset-index <=> root.export-preset-index;
         export-preset <=> root.export-preset;
         export-preset-edited <=> root.export-preset-edited;
         export-preset-chosen(n) => { root.export-preset-chosen(n); }
@@ -6750,6 +7011,8 @@ export component App inherits Window {
         import-subfolder <=> root.import-subfolder;
         import-name <=> root.import-name;
         import-presets: root.import-presets;
+        import-preset-labels: root.import-preset-labels;
+        import-preset-index <=> root.import-preset-index;
         import-preset <=> root.import-preset;
         import-note: root.import-note;
         import-preview: root.import-preview;
@@ -6939,9 +7202,18 @@ export component App inherits Window {
         back-count: root.back-count;
         back-to: root.back-to;
         move-back => { root.move-back-asked(); root.menu-done(); }
-        collections: root.collection-names;
         collection-open: root.collection-open;
-        collection-add(i) => { root.collection-menu-add(i); root.menu-done(); }
+        collection-quick: root.collection-quick;
+        collection-has-more: root.collection-names.length > root.collection-quick.length;
+        collection-add(i) => {
+            collection-menu-delay.index = i;
+            collection-menu-delay.browse = false;
+            collection-menu-delay.running = true;
+        }
+        collection-browse => {
+            collection-menu-delay.browse = true;
+            collection-menu-delay.running = true;
+        }
         collection-remove => { root.collection-menu-remove(); root.menu-done(); }
         archive(i) => { root.archive-menu-picked(i); root.menu-done(); }
         copy => { root.menu-copy(); root.menu-done(); }

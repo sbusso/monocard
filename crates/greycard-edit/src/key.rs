@@ -36,11 +36,14 @@
 use crate::Edit;
 use crate::mask::{LandscapeGroup, Shape};
 
-/// The pipeline's own part of the key: raise it when the develop or
-/// the finish comes to make a different picture from the same edit (a
-/// change to an op, a default the edit does not store, the shrink that
-/// makes the kept pictures), and every picture kept under the old
-/// number is never asked for again.
+/// The pipeline's own part of the key: raise it when the develop comes
+/// to make a different picture from the same edit (a change to an op, a
+/// default the edit does not store, the shrink that makes the kept
+/// pictures), and every picture kept under the old number is never
+/// asked for again. It names the learned masks' rasters too, whose
+/// print leaves the finish out (`mask_base`), so a change to the finish
+/// alone raises the edited pictures' recipes instead
+/// (`edited_pictures::EDITED_RECIPE` in the engine).
 ///
 /// 2: a tint blends toward its hue rather than turning it, 2026-10-10.
 /// 3: highlights by the frame's own range and whites pivoting at the
@@ -52,6 +55,17 @@ use crate::mask::{LandscapeGroup, Shape};
 /// the automatic dual demosaic threshold and the hot-pixel repair
 /// read by default, 2026-11-15.
 pub const DEVELOP_RECIPE: u32 = 6;
+
+/// The [`crate::PROCESS`] the key was last raised for. A state's
+/// process is not in the key while one exists; a new one renders
+/// differently, so raising it raises [`DEVELOP_RECIPE`] (or takes the
+/// process into the key) and this with it. A process that changes the
+/// finish alone raises the edited pictures' recipes instead
+/// (`edited_pictures::EDITED_RECIPE` in the engine, whose test holds
+/// it to this), since this recipe also names the masks' rasters, whose
+/// print leaves the finish out. 2: the gamut op, by the engine's
+/// recipes (0x8005 and 0x8006).
+pub const PROCESS_KEYED: u32 = 2;
 
 /// The capture sharpen's guide, by version: taken into the key of an
 /// edit whose sharpen reads one ([`Edit::sharpen_reads_guide`]), so
@@ -84,6 +98,13 @@ pub const MIDTONES_SHAPE: &str = "midtones-1";
 /// past the pictures trial builds kept under 1 and 2.
 pub const WHITES_SHAPE: &str = "whites-3";
 
+/// The linear gradient's ramp, by version: taken into the key of an
+/// edit with a linear gradient in some mask
+/// ([`Edit::has_linear_gradient`]), so the pictures kept of such an
+/// edit are made again when it changes, and those of every other edit
+/// are kept. 1: Hermite's step, issue 182, 2026-11-18.
+pub const LINEAR_RAMP: &str = "linear-ramp-1";
+
 /// An aspect over no crop, by version: taken into the key of an edit
 /// whose aspect frames the picture with no crop stored
 /// ([`crate::geometry::Geometry::frames_by_aspect`]), so the pictures
@@ -91,6 +112,32 @@ pub const WHITES_SHAPE: &str = "whites-3";
 /// are kept. 1: framed by the aspect as the viewport frames it, where
 /// before the pictures were the whole frame, 2026-11-13.
 pub const ASPECT_FRAME: &str = "aspect-frame-1";
+
+/// The learned highlight fill, by its implementation's version: taken
+/// into the key of an edit whose fill names a version this build has
+/// ([`Edit::highlight_fill`]), so the pictures kept of such an edit are
+/// made again when the op changes under one name, and those of every
+/// other edit are kept. The version's name is in the edit's own JSON
+/// already; this is the code that runs it. An edit naming a version
+/// this build lacks develops without the fill and does not take it, so
+/// a newer build that has that version keys it apart from the picture
+/// kept here. 1: the first, 2026-11-19.
+pub const HIGHLIGHT_FILL: &str = "highlight-fill-1";
+
+/// The output sharpen's radius, by version: taken into the key of an
+/// edit whose output sharpen acts ([`Edit::output_sharpens`]), so the
+/// pictures kept of such an edit are made again and those of every
+/// other edit are kept. 1: the radius in the pixels of the picture
+/// made, where before it was the full-size picture's and shrank with a
+/// smaller one, 2026-11-21: a kept picture, a fraction of full size,
+/// sharpens as an export of its size does. A full-size export is the
+/// same picture.
+pub const OUTPUT_SHARPEN: &str = "output-sharpen-1";
+
+/// The highlight fill's versions this build has, by the names an edit
+/// writes: `greycard_ai::highlight::VERSIONS`' names, which this crate
+/// cannot see; the engine's tests hold the two equal.
+pub const HIGHLIGHT_FILLS: &[&str] = &["hl-1", "hl-2"];
 
 /// The learned masks' stages, by version: raise one when its raster
 /// comes to be another from the same shape. greycard-ui's mask cache
@@ -170,6 +217,52 @@ pub fn framed_key(
     u64::from_le_bytes(hash.as_bytes()[..8].try_into().expect("eight bytes"))
 }
 
+/// The key of an edit's picture on a frame that may decode with light
+/// over its white (`headroom`, by
+/// [`greycard_core::decode::may_have_headroom`] of its file): `key`,
+/// the edit's own ([`Edit::develop_key_with`]), with
+/// [`greycard_core::decode::HEADROOM`] taken in. The key is made
+/// without a decode, so every such file's pictures are made again when
+/// the table changes, and those of every other file keep `key`. Taken
+/// before [`framed_key`].
+pub fn headroom_key(key: u64, headroom: bool) -> u64 {
+    if !headroom {
+        return key;
+    }
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"greycard headroom\0");
+    hasher.update(&key.to_le_bytes());
+    hasher.update(greycard_core::decode::HEADROOM.as_bytes());
+    let hash = hasher.finalize();
+    u64::from_le_bytes(hash.as_bytes()[..8].try_into().expect("eight bytes"))
+}
+
+/// The key of an edit's picture on a frame that may carry a DNG
+/// `LinearizationTable` (`linearization`, by
+/// [`greycard_core::decode::may_have_linearization`] of its file):
+/// `key` with [`greycard_core::decode::LINEARIZATION`] taken in, as
+/// [`headroom_key`] takes the headroom in, so only such files'
+/// pictures are made again when how the table is read changes. Taken
+/// before [`framed_key`].
+pub fn linearization_key(key: u64, linearization: bool) -> u64 {
+    if !linearization {
+        return key;
+    }
+    let mut hasher = blake3::Hasher::new();
+    hasher.update(b"greycard linearization\0");
+    hasher.update(&key.to_le_bytes());
+    hasher.update(greycard_core::decode::LINEARIZATION.as_bytes());
+    let hash = hasher.finalize();
+    u64::from_le_bytes(hash.as_bytes()[..8].try_into().expect("eight bytes"))
+}
+
+/// [`headroom_key`] and [`linearization_key`] of `key`, each where the
+/// file at `path` may need it: the decode's part of a picture's key.
+pub fn decode_key(key: u64, path: &std::path::Path) -> u64 {
+    let key = headroom_key(key, greycard_core::decode::may_have_headroom(path));
+    linearization_key(key, greycard_core::decode::may_have_linearization(path))
+}
+
 /// A file the develop of an edit reads outside the sidecar, as the key
 /// takes it: its file name, and BLAKE3 of its contents, `None` for a
 /// file that is not there or will not read.
@@ -204,10 +297,12 @@ impl Edit {
         pipelines: impl Fn(&Shape) -> Vec<String>,
     ) -> u64 {
         // What reaches no pixel is taken out: the version the edit was
-        // written at and whether it waits on its frame (a migration that
-        // changes nothing changes no picture), an adjustment's name, and
-        // the light a mask's
-        // switched-off white balance keeps for when it goes on again.
+        // written at, the process it was made under while only one
+        // renders ([`PROCESS_KEYED`]; left out of the text below), and
+        // whether it waits on its frame (a migration that changes
+        // nothing changes no picture), an adjustment's name, and the
+        // light a mask's switched-off white balance keeps for when it
+        // goes on again.
         let mut edit = self.clone();
         edit.version = 0;
         edit.frame_pending = false;
@@ -229,8 +324,9 @@ impl Edit {
         hasher.update(&DEVELOP_RECIPE.to_le_bytes());
         // Serde writes a struct's fields in their order and a list in
         // its, and nothing in an edit is a map, so equal edits write
-        // equal bytes.
-        let json = serde_json::to_vec(&edit).expect("an edit serializes");
+        // equal bytes; the process left out, as the key had it before
+        // there was one.
+        let json = edit.json_but_process().into_bytes();
         hasher.update(&(json.len() as u64).to_le_bytes());
         hasher.update(&json);
         // The learned masks' stages, each once, in order: only an edit
@@ -261,10 +357,25 @@ impl Edit {
             hasher.update(&(WHITES_SHAPE.len() as u64).to_le_bytes());
             hasher.update(WHITES_SHAPE.as_bytes());
         }
+        if self.has_linear_gradient() {
+            hasher.update(b"linear ramp\0");
+            hasher.update(&(LINEAR_RAMP.len() as u64).to_le_bytes());
+            hasher.update(LINEAR_RAMP.as_bytes());
+        }
         if self.geometry.frames_by_aspect() {
             hasher.update(b"aspect frame\0");
             hasher.update(&(ASPECT_FRAME.len() as u64).to_le_bytes());
             hasher.update(ASPECT_FRAME.as_bytes());
+        }
+        if self.output_sharpens() {
+            hasher.update(b"output sharpen\0");
+            hasher.update(&(OUTPUT_SHARPEN.len() as u64).to_le_bytes());
+            hasher.update(OUTPUT_SHARPEN.as_bytes());
+        }
+        if self.highlight_fill().is_some() {
+            hasher.update(b"highlight fill\0");
+            hasher.update(&(HIGHLIGHT_FILL.len() as u64).to_le_bytes());
+            hasher.update(HIGHLIGHT_FILL.as_bytes());
         }
         for Read { name, contents } in read {
             hasher.update(&(name.len() as u64).to_le_bytes());
@@ -294,6 +405,19 @@ impl Edit {
 
 #[cfg(test)]
 mod tests {
+    /// A new process renders differently, so the pictures kept under
+    /// the old one must be made again: raising [`crate::PROCESS`]
+    /// without the key fails here.
+    #[test]
+    fn a_new_process_re_keys_the_pictures() {
+        assert_eq!(
+            crate::PROCESS,
+            super::PROCESS_KEYED,
+            "PROCESS was raised: raise DEVELOP_RECIPE (or take the process into \
+             the key) and set PROCESS_KEYED to it"
+        );
+    }
+
     use super::*;
     use crate::Sidecar;
 
@@ -398,6 +522,127 @@ mod tests {
         assert_eq!(key(&edit, None), up);
     }
 
+    /// The linear ramp is in the key of an edit with a linear gradient
+    /// in some mask, and of no other: a radial alone keeps the key it
+    /// had, so the pictures kept of it stay.
+    #[test]
+    fn the_linear_ramp_is_keyed_only_where_a_mask_holds_a_linear_gradient() {
+        use crate::mask::{Component, Shape};
+        let kept = |edit: &Edit| key(edit, None) == key_before_the_aspect_frame(edit);
+        let mut edit = Edit::default();
+        edit.light.exposure = 0.5;
+        assert!(!edit.has_linear_gradient());
+        let mut a = crate::Adjustment::default();
+        a.look.light.exposure = 1.0;
+        a.mask.components.push(Component {
+            shape: Shape::Radial {
+                center: [0.5, 0.5],
+                radius: [0.2, 0.2],
+                angle: 0.0,
+                feather: 0.5,
+            },
+            ..Default::default()
+        });
+        edit.adjustments.push(a);
+        assert!(!edit.has_linear_gradient());
+        assert!(kept(&edit), "a radial alone");
+        edit.adjustments[0].mask.components.push(Component {
+            shape: Shape::Linear {
+                from: [0.0, 0.0],
+                to: [0.3, 0.2],
+            },
+            ..Default::default()
+        });
+        assert!(edit.has_linear_gradient());
+        assert!(!kept(&edit), "a linear gradient carries the ramp");
+        edit.adjustments[0].mask.components.remove(0);
+        assert!(!kept(&edit), "a linear gradient alone");
+    }
+
+    /// The highlight fill off keeps every key as it was; a version this
+    /// build has is another picture and carries [`HIGHLIGHT_FILL`]; a
+    /// version it lacks develops without the fill but is in the edit's
+    /// JSON, so its key is its own, made without the tag.
+    #[test]
+    fn the_highlight_fill_is_keyed_only_where_this_build_has_its_version() {
+        let mut edit = Edit::default();
+        edit.light.exposure = 0.5;
+        assert_eq!(edit.highlight_fill, None);
+        let off = key(&edit, None);
+        assert_eq!(off, key_before_the_aspect_frame(&edit), "off, as before");
+        edit.highlight_fill = Some("hl-1".into());
+        assert_eq!(edit.highlight_fill(), Some("hl-1"));
+        let on = key(&edit, None);
+        assert_ne!(on, off);
+        assert_ne!(
+            on,
+            key_before_the_aspect_frame(&edit),
+            "hl-1 carries the fill's version"
+        );
+        edit.highlight_fill = Some("hl-2".into());
+        assert_eq!(edit.highlight_fill(), Some("hl-2"));
+        let second = key(&edit, None);
+        assert_ne!(second, on, "hl-2 is another picture than hl-1");
+        assert_ne!(second, off);
+        assert_ne!(second, key_before_the_aspect_frame(&edit));
+        edit.highlight_fill = Some("hl-9".into());
+        assert_eq!(edit.highlight_fill(), None, "a version this build lacks");
+        let unknown = key(&edit, None);
+        assert_ne!(unknown, off, "the name is in the edit's JSON");
+        assert_ne!(unknown, on);
+        assert_eq!(
+            unknown,
+            key_before_the_aspect_frame(&edit),
+            "and the fill's version is not"
+        );
+        edit.highlight_fill = None;
+        assert_eq!(key(&edit, None), off, "and off again");
+    }
+
+    /// An output sharpen that acts carries [`OUTPUT_SHARPEN`]; one at no
+    /// amount or switched off keys as before.
+    #[test]
+    fn the_output_sharpen_is_keyed_only_where_it_acts() {
+        let mut edit = Edit::default();
+        edit.output_sharpen.radius = 2.0;
+        assert!(!edit.output_sharpens());
+        assert_eq!(key(&edit, None), key_before_the_aspect_frame(&edit));
+        edit.output_sharpen.amount = 0.5;
+        assert!(edit.output_sharpens());
+        assert_ne!(
+            key(&edit, None),
+            key_before_the_aspect_frame(&edit),
+            "the radius's version"
+        );
+        edit.output_sharpen.enabled = false;
+        assert!(!edit.output_sharpens());
+        assert_eq!(key(&edit, None), key_before_the_aspect_frame(&edit));
+    }
+
+    /// A mask's positive share at its own Radius and Threshold acts, as
+    /// one at the picture's does (the export sheet's Sharpen gives way
+    /// to it); a take with its own does not, nor a share at zero.
+    #[test]
+    fn a_masks_own_settings_act_only_with_a_positive_share() {
+        let mut edit = Edit::default();
+        edit.adjustments.push(crate::Adjustment {
+            id: 1,
+            ..Default::default()
+        });
+        edit.adjustments[0]
+            .mask
+            .components
+            .push(crate::mask::Component::default());
+        let detail = &mut edit.adjustments[0].look.detail;
+        detail.output_sharpen_radius = Some(3.0);
+        detail.output_sharpen_threshold = Some(0.0);
+        assert!(!edit.output_sharpens());
+        edit.adjustments[0].look.detail.output_sharpen = -0.5;
+        assert!(!edit.output_sharpens());
+        edit.adjustments[0].look.detail.output_sharpen = 2.0;
+        assert!(edit.output_sharpens());
+    }
+
     /// The key as it was made before [`ASPECT_FRAME`], for an edit with
     /// no mask, no file read, no guide, and no Midtones: the recipe, the
     /// edit, and the lens database while it corrects. The default
@@ -409,7 +654,7 @@ mod tests {
         let mut hasher = blake3::Hasher::new();
         hasher.update(b"greycard develop key\0");
         hasher.update(&DEVELOP_RECIPE.to_le_bytes());
-        let json = serde_json::to_vec(&stripped).expect("an edit serializes");
+        let json = stripped.json_but_process().into_bytes();
         hasher.update(&(json.len() as u64).to_le_bytes());
         hasher.update(&json);
         if edit.lens.enabled && edit.lens.profile {
@@ -453,25 +698,35 @@ mod tests {
         let mut sidecar = Sidecar::default();
         let before = key(&sidecar.current, None);
         let first = sidecar.current.clone();
-        sidecar.current.light.exposure += 1.0;
+        {
+            let mut e = sidecar.current().clone();
+            e.light.exposure += 1.0;
+            sidecar.record(e);
+        }
         let brightened = key(&sidecar.current, None);
         assert_ne!(before, brightened, "a brightening is another picture");
-        // Undo: the edit as it was, from the history's copy.
-        sidecar.current = first.clone();
+        // Back: the edit as it was, from the history's copy.
+        sidecar.record(first.clone());
         assert_eq!(key(&sidecar.current, None), before);
-        // Redo, by setting the same value again rather than by a copy.
-        sidecar.current.light.exposure += 1.0;
+        // Forward, by setting the same value again rather than by a copy.
+        let mut e = sidecar.current().clone();
+        e.light.exposure += 1.0;
+        sidecar.record(e);
         assert_eq!(key(&sidecar.current, None), brightened);
         // Through the sidecar's own file and back.
         let json = serde_json::to_string(&sidecar).unwrap();
-        let read: Sidecar = serde_json::from_str(&json).unwrap();
+        let read: Sidecar = crate::sidecar::plain(&json).unwrap();
         assert_eq!(key(&read.current, None), brightened);
     }
 
     #[test]
     fn a_rating_a_name_and_the_turn_change_no_key_and_the_crop_does() {
         let mut sidecar = Sidecar::default();
-        sidecar.current.light.exposure = 0.7;
+        {
+            let mut e = sidecar.current().clone();
+            e.light.exposure = 0.7;
+            sidecar.record(e);
+        }
         let k = key(&sidecar.current, None);
         sidecar.meta.rating = 4;
         sidecar.meta.keywords.push("kept".into());
@@ -480,24 +735,44 @@ mod tests {
             k,
             "a rating is not the picture"
         );
-        sidecar.current.version = 1;
+        {
+            let mut e = sidecar.current().clone();
+            e.version = 1;
+            sidecar.record(e);
+        }
         assert_eq!(key(&sidecar.current, None), k, "nor is the schema version");
-        sidecar.current.frame_pending = true;
+        {
+            let mut e = sidecar.current().clone();
+            e.frame_pending = true;
+            sidecar.record(e);
+        }
         assert_eq!(key(&sidecar.current, None), k, "nor the wait on the frame");
-        sidecar.current.frame_pending = false;
+        {
+            let mut e = sidecar.current().clone();
+            e.frame_pending = false;
+            sidecar.record(e);
+        }
         sidecar.current.adjustments.push(crate::Adjustment {
             id: 3,
             name: "Sky".into(),
             ..Default::default()
         });
         let with = key(&sidecar.current, None);
-        sidecar.current.adjustments[0].name = "The sky".into();
+        {
+            let mut e = sidecar.current().clone();
+            e.adjustments[0].name = "The sky".into();
+            sidecar.record(e);
+        }
         assert_eq!(
             key(&sidecar.current, None),
             with,
             "a mask's name is not the picture"
         );
-        sidecar.current.adjustments[0].enabled = false;
+        {
+            let mut e = sidecar.current().clone();
+            e.adjustments[0].enabled = false;
+            sidecar.record(e);
+        }
         assert_ne!(key(&sidecar.current, None), with);
         sidecar.current.adjustments.clear();
         assert_eq!(key(&sidecar.current, None), k);
@@ -672,5 +947,52 @@ mod tests {
             ..frame
         };
         assert_ne!(framed_key(key, true, true, Some(&off)), key);
+    }
+
+    /// The headroom's version is in the key of a file that may have
+    /// headroom, and of no other: every other file keeps its pictures.
+    #[test]
+    fn the_headroom_is_keyed_only_where_a_file_may_have_it() {
+        let key = key(&Edit::default(), None);
+        assert_eq!(headroom_key(key, false), key);
+        let cr3 = headroom_key(key, true);
+        assert_ne!(cr3, key);
+        assert_eq!(headroom_key(key, true), cr3, "the same for the same key");
+        assert_ne!(headroom_key(key ^ 1, true), cr3);
+        use greycard_core::decode::may_have_headroom;
+        use std::path::Path;
+        assert!(may_have_headroom(Path::new("a/IMG_0001.CR3")));
+        assert!(may_have_headroom(Path::new("b.cr3")));
+        for other in ["c.CR2", "d.dng", "e.NEF", "f.cr3.gcd", "cr3"] {
+            assert!(!may_have_headroom(Path::new(other)), "{other}");
+        }
+    }
+
+    /// The linearization's version is in the key of a DNG's pictures
+    /// and of no other file's; a CR3's takes the headroom alone.
+    #[test]
+    fn the_linearization_is_keyed_only_for_a_dng() {
+        use greycard_core::decode::may_have_linearization;
+        use std::path::Path;
+        let key = key(&Edit::default(), None);
+        assert_eq!(linearization_key(key, false), key);
+        let dng = linearization_key(key, true);
+        assert_ne!(dng, key);
+        assert_ne!(dng, headroom_key(key, true));
+        assert_eq!(
+            linearization_key(key, true),
+            dng,
+            "the same for the same key"
+        );
+        assert_ne!(linearization_key(key ^ 1, true), dng);
+        assert!(may_have_linearization(Path::new("a/L1000001.DNG")));
+        assert!(may_have_linearization(Path::new("b.dng")));
+        for other in ["c.CR3", "d.RAF", "e.NEF", "f.dng.gcd", "dng"] {
+            assert!(!may_have_linearization(Path::new(other)), "{other}");
+        }
+        assert_eq!(decode_key(key, Path::new("x.DNG")), dng);
+        assert_eq!(decode_key(key, Path::new("x.cr3")), headroom_key(key, true));
+        assert_eq!(decode_key(key, Path::new("x.RAF")), key);
+        assert_eq!(decode_key(key, Path::new("x.nef")), key);
     }
 }

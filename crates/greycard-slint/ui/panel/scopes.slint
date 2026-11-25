@@ -109,7 +109,7 @@ export component PanelHead inherits VerticalLayout {
                     downs: file-ta.downs;
                 }
             }
-            PanelButton {
+            undo-button := PanelButton {
                 icon: @image-url("../icons/rotate-ccw.svg");
                 words: @tr("Undo");
                 accessible-role: button;
@@ -119,7 +119,7 @@ export component PanelHead inherits VerticalLayout {
                 width: Theme.control-height + Theme.space-2;
                 clicked => { root.undo(); }
             }
-            PanelButton {
+            redo-button := PanelButton {
                 icon: @image-url("../icons/rotate-cw.svg");
                 words: @tr("Redo");
                 accessible-role: button;
@@ -141,7 +141,7 @@ export component PanelHead inherits VerticalLayout {
                 font-size: Theme.font-sm;
                 overflow: elide;
             }
-            if !root.shot-folded: Text {
+            if !root.shot-folded: shot-exposure-text := Text {
                 text: root.shot-exposure;
                 height: 14px;
                 color: Theme.text-secondary;
@@ -176,7 +176,7 @@ export component PanelHead inherits VerticalLayout {
     // frames chosen beside this one, the sheet that lays this one's
     // settings over them, which Ctrl+Shift+S and the frame menu open
     // too, and whose words these are.
-    if root.set-count > 1: PanelButton {
+    if root.set-count > 1: sync-button := PanelButton {
         text: @tr("Sync {n} frame to this one..." | "Sync {n} frames to this one..." % (root.set-count - 1));
         icon: @image-url("../icons/layers.svg");
         accessible-role: button;
@@ -268,6 +268,9 @@ export component PanelHead inherits VerticalLayout {
             if root.scope == "RGB": ClipMark {
                 x: 1px;
                 y: 1px;
+                // Spoken by a screen reader: the histogram's square that
+                // paints the shadows' clipping over the picture
+                label: @tr("Shadow clipping");
                 lit: root.clip-shadows-lit;
                 mark: root.clip-shadows-mark;
                 on: root.warn-shadows;
@@ -279,6 +282,9 @@ export component PanelHead inherits VerticalLayout {
             if root.scope == "RGB": ClipMark {
                 x: parent.width - self.width - 1px;
                 y: 1px;
+                // Spoken by a screen reader: the histogram's square that
+                // paints the highlights' clipping over the picture
+                label: @tr("Highlight clipping");
                 lit: root.clip-highlights-lit;
                 mark: root.clip-highlights-mark;
                 on: root.warn-highlights;
@@ -290,7 +296,12 @@ export component PanelHead inherits VerticalLayout {
         }
         HorizontalLayout {
             spacing: Theme.space-1;
-            Segmented {
+            scope-row := Segmented {
+                // The panel's Tab is the window's: no stop here.
+                tab-stop: false;
+                // Spoken by a screen reader: the row that picks the
+                // histogram or a scope
+                name: @tr("Scope");
                 horizontal-stretch: 1;
                 options: root.scopes;
                 labels: root.scope-labels;
@@ -315,6 +326,8 @@ export component PanelHead inherits VerticalLayout {
                 opacity: root.scope-mask-active ? 1 : 0.45;
                 animate background { duration: Theme.quick; }
                 selection-label := Text {
+                    // Said once, by its button.
+                    accessible-role: none;
                     // Scopes: the button that reads the selected area only
                     text: @tr("Selection");
                     color: parent.on ? Theme.text : Theme.text-secondary;
@@ -324,6 +337,18 @@ export component PanelHead inherits VerticalLayout {
                     vertical-alignment: center;
                 }
                 selection-touch := TouchArea {
+                    // To a screen reader a button, named by its words.
+                    accessible-role: button;
+                    accessible-label: selection-label.text;
+                    accessible-checkable: true;
+                    accessible-checked: parent.on;
+                    accessible-enabled: root.scope-mask-active;
+                    accessible-action-default => {
+                        if (root.scope-mask-active) {
+                            root.scope-selection = !root.scope-selection;
+                            root.scope-selection-changed();
+                        }
+                    }
                     enabled: root.scope-mask-active;
                     mouse-cursor: root.scope-mask-active ? MouseCursor.pointer : MouseCursor.default;
                     clicked => {

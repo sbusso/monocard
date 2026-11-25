@@ -938,6 +938,7 @@ mod tests {
                 black: LevelPattern::uniform(100.0, 1),
                 white: LevelPattern::uniform(1100.0, 1),
                 black_deltas: None,
+                saturation: None,
             },
             as_shot_coefficients: None,
             calibrations: Vec::new(),

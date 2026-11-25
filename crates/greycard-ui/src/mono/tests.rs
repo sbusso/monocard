@@ -4,7 +4,42 @@ use slint::{ComponentHandle, Model};
 
 use super::*;
 use crate::panel::edit::{read_edit, show_edit};
-use crate::testing::{count_labeled, folder, header_reset, press, state_for, window};
+use crate::testing::{count_labeled, folder, press, state_for, window};
+
+/// The bounds of the first element labeled `label` that `pick` takes,
+/// scrolled into the panel's view. The words of Monocard's panels are data,
+/// made in Rust, so they are found by them and not by an id.
+fn labeled_where(
+    app: &App,
+    label: &str,
+    pick: impl Fn(&i_slint_backend_testing::ElementHandle) -> bool,
+) -> (slint::LogicalPosition, slint::LogicalSize) {
+    crate::testing::in_panel_view(app, &format!("labeled {label:?}"), |app| {
+        i_slint_backend_testing::ElementHandle::find_by_accessible_label(app, label).find(&pick)
+    })
+}
+
+fn labeled(app: &App, label: &str) -> (slint::LogicalPosition, slint::LogicalSize) {
+    labeled_where(app, label, |_| true)
+}
+
+/// The reset in the header of the panel titled `title`.
+fn header_reset(app: &App, title: &str) -> (slint::LogicalPosition, slint::LogicalSize) {
+    labeled_where(app, "Reset", |e| {
+        e.accessible_description().as_deref() == Some(title)
+    })
+}
+
+/// A click at the middle of the switch of the `Toggle` labeled `label`.
+#[cfg(mono_usb)]
+fn click_switch(app: &App, label: &str) {
+    labeled(app, label);
+    let root = i_slint_backend_testing::ElementHandle::find_by_accessible_label(app, label)
+        .find(|e| e.type_name().as_deref() == Some("Toggle"))
+        .expect("a Toggle");
+    let (at, size) = crate::testing::toggle_parts(&root).switch;
+    crate::testing::click(app, at.x + size.width / 2.0, at.y + size.height / 2.0);
+}
 
 mod offered;
 mod page;
@@ -79,7 +114,7 @@ fn current(state: &Rc<Shared>) -> Edit {
 
 fn current_of(state: &Rc<Shared>, i: usize) -> Edit {
     let st = state.borrow();
-    st.line(i).unwrap().current.clone()
+    st.line(i).unwrap().current().clone()
 }
 
 fn mono_of(state: &Rc<Shared>) -> MonoEdit {
@@ -263,7 +298,7 @@ fn a_slider_goes_into_the_sidecar_the_history_and_back() {
         let st = state.borrow();
         let line = st.line(0).unwrap();
         assert_eq!(line.history.len(), steps + 1);
-        assert_eq!(line.current_label.as_deref(), Some("Exposure +0.50 EV"));
+        assert_eq!(line.current_label(), Some("Exposure +0.50 EV"));
         let text = serde_json::to_string(&st.sidecars[0]).unwrap();
         assert!(text.contains("\"exposure\":0.5"));
     }
@@ -335,7 +370,7 @@ fn every_slider_goes_round_through_the_window() {
 #[test]
 fn a_drag_on_the_panel_moves_the_edit() {
     let (app, state) = open();
-    let (at, size) = crate::testing::labeled(&app, "Midtones");
+    let (at, size) = labeled(&app, "Midtones");
     crate::testing::click(&app, at.x + size.width - 70.0, at.y + size.height / 2.0);
     save(&app, &state);
     assert!(mono_of(&state).basic.midtones > 50.0);
@@ -366,7 +401,7 @@ fn a_mask_carries_its_own_tools() {
     assert_eq!(edit.adjustments[0].mono.as_ref().unwrap().exposure, -1.0);
     assert!(edit.mono.is_none(), "the picture's own is left alone");
     assert_eq!(
-        state.borrow().line(0).unwrap().current_label.as_deref(),
+        state.borrow().line(0).unwrap().current_label(),
         Some("Sky: Exposure -1.00 EV")
     );
     assert_eq!(app.get_panel_tab(), "Masks");
@@ -416,7 +451,7 @@ fn a_look_goes_on_moves_with_its_strength_and_comes_off() {
             .all(|l| l.chosen == (l.name == "Hard"))
     );
     assert_eq!(
-        state.borrow().line(0).unwrap().current_label.as_deref(),
+        state.borrow().line(0).unwrap().current_label(),
         Some("Look: Hard")
     );
     mono.invoke_slid("look.strength".into(), 0.0);
@@ -584,7 +619,7 @@ fn a_new_frame_starts_from_its_profile() {
     let at_start = |state: &Rc<Shared>| {
         let st = state.borrow();
         let line = st.line(0).unwrap();
-        assert_eq!(line.current.mono.as_deref(), Some(&start));
+        assert_eq!(line.current().mono.as_deref(), Some(&start));
         assert!(line.history.is_empty());
         assert!(!crate::panel::browser::frame_marks(&st, 0).0, "not edited");
         assert!(crate::panel::reset::at_original(&st, 0));
@@ -622,7 +657,7 @@ fn a_new_frame_starts_from_its_profile() {
         edit.light.exposure = 1.0;
         st.line_mut(1).unwrap().record(edit.clone());
         seed(&mut st, &app, given);
-        assert_eq!(st.line(1).unwrap().current, edit);
+        assert_eq!(*st.line(1).unwrap().current(), edit);
     }
 }
 
@@ -646,7 +681,7 @@ fn a_new_frame_starts_from_its_mode() {
         want.look.name = name.into();
         let st = state.borrow();
         let line = st.line(0).unwrap();
-        assert_eq!(line.current.mono.as_deref(), Some(&want), "{name}");
+        assert_eq!(line.current().mono.as_deref(), Some(&want), "{name}");
         assert_eq!(st.develop.edit.mono.as_deref(), Some(&want), "{name}");
         assert!(line.history.is_empty());
         assert!(!crate::panel::browser::frame_marks(&st, 0).0, "{name}");
@@ -688,7 +723,7 @@ fn the_switch_for_the_mode_is_kept() {
     settle(&app);
     let kept = || crate::settings::Settings::load().shared.mono_start_mode;
     assert!(!kept());
-    let (at, size) = crate::testing::labeled(&app, "Start from the camera's mode");
+    let (at, size) = labeled(&app, "Start from the camera's mode");
     crate::testing::click(&app, at.x + size.width / 2.0, at.y + size.height / 2.0);
     assert!(kept());
     looks_done(&dir);
@@ -801,7 +836,7 @@ fn a_look_is_renamed_exported_and_deleted_from_the_panel() {
     let steps = state.borrow().line(0).unwrap().history.len();
     mono.invoke_pressed("look.delete".into());
     settle(&app);
-    let (at, size) = crate::testing::labeled(&app, SURE);
+    let (at, size) = labeled(&app, SURE);
     crate::testing::click(&app, at.x + size.width / 2.0, at.y + size.height / 2.0);
     save(&app, &state);
     assert_eq!(mono.get_look_note(), "Test 2 deleted");
@@ -829,7 +864,7 @@ fn the_split_has_a_handle_and_the_zones_a_legend() {
     const HANDLE: &str = "Split between before and after";
     assert_eq!(crate::testing::count_labeled(&app, HANDLE), 0);
     press(&app, "s");
-    let (at, size) = crate::testing::labeled(&app, HANDLE);
+    let (at, size) = labeled(&app, HANDLE);
     let (x, y) = (at.x + size.width / 2.0, at.y + size.height / 2.0);
     crate::testing::drag(&app, &[(x, y), (x + 100.0, y)]);
     let dragged = ui_state().split_at;
@@ -1040,7 +1075,7 @@ fn a_scale_moves_a_tenth_as_far_with_shift() {
     let mono = app.global::<Mono>();
     mono.invoke_fold("eq-expert".into(), true);
     settle(&app);
-    let (at, size) = crate::testing::labeled(&app, "Scale 2");
+    let (at, size) = labeled(&app, "Scale 2");
     let (x, y) = (at.x + size.width / 2.0, at.y + size.height / 2.0);
     let scale = || HELD.with_borrow(|h| panel::scales(&h.edit)[1]);
     crate::testing::drag(&app, &[(x, y), (x, y - size.height / 4.0)]);
@@ -1125,7 +1160,8 @@ fn capture_the_window() {
             &edit,
             &greycard_engine::mono::preview_settings(Some(1000)),
             &Default::default(),
-        );
+        )
+        .unwrap();
         let img = greycard_engine::mono::preview(made).unwrap();
         let (w, h) = img.dimensions();
         slint::Image::from_rgb8(slint::SharedPixelBuffer::clone_from_slice(

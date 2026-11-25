@@ -45,9 +45,23 @@ use ort::session::Session;
 use ort::session::builder::{GraphOptimizationLevel, SessionBuilder};
 
 mod dylib;
+mod on_card;
 mod record;
 
-pub use dylib::{FETCH_RUNTIME, LIBRARY, SHIPS, Unavailable};
+#[cfg(test)]
+pub(crate) use on_card::flag_lock;
+pub use on_card::{
+    HELD, Held, OnCard, denoisers_off_card, denoisers_off_card_known, denoisers_off_here,
+    forget_off_card, let_denoisers_back_on, off_card_path, on_card_now, put_off_card,
+    read_denoisers_off_card, runs_held, set_build_label,
+};
+#[cfg(any(test, feature = "testing"))]
+pub use on_card::{
+    here_asked_on_this_thread, off_card_for_tests, off_card_is_for_tests,
+    read_store_again_for_tests, set_test_here, set_test_store,
+};
+
+pub use dylib::{FETCH_RUNTIME, LIBRARY, SHIPS, Unavailable, processor_name};
 
 /// An execution provider, in the order they are tried.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -465,8 +479,9 @@ pub fn webgpu_shader_f16() -> Option<(bool, String)> {
     }
 }
 
-/// The bytes of the WebGPU adapter's own memory: the sum of its
-/// device-local heaps on Vulkan, its dedicated video memory on DX12.
+/// The bytes of the WebGPU adapter's own memory: its largest
+/// device-local heap on Vulkan ([`card_heap`]), its dedicated video
+/// memory on DX12.
 /// `None` when no adapter answers, on Metal (a Mac's GPU has the
 /// machine's memory, which the caller reads), and on any backend that
 /// will not say. On an integrated GPU it is the share the driver sets
@@ -478,7 +493,7 @@ pub fn webgpu_memory() -> Option<u64> {
 }
 
 /// [`webgpu_memory`], with what it was read from, for the log:
-/// Vulkan's device-local heaps or DXGI's dedicated video memory.
+/// Vulkan's largest device-local heap or DXGI's dedicated video memory.
 pub fn webgpu_memory_read() -> Option<(u64, &'static str)> {
     #[cfg(webgpu_ep)]
     {
@@ -529,6 +544,34 @@ pub fn webgpu_free_memory() -> Option<(u64, &'static str)> {
     }
 }
 
+/// The most of the card's own memory the backend has offered this
+/// process so far: the largest budget [`webgpu_free_memory`] has read,
+/// this process's own use counted in (Vulkan's heap budget, DXGI's
+/// budget). A run needing more had no room even with nothing of ours
+/// on the card. `None` until a free figure has been read, and wherever
+/// none is.
+pub fn webgpu_budget_most() -> Option<u64> {
+    // Where a budget is read: Vulkan's or DXGI's, not Metal's.
+    #[cfg(all(webgpu_ep, any(windows, target_os = "linux", target_os = "android")))]
+    {
+        let most = BUDGET_MOST.load(std::sync::atomic::Ordering::Relaxed);
+        return (most > 0).then_some(most);
+    }
+    #[allow(unreachable_code)]
+    None
+}
+
+/// The largest budget [`adapter_free_memory`] has read ([`webgpu_budget_most`]).
+#[cfg(all(webgpu_ep, any(windows, target_os = "linux", target_os = "android")))]
+static BUDGET_MOST: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// `budget` kept as [`webgpu_budget_most`]'s answer where it is the
+/// largest yet.
+#[cfg(all(webgpu_ep, any(windows, target_os = "linux", target_os = "android")))]
+fn budget_read(budget: u64) {
+    BUDGET_MOST.fetch_max(budget, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// The heap the allocator keeps after the models' sessions are dropped
 /// given back to the system: on Linux with glibc, `malloc_trim(0)`,
 /// which took a process from 3.65 GiB resident to 0.18 after a removal
@@ -556,6 +599,14 @@ pub fn webgpu_name() -> Option<String> {
     }
 }
 
+/// An adapter's identity, as the provider and off-card records key on
+/// it: its name, backend, and driver with the driver's own words, so a
+/// driver update makes it another adapter to them.
+#[cfg_attr(not(webgpu_ep), allow(dead_code))]
+fn adapter_identity_of(name: &str, backend: &str, driver: &str, driver_info: &str) -> String {
+    format!("{name}|{backend}|{driver} {driver_info}")
+}
+
 /// What the WebGPU probe learned of the adapter.
 #[cfg(webgpu_ep)]
 struct Adapter {
@@ -575,6 +626,38 @@ struct Adapter {
     /// The bytes of its own memory, and what said so
     /// ([`webgpu_memory_read`]).
     memory: Option<(u64, &'static str)>,
+}
+
+/// Which of a Vulkan device's heaps, each its size and whether it is
+/// device-local, is the card's own memory: the largest device-local
+/// one. A second, the 256 MB BAR window (NVIDIA's, AMD's with
+/// resizable BAR the whole card), is a view into the same memory, so
+/// summed it counts some of the card twice: a tester's 2 GB card read
+/// as 2.2 GiB.
+#[cfg_attr(not(webgpu_ep), allow(dead_code))]
+#[cfg(any(test, windows, target_os = "linux", target_os = "android"))]
+fn card_heap(heaps: &[(u64, bool)]) -> Option<usize> {
+    (0..heaps.len())
+        .filter(|&i| heaps[i].1)
+        .max_by_key(|&i| heaps[i].0)
+}
+
+/// The bytes of a Vulkan card's own memory, from its heaps as
+/// [`card_heap`] takes them: what [`webgpu_memory`] says on Vulkan.
+#[cfg_attr(not(webgpu_ep), allow(dead_code))]
+#[cfg(any(test, windows, target_os = "linux", target_os = "android"))]
+fn vulkan_card_bytes(heaps: &[(u64, bool)]) -> u64 {
+    card_heap(heaps).map_or(0, |i| heaps[i].0)
+}
+
+/// [`adapter_memory`]'s answer on Vulkan from the device's heaps, each
+/// its size and whether it is device-local: the whole of what it does
+/// with them, so its test is the reading's.
+#[cfg_attr(not(webgpu_ep), allow(dead_code))]
+#[cfg(any(test, windows, target_os = "linux", target_os = "android"))]
+fn vulkan_card_memory(heaps: &[(u64, bool)]) -> Option<(u64, &'static str)> {
+    let bytes = vulkan_card_bytes(heaps);
+    (bytes > 0).then_some((bytes, "Vulkan's largest device-local heap"))
 }
 
 /// The bytes of `adapter`'s own memory, asked of the backend under
@@ -599,12 +682,11 @@ fn adapter_memory(adapter: &wgpu::Adapter) -> Option<(u64, &'static str)> {
                     .get_physical_device_memory_properties(vk.raw_physical_device())
             };
             let count = (props.memory_heap_count as usize).min(props.memory_heaps.len());
-            let bytes: u64 = props.memory_heaps[..count]
+            let heaps: Vec<(u64, bool)> = props.memory_heaps[..count]
                 .iter()
-                .filter(|h| h.flags.as_raw() & DEVICE_LOCAL != 0)
-                .map(|h| h.size)
-                .sum();
-            return (bytes > 0).then_some((bytes, "Vulkan's device-local heaps"));
+                .map(|h| (h.size, h.flags.as_raw() & DEVICE_LOCAL != 0))
+                .collect();
+            return vulkan_card_memory(&heaps);
         }
     }
     #[cfg(windows)]
@@ -665,14 +747,13 @@ fn adapter_free_memory(adapter: &wgpu::Adapter) -> Option<(u64, &'static str)> {
             // twice.
             let heaps = props.memory_properties;
             let count = (heaps.memory_heap_count as usize).min(heaps.memory_heaps.len());
-            let largest = (0..count)
-                .filter(|&i| {
-                    heaps.memory_heaps[i]
-                        .flags
-                        .contains(vk::MemoryHeapFlags::DEVICE_LOCAL)
-                })
-                .max_by_key(|&i| heaps.memory_heaps[i].size)?;
+            let sized: Vec<(u64, bool)> = heaps.memory_heaps[..count]
+                .iter()
+                .map(|h| (h.size, h.flags.contains(vk::MemoryHeapFlags::DEVICE_LOCAL)))
+                .collect();
+            let largest = card_heap(&sized)?;
             let (budget, used) = (budget.heap_budget[largest], budget.heap_usage[largest]);
+            budget_read(budget);
             return (budget > 0).then_some((budget.saturating_sub(used), "Vulkan's memory budget"));
         }
     }
@@ -686,6 +767,7 @@ fn adapter_free_memory(adapter: &wgpu::Adapter) -> Option<(u64, &'static str)> {
                 .raw_adapter()
                 .query_video_memory_info(Default::default())
                 .ok()?;
+            budget_read(info.Budget);
             return (info.Budget > 0).then_some((
                 info.Budget.saturating_sub(info.CurrentUsage),
                 "DXGI's local video memory budget",
@@ -781,10 +863,7 @@ fn webgpu_adapter() -> Option<&'static Adapter> {
                 .ok()?;
             let info = adapter.get_info();
             Some(Adapter {
-                identity: format!(
-                    "{}|{:?}|{} {}",
-                    info.name, info.backend, info.driver, info.driver_info
-                ),
+                identity: adapter_identity_of(&info.name, &format!("{:?}", info.backend), &info.driver, &info.driver_info),
                 name: info.name.clone(),
                 device_type: info.device_type,
                 shader_f16: adapter.features().contains(wgpu::Features::SHADER_F16),
@@ -861,6 +940,11 @@ pub enum Error {
     /// Not begun: the card had not the memory free for it.
     #[error("{0}")]
     Short(String),
+    /// Not loaded: the card was lost while the model ran on it, and it
+    /// is on record as off this card, driver, and build
+    /// ([`denoisers_off_here`]). WORDING PENDING the user's approval.
+    #[error("the learned denoiser is not on this graphics card")]
+    OffCard,
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -977,29 +1061,73 @@ pub fn loaded() -> bool {
 /// written. `ort` 2.0.0-rc.13 offers no way to release the environment
 /// earlier (it is a private static, and a release of our own through
 /// the C API would be released again by that handler), so the handler
-/// is not run: `_exit` ends the process at once, the kernel takes back
-/// the driver's state, and no exit handler or destructor runs on this
-/// thread or another. Stdout, stderr and the C library's streams are
-/// flushed first. A caller has every file it wrote closed by then.
+/// is not run ([`end`]). A caller has every file it wrote closed by
+/// then.
 ///
-/// On Windows the process returns as it otherwise would; Dawn runs on
-/// D3D12 there and the crash has not been seen.
+/// Windows crashed the same way: an access violation in the GPU's
+/// Vulkan driver and in the shader compiler's DLL about a second after
+/// the editor's window closed. There `ort` releases the environment
+/// from a TLS callback at process detach, which `ExitProcess` runs on
+/// the exiting thread after every DLL's own detach, tearing down Dawn,
+/// D3D12 and the shader compiler under a wgpu instance that is never
+/// dropped and the window's Vulkan device, and perhaps under a worker
+/// thread the exit has already killed mid-call.
 pub fn leave(code: u8) -> std::process::ExitCode {
-    use std::io::Write;
     if loaded() {
-        let _ = std::io::stdout().flush();
-        let _ = std::io::stderr().flush();
-        #[cfg(unix)]
-        // SAFETY: `fflush(NULL)` flushes every C stdio stream, so a C or
-        // C++ library's buffered output is not lost with the exit
-        // handlers that would have flushed it; `_exit` then ends the
-        // process at once and returns nothing to undo.
-        unsafe {
-            libc::fflush(std::ptr::null_mut());
-            libc::_exit(i32::from(code))
-        }
+        end(code)
     }
     std::process::ExitCode::from(code)
+}
+
+/// End the process with `code` now, no exit handler, destructor, DLL
+/// detach or TLS callback run, on this thread or another: what
+/// [`leave`] does once ONNX Runtime is loaded, and the window's quit
+/// with a worker still in the driver. Stdout, stderr and the C
+/// library's streams are flushed first.
+///
+/// By `_exit` on unix; by `TerminateProcess` on Windows, where the C
+/// library's `_exit` still goes through `ExitProcess`, and with it the
+/// DLL detach and TLS callbacks this skips. Every handle the
+/// process holds is closed by the kernel on either, and what was
+/// written through one is the file's.
+pub fn end(code: u8) -> ! {
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+    let _ = std::io::stderr().flush();
+    #[cfg(unix)]
+    // SAFETY: `fflush(NULL)` flushes every C stdio stream, so a C or
+    // C++ library's buffered output is not lost with the exit handlers
+    // that would have flushed it; `_exit` then ends the process at once
+    // and returns nothing to undo.
+    unsafe {
+        libc::fflush(std::ptr::null_mut());
+        libc::_exit(i32::from(code))
+    }
+    #[cfg(windows)]
+    {
+        // SAFETY: `fflush(NULL)` flushes every stream of the C runtime
+        // we link, as on unix. `GetCurrentProcess` is a pseudo-handle
+        // that needs no closing, and `TerminateProcess` on it ends every
+        // thread where it is and runs no code of the process's: no
+        // atexit, no DLL detach, no TLS callback.
+        let ended = unsafe {
+            libc::fflush(std::ptr::null_mut());
+            windows_sys::Win32::System::Threading::TerminateProcess(
+                windows_sys::Win32::System::Threading::GetCurrentProcess(),
+                u32::from(code),
+            )
+        };
+        // Termination is under way and this thread goes with it; it
+        // waits rather than running on. A refusal, which the current
+        // process's own handle does not get, exits as a return would.
+        if ended != 0 {
+            loop {
+                std::thread::park();
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    std::process::exit(i32::from(code));
 }
 
 /// For a test that needs ONNX Runtime and finds `why` it cannot have
@@ -2429,5 +2557,42 @@ mod tests {
         assert_eq!(*heard.lock().unwrap(), [true, false]);
         drop(loads.begin());
         assert_eq!(*heard.lock().unwrap(), [true, false, true, false]);
+    }
+
+    /// An adapter's identity carries its driver, its version and its
+    /// words: a driver update is another adapter to the records, which
+    /// is how it clears a card's off-card entry.
+    #[test]
+    fn an_adapters_identity_carries_its_driver() {
+        let id = |driver, info| adapter_identity_of("NVIDIA GeForce 830A", "Vulkan", driver, info);
+        assert_eq!(
+            id("NVIDIA", "582.66"),
+            "NVIDIA GeForce 830A|Vulkan|NVIDIA 582.66"
+        );
+        assert_ne!(id("NVIDIA", "582.66"), id("NVIDIA", "591.44"));
+        assert_ne!(id("NVIDIA", "582.66"), id("nouveau", "582.66"));
+    }
+
+    /// The card's own memory is its largest device-local heap: NVIDIA's
+    /// BAR window beside a 2 GB card's VRAM is not added to it, nor a
+    /// resizable BAR's view of the whole card; a host heap never counts.
+    #[test]
+    fn the_cards_memory_is_its_largest_device_local_heap() {
+        const MIB: u64 = 1 << 20;
+        // A 2 GB NVIDIA card on Vulkan: VRAM, the host's, the BAR.
+        let nvidia = [(2048 * MIB, true), (16384 * MIB, false), (224 * MIB, true)];
+        assert_eq!(card_heap(&nvidia), Some(0));
+        // What the card is said to have: 2 GiB, not the 2.2 the sum read.
+        assert_eq!(vulkan_card_bytes(&nvidia), 2048 * MIB);
+        assert_eq!(
+            vulkan_card_memory(&nvidia),
+            Some((2048 * MIB, "Vulkan's largest device-local heap"))
+        );
+        assert_eq!(vulkan_card_memory(&[(16384 * MIB, false)]), None);
+        // Resizable BAR: two device-local heaps of the card's size.
+        let rebar = [(8192 * MIB, true), (32768 * MIB, false), (8192 * MIB, true)];
+        assert_eq!(vulkan_card_bytes(&rebar), 8192 * MIB);
+        assert_eq!(vulkan_card_bytes(&[(16384 * MIB, false)]), 0);
+        assert_eq!(card_heap(&[]), None);
     }
 }

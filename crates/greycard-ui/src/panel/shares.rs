@@ -610,16 +610,21 @@ mod tests {
         let app = pane(3, 3);
         app.set_selected(0);
         sized(&app, 1600.0);
-        let found = |label: &str| {
-            let e = ElementHandle::find_by_accessible_label(&app, label)
-                .next()
-                .unwrap_or_else(|| panic!("{label} in the left pane"));
+        // A row of the pane by its key: a folder's path.
+        let found = |id: &str, key: &str| {
+            let e = crate::testing::keyed(&app, id, key)
+                .unwrap_or_else(|| panic!("{key} in the left pane"));
             (e.absolute_position(), e.size())
         };
         let taken = Rc::new(Cell::new(0));
         let t = taken.clone();
         app.on_snapshot_taken(move || t.set(t.get() + 1));
-        let (at, size) = found("Take");
+        let (at, size) = {
+            let e = ElementHandle::find_by_element_id(&app, "SnapshotsSection::take-button")
+                .next()
+                .expect("TAKE in the left pane");
+            (e.absolute_position(), e.size())
+        };
         for dy in [2.0, size.height / 2.0, size.height - 2.0] {
             let before = taken.get();
             click(&app, at.x + size.width / 2.0, at.y + dy);
@@ -629,16 +634,26 @@ mod tests {
         let picked = Rc::new(Cell::new(-1));
         let p = picked.clone();
         app.on_folder_tree_picked(move |i| p.set(i));
-        let (at, size) = found("folder 2");
+        let (at, size) = found("FoldersSection::folder-line", "/nowhere/2");
         for dy in [2.0, size.height / 2.0, size.height - 2.0] {
             picked.set(-1);
             click(&app, at.x + size.width / 2.0, at.y + dy);
             settle(&app);
             assert_eq!(picked.get(), 2, "the last folder {dy} px down its {size:?}");
         }
-        let e = ElementHandle::find_by_element_type_name(&app, "Text")
-            .find(|e| e.accessible_label().as_deref() == Some("SNAPSHOTS"))
+        // Its title's words, inside the fold that says them.
+        let fold = crate::testing::section_part(&app, "SnapshotsSection", "Section::row")
             .expect("SNAPSHOTS in the left pane");
+        let (top, foot) = (
+            fold.absolute_position().y,
+            fold.absolute_position().y + fold.size().height,
+        );
+        let e = ElementHandle::find_by_element_id(&app, "Section::title-words")
+            .find(|t| {
+                let y = t.absolute_position().y + t.size().height / 2.0;
+                y >= top && y <= foot
+            })
+            .expect("SNAPSHOTS's words");
         let (at, size) = (e.absolute_position(), e.size());
         click(&app, at.x + size.width / 2.0, at.y + size.height / 2.0);
         settle(&app);
@@ -769,7 +784,6 @@ mod tests {
     /// the last collection row is the row's, whichever is above.
     #[test]
     fn a_press_at_a_library_lists_foot_is_the_lists() {
-        use i_slint_backend_testing::ElementHandle;
         use std::cell::Cell;
         use std::rc::Rc;
         for order in LIBRARY_ORDERS {
@@ -780,15 +794,16 @@ mod tests {
             let collection = Rc::new(Cell::new(String::new()));
             let c = collection.clone();
             app.on_collection_picked(move |id| c.set(id.to_string()));
-            let found = |label: &str| {
-                let e = ElementHandle::find_by_accessible_label(&app, label)
-                    .next()
-                    .unwrap_or_else(|| panic!("{label} in the left pane"));
+            // A row of the pane by its key: a folder's path, a
+            // collection's id.
+            let found = |id: &str, key: &str| {
+                let e = crate::testing::keyed(&app, id, key)
+                    .unwrap_or_else(|| panic!("{key} in the left pane"));
                 (e.absolute_position(), e.size())
             };
             for dy_from_foot in [2.0, 1.0] {
                 folder.set(-1);
-                let (at, size) = found("folder 2");
+                let (at, size) = found("FoldersSection::folder-line", "/nowhere/2");
                 click(
                     &app,
                     at.x + size.width / 2.0,
@@ -797,7 +812,7 @@ mod tests {
                 settle(&app);
                 assert_eq!(folder.get(), 2, "the last folder in {order:?}");
                 collection.set(String::new());
-                let (at, size) = found("collection 2");
+                let (at, size) = found("CollectionsSection::collection-row", "c2");
                 click(
                     &app,
                     at.x + size.width / 2.0,

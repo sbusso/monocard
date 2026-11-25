@@ -30,7 +30,16 @@ export component LightSection inherits Section {
     in property <bool> raw-input;
     /// The picture's light, not a mask's: Auto sets the former only.
     in property <bool> auto-shown;
+    // The learned highlight fill, the picture's alone: on or off, and
+    // whether the open frame takes it (a 2x2 Bayer raw of the camera's
+    // own); one that does not keeps the setting. Shown here, where the
+    // bright end is rescued, though it is the edit's Demosaic section's:
+    // Light's switch, reset, and copy leave it alone.
+    in-out property <bool> highlight-fill;
+    in property <bool> highlight-fill-takes: true;
+    in property <bool> show-highlight-fill;
     callback view-changed();
+    callback develop-changed();
     callback light-auto();
 
     title: @tr("LIGHT");
@@ -40,7 +49,8 @@ export component LightSection inherits Section {
     switchable: true;
     on <=> root.light-enabled;
     switched => { root.view-changed(); }
-    EditSlider {
+    // Named so the tests find it.
+    exposure := EditSlider {
         label: @tr("Exposure");
         minimum: -5;
         maximum: 5;
@@ -51,7 +61,7 @@ export component LightSection inherits Section {
         text: (root.exposure >= 0 ? "+" : "") + round(root.exposure * 100) / 100 + " EV";
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    contrast-slider := EditSlider {
         label: @tr("Contrast");
         logarithmic: true;
         minimum: 0.5;
@@ -63,7 +73,7 @@ export component LightSection inherits Section {
         text: round(root.contrast * 100) / 100;
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    highlights-slider := EditSlider {
         label: @tr("Highlights");
         minimum: -2;
         maximum: 2;
@@ -74,7 +84,7 @@ export component LightSection inherits Section {
         text: (root.highlights >= 0 ? "+" : "") + round(root.highlights * 100) / 100 + " EV";
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    midtones-slider := EditSlider {
         label: @tr("Midtones");
         minimum: -2;
         maximum: 2;
@@ -85,7 +95,7 @@ export component LightSection inherits Section {
         text: (root.midtones >= 0 ? "+" : "") + round(root.midtones * 100) / 100 + " EV";
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    shadows-slider := EditSlider {
         label: @tr("Shadows");
         minimum: -2;
         maximum: 2;
@@ -96,7 +106,20 @@ export component LightSection inherits Section {
         text: (root.shadows >= 0 ? "+" : "") + round(root.shadows * 100) / 100 + " EV";
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    if root.show-highlight-fill: highlight-fill-switch := Toggle {
+        // Light: the learned fill of clipped highlights
+        label: @tr("Highlight fill");
+        enabled: root.highlight-fill-takes;
+        checked <=> root.highlight-fill;
+        toggled => { root.develop-changed(); }
+    }
+    // The regional three above, the clipping pair below.
+    light-hairline := VerticalLayout {
+        padding-top: Theme.space-1;
+        padding-bottom: Theme.space-1;
+        Rectangle { height: 1px; background: Theme.border; }
+    }
+    whites-slider := EditSlider {
         label: @tr("Whites");
         minimum: -2;
         maximum: 2;
@@ -107,7 +130,7 @@ export component LightSection inherits Section {
         text: (root.whites >= 0 ? "+" : "") + round(root.whites * 100) / 100 + " EV";
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    blacks-slider := EditSlider {
         label: @tr("Blacks");
         minimum: -0.3;
         maximum: 0.3;
@@ -125,7 +148,7 @@ export component LightSection inherits Section {
         spacing: Theme.space-2;
         padding-top: Theme.space-1;
         alignment: end;
-        PanelButton {
+        auto-button := PanelButton {
             text: @tr("Auto");
             enabled: root.raw-input;
             clicked => { root.light-auto(); }
@@ -133,13 +156,17 @@ export component LightSection inherits Section {
     }
     if root.show-display-curve: VerticalLayout {
         spacing: 4px;
-        Text {
+        display-curve-words := Text {
+            accessible-role: none;
             text: @tr("Display curve");
             color: root.display-curve-inert ? Theme.text-muted : Theme.text;
             font-size: Theme.font-sm;
         }
         // Named so the tests find it.
         display-curve-choice := Segmented {
+            // The panel's Tab is the window's: no stop here.
+            tab-stop: false;
+            name: display-curve-words.text;
             options: ["Per channel", "AgX"];
             labels: [@tr("Per channel"), "AgX"];
             enabled: !root.display-curve-inert;
@@ -171,6 +198,11 @@ export component NoiseSection inherits Section {
     // Why the learned tiers rest (an X-Trans raw), or "" when they do
     // not; the profiled denoise is unaffected.
     in property <string> learned-unavailable;
+    // The learned tiers rest because the card was lost under one: Try
+    // again, beside the hint, takes the card's record off and develops
+    // again.
+    in property <bool> learned-retry;
+    callback retry-learned();
     // A merge of ours whose frames are beside it as merged, and that
     // the learned denoiser takes: it can be made again from its recipe,
     // the frames denoised at `again-tier`, the window's and not the
@@ -199,6 +231,9 @@ export component NoiseSection inherits Section {
     if !root.again: VerticalLayout {
         padding-bottom: Theme.space-1;
         Segmented {
+            // The panel's Tab is the window's: no stop here.
+            tab-stop: false;
+            name: @tr("Denoise");
             options: root.learned-unavailable == "" ? root.denoise-tiers
                 : root.denoise-learned == "off" ? ["off"] : ["off", root.denoise-learned];
             // The tiers' names are the values; only the "off" this side
@@ -210,8 +245,16 @@ export component NoiseSection inherits Section {
             current <=> root.denoise-learned;
             selected(v) => { root.develop-changed(); }
         }
+        if root.learned-retry: VerticalLayout {
+            padding-top: Theme.space-1;
+            learned-retry-button := PanelButton {
+                text: @tr("Try again");
+                enabled: root.unavailable == "";
+                clicked => { root.retry-learned(); }
+            }
+        }
     }
-    EditSlider {
+    luma-slider := EditSlider {
         label: @tr("Luma");
         enabled: root.unavailable == "" && root.learned-unavailable == "" && root.denoise-learned != "off";
         minimum: 0;
@@ -226,7 +269,7 @@ export component NoiseSection inherits Section {
     }
     // The blend's chroma alone: the color noise can go while the
     // grain stays.
-    EditSlider {
+    chroma-slider := EditSlider {
         label: NoiseWords.chroma;
         enabled: root.unavailable == "" && root.learned-unavailable == "" && root.denoise-learned != "off";
         minimum: 0;
@@ -244,11 +287,14 @@ export component NoiseSection inherits Section {
     if root.again: VerticalLayout {
         spacing: 4px;
         Segmented {
+            // The panel's Tab is the window's: no stop here.
+            tab-stop: false;
+            name: @tr("Denoise");
             options: root.denoise-tiers;
             enabled: root.unavailable == "" && !root.merging;
             current <=> root.again-tier;
         }
-        PanelButton {
+        merge-again-button := PanelButton {
             text: @tr("Denoise the frames and merge again");
             enabled: root.unavailable == "" && !root.merging;
             clicked => { root.merge-again(); }
@@ -260,7 +306,7 @@ export component NoiseSection inherits Section {
         checked <=> root.denoise;
         toggled => { root.develop-changed(); }
     }
-    EditSlider {
+    strength-slider := EditSlider {
         label: @tr("Strength");
         enabled: root.unavailable == "" && root.denoise && root.denoise-learned == "off";
         // greycard_edit::Noise::STRENGTH_MIN and STRENGTH_MAX.
@@ -297,6 +343,34 @@ export component DetailSection inherits Section {
     // Detail: the picture's sharpen is its own section.
     in property <bool> local;
     in-out property <float> detail-sharpen;
+    // A mask's share of the output sharpen, beside the capture's, on a
+    // mask's Detail alone: the picture's is OUTPUT SHARPEN.
+    in-out property <float> detail-output-sharpen;
+    // The picture's own output sharpen does nothing (off, or at no
+    // Amount): a take (a share under zero) scales the picture's alone,
+    // so it has nothing to take and the share's negative half is out
+    // of reach. A take already stored stays as it is.
+    in property <bool> picture-output-off;
+    // Its own Radius and Threshold, each the picture's until moved
+    // (`-own` false); a double-click gives the picture's back. A take
+    // (a share under zero) sharpens at the picture's, so they are off
+    // under one.
+    in property <float> picture-output-radius;
+    in property <float> picture-output-threshold;
+    in-out property <float> detail-output-radius;
+    in-out property <bool> detail-output-radius-own;
+    in-out property <float> detail-output-threshold;
+    in-out property <bool> detail-output-threshold-own;
+    changed picture-output-radius => {
+        if (!root.detail-output-radius-own) {
+            root.detail-output-radius = root.picture-output-radius;
+        }
+    }
+    changed picture-output-threshold => {
+        if (!root.detail-output-threshold-own) {
+            root.detail-output-threshold = root.picture-output-threshold;
+        }
+    }
     callback develop-changed();
 
     title: @tr("DETAIL");
@@ -306,7 +380,7 @@ export component DetailSection inherits Section {
     switchable: true;
     on <=> root.detail-enabled;
     switched => { root.develop-changed(); }
-    EditSlider {
+    texture-slider := EditSlider {
         label: @tr("Texture");
         enabled: root.detail-enabled;
         minimum: -1;
@@ -319,7 +393,7 @@ export component DetailSection inherits Section {
         text: (root.detail-texture >= 0 ? "+" : "") + round(root.detail-texture * 100);
         changed(v) => { root.develop-changed(); }
     }
-    EditSlider {
+    clarity-slider := EditSlider {
         label: @tr("Clarity");
         enabled: root.detail-enabled;
         minimum: -1;
@@ -332,7 +406,7 @@ export component DetailSection inherits Section {
         text: (root.detail-clarity >= 0 ? "+" : "") + round(root.detail-clarity * 100);
         changed(v) => { root.develop-changed(); }
     }
-    EditSlider {
+    structure-slider := EditSlider {
         label: DetailWords.structure;
         enabled: root.detail-enabled;
         minimum: -1;
@@ -345,7 +419,7 @@ export component DetailSection inherits Section {
         text: (root.detail-structure >= 0 ? "+" : "") + round(root.detail-structure * 100);
         changed(v) => { root.develop-changed(); }
     }
-    EditSlider {
+    dehaze-slider := EditSlider {
         label: @tr("Dehaze");
         enabled: root.detail-enabled;
         minimum: -1;
@@ -358,7 +432,7 @@ export component DetailSection inherits Section {
         text: (root.detail-dehaze >= 0 ? "+" : "") + round(root.detail-dehaze * 100);
         changed(v) => { root.develop-changed(); }
     }
-    if root.local: EditSlider {
+    if root.local: sharpen-slider := EditSlider {
         label: @tr("Sharpen");
         enabled: root.detail-enabled;
         minimum: -1;
@@ -370,6 +444,64 @@ export component DetailSection inherits Section {
         scale: 100;
         text: (root.detail-sharpen >= 0 ? "+" : "") + round(root.detail-sharpen * 100);
         changed(v) => { root.develop-changed(); }
+    }
+    if root.local: output-sharpen-slider := EditSlider {
+        label: @tr("Output sharpen");
+        enabled: root.detail-enabled;
+        minimum: -1;
+        maximum: 2;
+        lowest: root.picture-output-off ? 0 : -1;
+        default: 0;
+        step: 0.01;
+        steps: Steps.percent;
+        value <=> root.detail-output-sharpen;
+        scale: 100;
+        text: (root.detail-output-sharpen >= 0 ? "+" : "") + round(root.detail-output-sharpen * 100);
+        changed(v) => { root.develop-changed(); }
+    }
+    // As OUTPUT SHARPEN's Radius and Threshold.
+    if root.local: output-radius-slider := EditSlider {
+        label: @tr("Radius");
+        enabled: root.detail-enabled && root.detail-output-sharpen >= 0;
+        minimum: 0.5;
+        maximum: 3;
+        default: 1;
+        step: 0.01;
+        steps: Steps.hundredths;
+        value <=> root.detail-output-radius;
+        text: round(root.detail-output-radius * 100) / 100;
+        changed(v) => {
+            root.detail-output-radius-own = true;
+            root.develop-changed();
+        }
+        owner-resets: true;
+        reset => {
+            root.detail-output-radius-own = false;
+            root.detail-output-radius = root.picture-output-radius;
+            root.develop-changed();
+        }
+    }
+    if root.local: output-threshold-slider := EditSlider {
+        label: @tr("Threshold");
+        enabled: root.detail-enabled && root.detail-output-sharpen >= 0;
+        minimum: 0;
+        maximum: 0.1;
+        default: 0.01;
+        step: 0.001;
+        steps: Steps.thousandths;
+        value <=> root.detail-output-threshold;
+        scale: 100;
+        text: round(root.detail-output-threshold * 1000) / 10 + "%";
+        changed(v) => {
+            root.detail-output-threshold-own = true;
+            root.develop-changed();
+        }
+        owner-resets: true;
+        reset => {
+            root.detail-output-threshold-own = false;
+            root.detail-output-threshold = root.picture-output-threshold;
+            root.develop-changed();
+        }
     }
 }
 
@@ -399,7 +531,7 @@ export component SharpenSection inherits Section {
         checked <=> root.sharpen-auto-radius;
         toggled => { root.develop-changed(); }
     }
-    EditSlider {
+    radius-slider := EditSlider {
         label: @tr("Radius");
         enabled: root.sharpen && !root.sharpen-auto-radius;
         minimum: 0.4;
@@ -414,7 +546,7 @@ export component SharpenSection inherits Section {
             : round(root.sharpen-radius * 100) / 100;
         changed(v) => { root.develop-changed(); }
     }
-    EditSlider {
+    iterations-slider := EditSlider {
         label: @tr("Iterations");
         enabled: root.sharpen;
         minimum: 5;
@@ -432,7 +564,7 @@ export component SharpenSection inherits Section {
         checked <=> root.sharpen-auto-threshold;
         toggled => { root.develop-changed(); }
     }
-    EditSlider {
+    threshold-slider := EditSlider {
         label: @tr("Threshold");
         enabled: root.sharpen && !root.sharpen-auto-threshold;
         minimum: 0;
@@ -473,7 +605,7 @@ export component OutputSharpenSection inherits Section {
     switchable: true;
     on <=> root.output-sharpen-enabled;
     switched => { root.view-changed(); }
-    EditSlider {
+    amount-slider := EditSlider {
         label: @tr("Amount");
         enabled: root.output-sharpen-enabled;
         minimum: 0;
@@ -486,7 +618,7 @@ export component OutputSharpenSection inherits Section {
         text: round(root.output-sharpen-amount * 100) + "%";
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    radius-slider := EditSlider {
         label: @tr("Radius");
         enabled: root.output-sharpen-enabled;
         minimum: 0.5;
@@ -498,7 +630,7 @@ export component OutputSharpenSection inherits Section {
         text: round(root.output-sharpen-radius * 100) / 100;
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    threshold-slider := EditSlider {
         label: @tr("Threshold");
         enabled: root.output-sharpen-enabled;
         minimum: 0;
@@ -520,6 +652,7 @@ export component VignetteSection inherits Section {
     in-out property <float> vignette-midpoint;
     in-out property <float> vignette-feather;
     in-out property <float> vignette-roundness;
+    in-out property <string> vignette-place;
     callback view-changed();
 
     title: @tr("VIGNETTE");
@@ -528,7 +661,8 @@ export component VignetteSection inherits Section {
     switchable: true;
     on <=> root.vignette-enabled;
     switched => { root.view-changed(); }
-    EditSlider {
+    // Named so the tests find it.
+    amount := EditSlider {
         label: @tr("Amount");
         minimum: -5;
         maximum: 5;
@@ -539,7 +673,7 @@ export component VignetteSection inherits Section {
         text: (root.vignette-amount >= 0 ? "+" : "") + round(root.vignette-amount * 100) / 100 + " EV";
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    midpoint-slider := EditSlider {
         label: @tr("Midpoint");
         minimum: 0;
         maximum: 1;
@@ -551,7 +685,7 @@ export component VignetteSection inherits Section {
         text: round(root.vignette-midpoint * 100) + "%";
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    feather-slider := EditSlider {
         label: @tr("Feather");
         minimum: 0;
         maximum: 1;
@@ -563,7 +697,7 @@ export component VignetteSection inherits Section {
         text: round(root.vignette-feather * 100) + "%";
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    roundness-slider := EditSlider {
         label: @tr("Roundness");
         minimum: -1;
         maximum: 1;
@@ -574,6 +708,31 @@ export component VignetteSection inherits Section {
         scale: 100;
         text: (root.vignette-roundness >= 0 ? "+" : "") + round(root.vignette-roundness * 100);
         changed(v) => { root.view-changed(); }
+    }
+    // Where it acts: the scene's exposure, under which a bright edge
+    // stays bright, or the picture as shown, after the display curve.
+    VerticalLayout {
+        spacing: 4px;
+        padding-top: Theme.space-1;
+        vignette-place-words := Text {
+            accessible-role: none;
+            // Vignette: where it acts, the scene or the picture
+            text: @tr("Style");
+            color: Theme.text;
+            font-size: Theme.font-sm;
+        }
+        // Named so the tests find it.
+        vignette-place-choice := Segmented {
+            // The panel's Tab is the window's: no stop here.
+            tab-stop: false;
+            name: vignette-place-words.text;
+            options: ["Scene", "Display"];
+            // Vignette: a falloff in the scene; laid over the picture
+            labels: [@tr("Natural"), @tr("Overlay")];
+            equal-width: true;
+            current <=> root.vignette-place;
+            selected(v) => { root.view-changed(); }
+        }
     }
 }
 
@@ -591,7 +750,7 @@ export component GrainSection inherits Section {
     switchable: true;
     on <=> root.grain-enabled;
     switched => { root.view-changed(); }
-    EditSlider {
+    amount-slider := EditSlider {
         label: @tr("Amount");
         minimum: 0;
         maximum: 1;
@@ -603,7 +762,7 @@ export component GrainSection inherits Section {
         text: round(root.grain-amount * 100) + "%";
         changed(v) => { root.view-changed(); }
     }
-    EditSlider {
+    size-slider := EditSlider {
         label: @tr("Size");
         minimum: 0.1;
         maximum: 2;
@@ -616,6 +775,9 @@ export component GrainSection inherits Section {
     }
     Rectangle { height: Theme.space-1; }
     Segmented {
+        // The panel's Tab is the window's: no stop here.
+        tab-stop: false;
+        name: @tr("Type");
         options: ["Cubic", "Tabular"];
         // Grain: the two kinds of grain
         labels: [@tr("Cubic"), @tr("Tabular")];
@@ -641,6 +803,9 @@ export component DemosaicSection inherits Section {
     hint: root.raw-input ? root.menu-hint : @tr("raw only");
     collapsed <=> root.collapsed-demosaic;
     if root.raw-input: Segmented {
+        // The panel's Tab is the window's: no stop here.
+        tab-stop: false;
+        name: @tr("Demosaic");
         options: root.demosaics;
         enabled: root.menu-hint == "";
         current <=> root.demosaic;

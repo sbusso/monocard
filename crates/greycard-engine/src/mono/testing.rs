@@ -54,6 +54,7 @@ pub fn frame(
             black: LevelPattern::uniform(BLACK, 1),
             white: LevelPattern::uniform(WHITE, 1),
             black_deltas: None,
+            saturation: None,
         },
         as_shot_coefficients: Some([1.0; 3]),
         calibrations: Vec::new(),

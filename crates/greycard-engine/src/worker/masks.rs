@@ -66,6 +66,34 @@ pub(super) fn look_left_out(edit: &Edit) -> Option<String> {
     })
 }
 
+/// A camera profile the edit names that the develop goes without, for
+/// a raw, which alone a profile is read for: the picture is developed
+/// under the file's own matrices, as the window draws it. Decided by
+/// the develop's own (cached) read, so the two cannot disagree. One
+/// not in the directory (a folder named like one included) is said as
+/// a missing look is, and so is one there that will not read (cut
+/// short, not a profile, not ours to read); the read logs why.
+pub(super) fn profile_left_out(edit: &Edit, raw: bool) -> Option<String> {
+    use greycard_edit::Loader;
+    let greycard_edit::camera::ProfileChoice::Named(name) = &edit.camera.profile else {
+        return None;
+    };
+    let stores = crate::stages::stores();
+    if !raw || stores.profile(name).is_some() {
+        return None;
+    }
+    let there = greycard_edit_io::profiles::path_in(stores.profiles.as_deref(), name)
+        .is_some_and(|path| path.is_file());
+    let why = if there {
+        "it would not read"
+    } else {
+        "not in the profile directory"
+    };
+    Some(format!(
+        "the camera profile {name}: {why}; written without it"
+    ))
+}
+
 /// The picture the learned masks are made on, and what the models'
 /// cache knows it by.
 pub(super) struct On<'a> {
@@ -138,12 +166,14 @@ pub(super) fn learned_rasters(edit: &Edit, ai: &mut Ai, on: &On<'_>) -> (Rasters
 /// with them the first time rather than without and then with, and
 /// recorded as given, so a base moved after asks for it again. Only
 /// the shapes in `learned`, those the window would ask for at once,
-/// each read from the slot of the model it names. Left to the
-/// window's ask after the picture, as it always was: a shape with no
-/// raster in the cache; one a Fill patch lies over (made again on the
-/// retouched picture); and one with a word for the status line (a Sky
-/// with no sky), which the picture's own line would cover, and whose
-/// empty raster draws as no raster does.
+/// each read from the slot of the model it names. One a Fill patch
+/// lies over is read as made again on the retouched picture under
+/// those patches, from that picture's own slot. Left to the window's
+/// ask after the picture, as it always was: a shape with no raster in
+/// the cache (nor, under a fill, one made again under the same
+/// patches); and one with a word for the status line (a Sky with no
+/// sky), which the picture's own line would cover, and whose empty
+/// raster draws as no raster does. The log says which went which way.
 pub(super) fn kept_for_open(
     edit: &Edit,
     learned: &[(Key, &'static greycard_ai::Model)],
@@ -155,6 +185,9 @@ pub(super) fn kept_for_open(
     let frame = b.frame_size();
     let retouched = retouched_of(b, None);
     let mut kept = Vec::new();
+    // What was left to the ask after the picture, and why; and how many
+    // of those read were made again under fills.
+    let (mut uncached, mut unremade, mut noted, mut remade) = (0, 0, 0, 0);
     for &(key, model) in learned {
         let Some(c) = edit
             .adjustments
@@ -167,12 +200,30 @@ pub(super) fn kept_for_open(
         };
         let Some(made) = ai.raster_cached(frame, b.base(), b.turn, key, &c.shape, Some(model))
         else {
+            uncached += 1;
             continue;
         };
-        if made.note.is_some() || retouched.is_some_and(|r| r.print_over(&made.raster).is_some()) {
+        // The patches over the base's raster, as `raster_retouched`
+        // measures them, name the raster made again under them.
+        let under = retouched.and_then(|r| r.print_over(&made.raster));
+        let made = match under {
+            None => made,
+            Some((print, _)) => {
+                let again =
+                    ai.remade_cached(frame, b.base(), b.turn, key, &c.shape, Some(model), print);
+                let Some(again) = again else {
+                    unremade += 1;
+                    continue;
+                };
+                again
+            }
+        };
+        if made.note.is_some() {
+            noted += 1;
             continue;
         }
-        ai.given(key, &c.shape, Some(model), None, b.print);
+        remade += usize::from(under.is_some());
+        ai.given(key, &c.shape, Some(model), under.map(|u| u.0), b.print);
         kept.push(Outcome::Mask {
             key,
             shape: c.shape.clone(),
@@ -186,9 +237,20 @@ pub(super) fn kept_for_open(
     }
     if !kept.is_empty() {
         tracing::info!(
-            "the open frame's masks: {} read from the mask cache in {:.3} s, before its picture",
+            "the open frame's masks: {} read from the mask cache in {:.3} s, before its picture{}",
             kept.len(),
-            started.elapsed().as_secs_f64()
+            started.elapsed().as_secs_f64(),
+            if remade > 0 {
+                format!(" ({remade} made again under fills)")
+            } else {
+                String::new()
+            }
+        );
+    }
+    if uncached + unremade + noted > 0 {
+        tracing::info!(
+            "the open frame's masks: {} left to the ask after its picture ({uncached} not in the mask cache, {unremade} not made again under its fills yet, {noted} with a word for the status line)",
+            uncached + unremade + noted
         );
     }
     kept
@@ -333,7 +395,13 @@ pub(super) fn masks_for(
         tracing::info!("the masks of {name}: no such version in its sidecar");
         return MasksMade::Short;
     };
-    let edit = std::mem::take(&mut line.current);
+    // A state whose masks wait where they were placed under another
+    // turn is not the picture (§724).
+    if line.ready().is_none() {
+        tracing::info!("the masks of {name}: they wait on the frame's shape");
+        return MasksMade::Short;
+    }
+    let edit = line.current().clone();
     let turn = sidecar.turn;
     if !crate::reduced::draws_learned(&edit) {
         return MasksMade::All;

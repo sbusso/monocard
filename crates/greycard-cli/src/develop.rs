@@ -1,7 +1,7 @@
 //! `greycard develop`: a RAW, or a picture, developed to a linear DNG,
 //! a linear Rec.2020 TIFF or an sRGB preview.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use greycard_core::decode::RawlerDecoder;
@@ -181,7 +181,8 @@ pub(crate) struct DevelopArgs {
     /// Demosaic and denoise with the learned model instead of the
     /// engine's own demosaic and profiled denoise: a tier from the
     /// model store (fast, balanced, best; see `greycard models
-    /// --fetch`) or a path to a model.
+    /// --fetch`), each a network for a Bayer raw and one for an X-Trans
+    /// raw, or a path to a model.
     /// Always run here at full blend; the editor's own sidecar
     /// starts a fresh file at a blend that follows its ISO (lower
     /// at base ISO, full from ISO 3200 up) and remembers whatever
@@ -336,6 +337,9 @@ pub(crate) fn run(args: DevelopArgs) -> Result<()> {
         structure,
         dehaze: dehaze / 100.0,
         sharpen: 0.0,
+        output_sharpen: 0.0,
+        output_sharpen_radius: None,
+        output_sharpen_threshold: None,
     };
     // The dehaze and the sharpen are not the engine's: they go after
     // the lens correction, as `correct_and_sharpen` says and as the
@@ -404,6 +408,7 @@ pub(crate) fn run(args: DevelopArgs) -> Result<()> {
         // The file's own tag: the CLI develops a frame, not a
         // sidecar, so there are no quarter turns to put on it.
         orientation: None,
+        clip_codes: false,
     };
     let ai_denoise = ai_denoise.as_deref().map(denoiser_for).transpose()?;
     // The model named, and then whether anything can run it:
@@ -472,13 +477,14 @@ fn greycard_edit_lens(
     lens
 }
 
-/// What to say when a tier is named but its model was never fetched:
-/// the way to get it is `greycard models`, not the editor's panel,
-/// since the machine asking may have no window at all.
-fn missing_tier_complaint(store: &greycard_ai::Store, name: &str) -> String {
-    let model = greycard_ai::denoiser(name).expect("a tier");
+/// What to say when a tier is named but its model for the frame's
+/// mosaic was never fetched: the way to get it is `greycard models`,
+/// not the editor's panel, since the machine asking may have no window
+/// at all. The tier's name fetches both its networks, Bayer and X-Trans.
+fn missing_tier_complaint(store: &greycard_ai::Store, model: &greycard_ai::Model) -> String {
+    let what = greycard_ai::tier_of(model).unwrap_or(model.id);
     format!(
-        "{} is not in {}; run `{} models --fetch {name}` to get it ({} MB, {})",
+        "{} is not in {}; run `{} models --fetch {what}` to get it ({} MB, {})",
         model.name,
         store.root().display(),
         greycard_core::brand::APP_DIR,
@@ -488,7 +494,9 @@ fn missing_tier_complaint(store: &greycard_ai::Store, name: &str) -> String {
 }
 
 /// The model for `--ai-denoise`: a registered tier from the model
-/// store, whose answers the disk cache keeps, or a path.
+/// store, whose answers the disk cache keeps, or a path. A tier is its
+/// Bayer network here; a frame's mosaic picks the network it runs, and
+/// whether the store has that one is asked there ([`develop_learned`]).
 fn denoiser_for(name: &str) -> Result<(PathBuf, Option<&'static greycard_ai::Model>)> {
     let Some(model) = greycard_ai::denoiser(name) else {
         // Not a tier, so a path; a mistyped tier would otherwise go
@@ -503,45 +511,71 @@ fn denoiser_for(name: &str) -> Result<(PathBuf, Option<&'static greycard_ai::Mod
         return Ok((path, None));
     };
     let store = greycard_ai::Store::user().context("finding the model store")?;
-    anyhow::ensure!(
-        store.have(model),
-        "{}",
-        missing_tier_complaint(&store, name)
-    );
     Ok((store.path(model, &model.files[0]), Some(model)))
 }
 
+/// The learned denoiser for `--ai-denoise`: a tier from `store` (which
+/// a tier always has), or a file named by path. Either is refused on a
+/// card the off-card record in `store` says lost the learned denoiser
+/// (§712); a path with no store has no record to read.
+fn load_learned(
+    (path, model): (&Path, Option<&'static greycard_ai::Model>),
+    store: Option<&greycard_ai::Store>,
+    providers: &[greycard_ai::Provider],
+) -> Result<greycard_ai::Denoiser> {
+    match (model, store) {
+        (Some(model), Some(store)) => greycard_ai::Denoiser::from_store(store, model, providers),
+        (Some(model), None) => Err(greycard_ai::runtime::Error::Missing(model.name)),
+        // A model file named by hand rests as every tier does.
+        (None, store) => greycard_ai::Denoiser::from_path(store, path, providers),
+    }
+    .with_context(|| format!("loading {}", path.display()))
+}
+
 /// The engine's develop with the learned denoiser in place of the
-/// demosaic and the profiled denoise.
+/// demosaic and the profiled denoise: a tier's network for the frame's
+/// mosaic, Bayer or X-Trans, or the file named.
 fn develop_learned(
     frame: &RawFrame,
     settings: &DevelopSettings,
     (path, model): &(PathBuf, Option<&'static greycard_ai::Model>),
 ) -> Result<greycard_core::develop::Developed> {
-    // Before the model is loaded or the frame prepared: the network
-    // takes a 2x2 Bayer mosaic and nothing else.
+    // Before the model is loaded or the frame prepared: a tier has a
+    // network for a 2x2 Bayer mosaic and one for X-Trans, and nothing
+    // else.
+    let xtrans = matches!(&frame.layout, SensorLayout::Cfa(p) if p.is_xtrans());
     if let SensorLayout::Cfa(p) = &frame.layout
         && !greycard_core::develop::rcd::is_bayer(p)
+        && !xtrans
     {
         return Err(greycard_core::error::Error::Unsupported(format!(
-            "the learned denoiser takes a 2x2 Bayer mosaic, not a {p} one"
+            "the learned denoiser takes a 2x2 Bayer or an X-Trans mosaic, not a {p} one"
         ))
         .into());
     }
+    let model = model.map(|m| greycard_ai::for_mosaic(m, xtrans));
     let start = std::time::Instant::now();
     let providers = greycard_ai::Provider::available();
     // A registered tier goes through the store, so a provider's
     // answer for it is read from and written to the record
     // (`runtime::Remembered`); a bare path (an arbitrary model file
     // named on the command line) has no store entry to key that on.
-    let mut denoiser = match *model {
-        Some(model) => {
-            let store = greycard_ai::Store::user().context("finding the model store")?;
-            greycard_ai::Denoiser::from_store(&store, model, &providers)
+    // In a test, the off-card check is a test's: no user's store, ONNX
+    // Runtime, or adapter asked for it.
+    #[cfg(test)]
+    greycard_ai::runtime::off_card_for_tests();
+    let store = match model {
+        Some(_) => Some(greycard_ai::Store::user().context("finding the model store")?),
+        None => greycard_ai::Store::user().ok(),
+    };
+    let path = match (model, &store) {
+        (Some(m), Some(store)) => {
+            anyhow::ensure!(store.have(m), "{}", missing_tier_complaint(store, m));
+            store.path(m, &m.files[0])
         }
-        None => greycard_ai::Denoiser::load(path, &providers),
-    }
-    .with_context(|| format!("loading {}", path.display()))?;
+        _ => path.clone(),
+    };
+    let mut denoiser = load_learned((&path, model), store.as_ref(), &providers)?;
     tracing::info!(
         "learned denoiser {} on {} ({:.1} s to load)",
         denoiser.version(),
@@ -552,7 +586,7 @@ fn develop_learned(
     let pattern = prepared
         .pattern
         .as_ref()
-        .context("the learned denoiser needs a Bayer mosaic")?;
+        .context("the learned denoiser needs a mosaic")?;
     let noise = prepared
         .noise_model()
         .context("the learned denoiser needs the frame's noise model")?;
@@ -655,7 +689,7 @@ fn lens_database(lens: &greycard_edit::Lens) -> Result<Option<greycard_lens::Dat
     // An Adobe profile picked by hand wants no database; one there
     // gives it the body's sensor size.
     if let greycard_edit::LensChoice::Lcp(file) = &lens.chosen {
-        let path = lcp_path(file)?;
+        let path = lcp_path(file, greycard_edit_io::profiles::store_dir().as_deref())?;
         greycard_lens::Lcp::read(&path)
             .with_context(|| format!("reading {} as a lens profile", path.display()))?;
         return Ok(greycard_lens::Store::user()
@@ -691,16 +725,38 @@ fn picked_lens(value: &str) -> greycard_edit::LensChoice {
     }
 }
 
-/// Where an Adobe profile named on the command line is: a path as it
-/// is, a bare file name in the profile directory.
-fn lcp_path(file: &str) -> Result<PathBuf> {
-    if file.contains(['/', '\\']) {
-        return Ok(PathBuf::from(file));
+/// Where the Adobe profile `--lens-pick` names is, as `profile_path`
+/// finds a camera profile: the value as typed, a file named by its
+/// path when one is there, else a name in the profile directory `dir`,
+/// its folders joined by `/` as an edit names it (or by `\` on
+/// Windows, as a path is typed there). Only a value typed on the
+/// command line comes here: the develop reads no sidecar, so no
+/// edit's name is ever read against the working directory. A value
+/// that is neither says which it failed to be.
+fn lcp_path(typed: &str, dir: Option<&std::path::Path>) -> Result<PathBuf> {
+    let as_path = std::path::Path::new(typed);
+    if as_path.is_file() {
+        return Ok(as_path.to_path_buf());
     }
-    let dir = greycard_edit_io::profiles::store_dir()
-        .context("finding the profile directory for the lens profile")?;
-    greycard_lens::lcp::path_in(&dir, file)
-        .with_context(|| format!("{file:?} is not a lens profile's name"))
+    #[cfg(windows)]
+    let name = typed.replace('\\', "/");
+    #[cfg(not(windows))]
+    let name = typed.to_string();
+    // A path that is not there, not a name: said once, here.
+    if !greycard_core::profile_folder::is_name(&name) {
+        anyhow::bail!("{typed}: no such file");
+    }
+    let Some(dir) = dir else {
+        anyhow::bail!("{typed}: no such file, and no profile directory on this machine");
+    };
+    match greycard_lens::lcp::path_in(dir, &name) {
+        Some(path) if path.is_file() => Ok(path),
+        Some(_) => anyhow::bail!(
+            "{typed}: no such file, and no lens profile of that name in {}",
+            dir.display()
+        ),
+        None => anyhow::bail!("{typed}: no such file, and not a lens profile's name (FILE.lcp)"),
+    }
 }
 
 /// The lens's corrections on the developed picture, standing at
@@ -768,7 +824,7 @@ fn correct_lens(
         greycard_edit::LensChoice::FromFile => greycard_lens::Pick::FromFile,
         greycard_edit::LensChoice::Database(name) => greycard_lens::Pick::Named(name),
         greycard_edit::LensChoice::Lcp(file) => {
-            path = lcp_path(file)?;
+            path = lcp_path(file, greycard_edit_io::profiles::store_dir().as_deref())?;
             greycard_lens::Pick::Adobe(&path)
         }
     };
@@ -1071,7 +1127,7 @@ fn run_develop(
     if picture && grey.is_none() {
         if ai_denoise.is_some() {
             tracing::warn!(
-                "--ai-denoise needs a Bayer mosaic; {} is a picture already rendered, so it is ignored",
+                "--ai-denoise needs a mosaic; {} is a picture already rendered, so it is ignored",
                 file.display()
             );
         }
@@ -1092,7 +1148,7 @@ fn run_develop(
         return Ok(());
     }
     let db = lens_database(lens)?;
-    let (frame, metadata) = match grey {
+    let (frame, mut metadata) = match grey {
         Some(read) => read,
         None => RawlerDecoder
             .decode_path_with_metadata(file)
@@ -1140,6 +1196,11 @@ fn run_develop(
         "--look wants a monochrome raw; {} is in color",
         file.display()
     );
+    // The outputs name the lens where the file names none.
+    let identity = (frame.make.as_str(), frame.model.as_str(), &frame.shot, true);
+    if let Some(name) = greycard_engine::lens::named(identity, lens, db.as_ref()) {
+        greycard_core::exif::name_lens(&mut metadata, &name);
+    }
     let settings = &DevelopSettings {
         demosaic: demosaic_for(&frame.layout, demosaic_asked)?,
         // A DCP's look table is read where the editor's default
@@ -1382,7 +1443,7 @@ fn run_mono(
     let empty = WorkingImage::new(0, 0);
     let finished = |long_edge| {
         let settings = mono::preview_settings(long_edge);
-        mono::preview(finish::render(&empty, edit, &made, &settings))
+        mono::preview(finish::render(&empty, edit, &made, &settings)?)
     };
     let source_name = file.file_name().map(|n| n.to_string_lossy().into_owned());
     let software = format!(
@@ -1488,6 +1549,10 @@ fn run_develop_picture(
         p.image.width,
         p.image.height
     );
+    let identity = (p.make.as_str(), p.model.as_str(), &p.shot, false);
+    if let Some(name) = greycard_engine::lens::named(identity, lens, db.as_ref()) {
+        greycard_core::exif::name_lens(&mut p.metadata, &name);
+    }
     let clip_level = p.clip_level();
     let stats = correct_and_sharpen(
         &mut p.image,
@@ -1668,6 +1733,60 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(said.contains("no profile of that name"), "{said}");
+        greycard_core::testing::remove_dir_retry(&dir);
+    }
+
+    /// `--lens-pick`'s profile is a file named by its path when one is
+    /// there, else a name in the profile directory, folders and all; a
+    /// value that is neither names both in its error.
+    #[test]
+    fn a_lens_profile_is_a_path_or_a_name_in_the_directory() {
+        let dir =
+            std::env::temp_dir().join(format!("greycard-cli-lcp-path-{}", std::process::id()));
+        greycard_core::testing::remove_dir_retry(&dir);
+        let store = dir.join("profiles");
+        std::fs::create_dir_all(store.join("Canon")).unwrap();
+        let loose = dir.join("loose.lcp");
+        std::fs::write(&loose, b"x").unwrap();
+        let named = store.join("Canon").join("EF 50mm.lcp");
+        std::fs::write(&named, b"x").unwrap();
+        // A path that is there, as given.
+        let path = loose.to_str().unwrap();
+        assert_eq!(lcp_path(path, Some(&store)).unwrap(), loose);
+        // A name in the directory, at the top or in a maker's folder.
+        std::fs::write(store.join("Top.LCP"), b"x").unwrap();
+        assert_eq!(
+            lcp_path("Top.LCP", Some(&store)).unwrap(),
+            store.join("Top.LCP")
+        );
+        assert_eq!(lcp_path("Canon/EF 50mm.lcp", Some(&store)).unwrap(), named);
+        // Typed as Windows separates its folders: a name there, and on
+        // other systems a file name with a `\` in it, which no
+        // directory's name is.
+        let typed = lcp_path("Canon\\EF 50mm.lcp", Some(&store));
+        #[cfg(windows)]
+        assert_eq!(typed.unwrap(), named);
+        #[cfg(not(windows))]
+        assert!(typed.unwrap_err().to_string().ends_with("no such file"));
+        // Neither a file nor a profile in the directory: both named.
+        let said = lcp_path("Canon/EF 85mm.lcp", Some(&store))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            said.contains("no such file") && said.contains("no lens profile of that name"),
+            "{said}"
+        );
+        let said = lcp_path("Canon/EF 85mm.lcp", None).unwrap_err().to_string();
+        assert!(said.contains("no profile directory"), "{said}");
+        let said = lcp_path("Canon/EF 50mm.txt", Some(&store))
+            .unwrap_err()
+            .to_string();
+        assert!(said.contains("not a lens profile's name"), "{said}");
+        let missing = dir.join("gone.lcp");
+        let said = lcp_path(missing.to_str().unwrap(), Some(&store))
+            .unwrap_err()
+            .to_string();
+        assert!(said.ends_with("no such file"), "{said}");
         greycard_core::testing::remove_dir_retry(&dir);
     }
 
@@ -2166,7 +2285,7 @@ mod tests {
         assert!(complaint.contains("turbo"), "{complaint}");
         // The way out of a missing tier is the CLI's own, not a panel.
         let store = greycard_ai::Store::at(std::env::temp_dir().join("greycard-no-models"));
-        let missing = missing_tier_complaint(&store, "fast");
+        let missing = missing_tier_complaint(&store, &greycard_ai::DENOISE_FAST);
         assert!(
             missing.contains(&format!(
                 "{} models --fetch fast",
@@ -2175,6 +2294,15 @@ mod tests {
             "{missing}"
         );
         assert!(!missing.contains("panel"), "{missing}");
+        // An X-Trans tier is fetched by the tier's name too, which
+        // brings both its networks.
+        let x = &greycard_ai::DENOISE_XTRANS_FAST;
+        let missing = missing_tier_complaint(&store, x);
+        assert!(
+            missing.contains("greycard models --fetch fast"),
+            "{missing}"
+        );
+        assert!(missing.contains(x.name), "{missing}");
         // A file that is there is taken as a model of its own.
         let file = std::env::temp_dir().join(format!("greycard-cli-{}.onnx", std::process::id()));
         std::fs::write(&file, b"stands in for a model").unwrap();
@@ -2182,5 +2310,54 @@ mod tests {
         assert_eq!(path, file);
         assert!(model.is_none());
         std::fs::remove_file(&file).unwrap();
+    }
+
+    /// `--ai-denoise <path>` is refused on a card the record says lost
+    /// the learned denoiser, with the same error as a tier; with nothing
+    /// on record, neither is refused (each fails at its own load here:
+    /// the store holds no files, and the path names none).
+    #[test]
+    fn a_model_named_by_path_is_refused_as_a_tier_is_on_a_lost_card() {
+        use greycard_ai::{DENOISE_FAST, runtime};
+        runtime::off_card_for_tests();
+        let (adapter, build) = ("Test GPU|Vulkan|1.2.3", "b");
+        runtime::set_test_here(Some((adapter, build)));
+        let root = std::env::temp_dir().join(format!(
+            "greycard-cli-off-card-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        greycard_core::testing::remove_dir_retry(&root);
+        let store = greycard_ai::Store::at(&root);
+        let file = root.join("named.onnx");
+        let providers = [greycard_ai::Provider::Cpu];
+        let off_card = |e: &anyhow::Error| {
+            e.chain().any(|c| {
+                matches!(
+                    c.downcast_ref::<runtime::Error>(),
+                    Some(runtime::Error::OffCard)
+                )
+            })
+        };
+        let tier = || load_learned((&file, Some(&DENOISE_FAST)), Some(&store), &providers);
+        let path = || load_learned((&file, None), Some(&store), &providers);
+        let (t, p) = (tier().err().unwrap(), path().err().unwrap());
+        assert!(!off_card(&t), "nothing on record: {t:#}");
+        assert!(!off_card(&p), "nothing on record: {p:#}");
+        // A tier on record for this card, as a loss writes it.
+        runtime::Held::new().put_off(&[runtime::OnCard::new(
+            &root,
+            DENOISE_FAST.id,
+            DENOISE_FAST.files[0].sha256,
+            adapter,
+            build,
+        )]);
+        let (t, p) = (tier().err().unwrap(), path().err().unwrap());
+        assert!(off_card(&t), "{t:#}");
+        assert!(off_card(&p), "{p:#}");
+        assert_eq!(format!("{t:#}"), format!("{p:#}"), "the same error");
+        runtime::forget_off_card(&root, &[]);
+        runtime::set_test_here(None);
+        greycard_core::testing::remove_dir_retry(&root);
     }
 }

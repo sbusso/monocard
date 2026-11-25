@@ -32,7 +32,7 @@ component FolderRow inherits HorizontalLayout {
         text: @tr("Clear");
         clicked => { root.clear(); }
     }
-    PanelButton {
+    choose-button := PanelButton {
         text: @tr("Choose...");
         clicked => { root.choose(); }
     }
@@ -45,8 +45,13 @@ export component ImportSheet inherits Rectangle {
     in property <string> import-backup;
     in-out property <string> import-subfolder;
     in-out property <string> import-name;
-    /// The presets by name, "None" first, and the one chosen.
+    /// The presets as keys, none's empty and first, then each by name,
+    /// and the key chosen. The picker shows `import-preset-labels`, no
+    /// preset's in the window's language, and chooses by place, so a
+    /// preset named "None" is that preset.
     in property <[string]> import-presets;
+    in property <[string]> import-preset-labels;
+    in-out property <int> import-preset-index;
     in-out property <string> import-preset;
     /// What the source holds, or what is being looked for.
     in property <string> import-note;
@@ -114,13 +119,15 @@ export component ImportSheet inherits Rectangle {
                         padding-right: Theme.space-5 + Theme.scrollbar-band;
                         padding-bottom: Theme.space-2;
                         spacing: Theme.space-2;
-                        Text {
+                        heading := Text {
                             text: @tr("Import");
                             font-size: Theme.font-lg;
                             font-weight: Theme.weight-medium;
                             color: Theme.text;
                         }
                         Segmented {
+                            // Named by the sheet's heading: how to import.
+                            name: heading.text;
                             options: ["Copy", "Add in place"];
                             // Import sheet: copy the files in, or add them where they are
                             labels: [@tr("Copy"), @tr("Add in place")];
@@ -184,8 +191,9 @@ export component ImportSheet inherits Rectangle {
                             HorizontalLayout {
                                 spacing: Theme.space-2;
                                 // Import sheet: the subfolder pattern row
-                                Text { text: @tr("Folders"); width: 76px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                folders-words := Text { accessible-role: none; text: @tr("Folders"); width: 76px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 LineEdit {
+                                    accessible-label: folders-words.text;
                                     horizontal-stretch: 1;
                                     text <=> root.import-subfolder;
                                     // Import sheet: the subfolder pattern when it is empty
@@ -194,8 +202,9 @@ export component ImportSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Name"); width: 76px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                name-words := Text { accessible-role: none; text: @tr("Name"); width: 76px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                                 LineEdit {
+                                    accessible-label: name-words.text;
                                     horizontal-stretch: 1;
                                     text <=> root.import-name;
                                     placeholder-text: "{name}";
@@ -223,11 +232,13 @@ export component ImportSheet inherits Rectangle {
                             }
                             HorizontalLayout {
                                 spacing: Theme.space-2;
-                                Text { text: @tr("Preset"); width: 76px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
-                                ComboBox {
+                                preset-words := Text { accessible-role: none; text: @tr("Preset"); width: 76px; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
+                                presets := ComboBox {
+                                    accessible-label: preset-words.text;
                                     horizontal-stretch: 1;
-                                    model: root.import-presets;
-                                    current-value <=> root.import-preset;
+                                    model: root.import-preset-labels;
+                                    current-index <=> root.import-preset-index;
+                                    selected(v) => { root.import-preset = root.import-presets[self.current-index]; }
                                 }
                             }
                             FolderRow {
@@ -253,7 +264,7 @@ export component ImportSheet inherits Rectangle {
                                 label: @tr("Verify against the card");
                                 checked <=> root.import-verify;
                             }
-                            Text {
+                            verify-note := Text {
                                 text: @tr("Verify compares every byte (slower).");
                                 wrap: word-wrap;
                                 height: self.preferred-height;

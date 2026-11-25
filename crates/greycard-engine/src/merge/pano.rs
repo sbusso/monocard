@@ -184,6 +184,8 @@ pub struct Report {
     pub bands_bytes: usize,
     pub seconds: Vec<(&'static str, f64)>,
     pub warnings: Vec<String>,
+    /// Why frames that asked for a learned tier went without it.
+    pub learned_skipped: Option<super::LearnedSkipped>,
 }
 
 /// `<first frame>-pano.dng`, beside the first frame.
@@ -219,7 +221,8 @@ pub fn reference_of(count: usize, asked: Option<usize>) -> Result<usize> {
 
 /// The edit a panorama's file starts with: the reference frame's, less
 /// what the merge did or what was of one frame's geometry. Less the
-/// exposure and the learned denoiser, as a bracket's; less the lens
+/// exposure, the learned denoiser, and the highlight fill, as a
+/// bracket's; less the lens
 /// section, which the merge ran (its profile, a distortion or an
 /// aberration set by hand); less the crop, the turn, the retouch, and
 /// the masks, which were placed on the reference frame and mean
@@ -418,6 +421,7 @@ fn laid(
     // the file.
     let mut frame_tags: Vec<Option<(RawFrame, RawMetadata)>> = (0..n).map(|_| None).collect();
     let mut denoised = false;
+    let mut skipped = Vec::new();
     let mut links: Vec<Link> = Vec::new();
     let mut pairs: Vec<PairReport> = Vec::new();
     let mut walk_s = 0.0;
@@ -502,6 +506,7 @@ fn laid(
             }
         }
         denoised |= f.denoised;
+        skipped.push(f.learned_skipped);
         if k == anchor {
             ca = match &f.ca_fit {
                 Some(fit) => MergeCa::Take(CaFitRef(fit.clone())),
@@ -1104,7 +1109,7 @@ fn laid(
             })),
         }),
     };
-    let preview = merge::preview(&image, &ref_walked.white_balance, 1024)?;
+    let preview = merge::preview(&image, &ref_walked.white_balance, merge::PREVIEW_SIDE)?;
     let software = software();
     let (ref_frame, ref_meta) = frame_tags[reference].take().expect("every frame walked");
     let metadata = without_lens(&ref_meta);
@@ -1161,6 +1166,7 @@ fn laid(
         bands_bytes,
         seconds,
         warnings,
+        learned_skipped: super::LearnedSkipped::of_frames(skipped),
     })
 }
 
@@ -1543,6 +1549,49 @@ mod tests {
             lenses: Some(lenses()),
             ..Options::default()
         }
+    }
+
+    /// A panorama whose frames asked for a learned tier on a card the
+    /// denoiser lost says so (the card's reason, as a value); with no
+    /// tier, or the tier run, it says nothing.
+    #[test]
+    fn a_panorama_says_its_frames_went_without_the_tier() {
+        let (dir, files) = frames("off-card", &[-0.45, 0.0, 0.45]);
+        let run = |denoiser, models: &mut dyn crate::walk::Models| {
+            pano(
+                &files,
+                &Edit::default(),
+                &Options {
+                    denoiser,
+                    on_exists: greycard_core::output::OnExists::Overwrite,
+                    ..options()
+                },
+                models,
+                &|_: Step| {},
+            )
+            .unwrap()
+        };
+        crate::ai::set_test_off_card(Some(true));
+        let off = run(
+            Some(&greycard_ai::DENOISE_BEST),
+            &mut crate::testing::PlainDenoiser,
+        );
+        assert!(!off.denoised);
+        assert_eq!(
+            off.learned_skipped,
+            Some(super::super::LearnedSkipped::OffCard)
+        );
+        crate::ai::set_test_off_card(Some(false));
+        let ran = run(
+            Some(&greycard_ai::DENOISE_BEST),
+            &mut crate::testing::PlainDenoiser,
+        );
+        assert!(ran.denoised);
+        assert_eq!(ran.learned_skipped, None);
+        let none = run(None, &mut crate::walk::NoModels);
+        assert_eq!(none.learned_skipped, None);
+        crate::ai::set_test_off_card(None);
+        greycard_core::testing::remove_dir_retry(&dir);
     }
 
     /// Three frames turned 26 degrees apart, a field of 114 degrees:
