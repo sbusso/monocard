@@ -4,22 +4,20 @@
 //! rest of the edit alone. The text of a look may come from anywhere, so
 //! [`Look::parse`] checks all of it.
 
+use crate::folder::{self, Kept};
 use mono_core::MonoEdit;
 use mono_core::edit::{LookRef, SOLAR_NODES};
 use mono_tone::point::MonotoneCurve;
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use toml::{Table, Value};
 
 /// The largest look file read.
 pub const MAX_BYTES: usize = 64 * 1024;
-const MAX_NAME: usize = 80;
+pub(crate) const MAX_NAME: usize = 80;
 const MAX_DESCRIPTION: usize = 500;
 const MAX_POINTS: usize = 32;
 const MAX_SCALES: usize = 16;
-/// The most files a folder is read for.
-const MAX_FILES: usize = 1000;
 /// The most photos a fit names.
 const MAX_PHOTOS: usize = 300;
 
@@ -31,6 +29,8 @@ pub enum Error {
     TooLarge,
     #[error("not a look: {0}")]
     Parse(String),
+    #[error("not a recipe: {0}")]
+    Recipe(String),
     #[error("{field}: {what}")]
     Field { field: String, what: String },
     #[error("not a Lightroom preset: {0}")]
@@ -39,7 +39,7 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-fn field<T>(path: &str, what: impl Into<String>) -> Result<T> {
+pub(crate) fn field<T>(path: &str, what: impl Into<String>) -> Result<T> {
     Err(Error::Field {
         field: path.to_owned(),
         what: what.into(),
@@ -301,6 +301,7 @@ pub fn apply(e: &MonoEdit, look: &Look, strength: f32) -> MonoEdit {
         name: look.name.clone(),
         strength,
         before: Some(Box::new(before)),
+        camera: None,
     };
     out
 }
@@ -327,7 +328,13 @@ pub fn remove(e: &MonoEdit, looks: &[Look]) -> MonoEdit {
 
 fn table(e: &MonoEdit) -> Table {
     // Numbers, strings and tables only, so it always converts.
-    Table::try_from(e).unwrap_or_default()
+    let mut t = Table::try_from(e).unwrap_or_default();
+    // Left out at rest, which a strength mixes from.
+    if let Some(Value::Table(d)) = t.get_mut("display") {
+        d.entry("grade")
+            .or_insert(Value::Float(e.display.grade.into()));
+    }
+    t
 }
 
 fn edit(t: Table) -> Result<MonoEdit> {
@@ -386,6 +393,7 @@ fn range(path: &str) -> Option<(f64, f64)> {
         ("display", "contrast") => (0.5, 3.0),
         ("display", "white_ceiling") => (0.5, 1.0),
         ("display", "black_floor") => (0.0, 0.1),
+        ("display", "grade") => (-1.0, 5.0),
         ("tone_eq", "zones" | "mask_contrast") => (-2.0, 2.0),
         ("tone_eq", "smoothing") => (0.0, 0.25),
         ("tone_eq", "edges") => (0.0, 10.0),
@@ -481,7 +489,7 @@ fn check_array(path: &str, a: &mut Vec<Value>) -> Result<()> {
 }
 
 /// One line of at most `max` characters, none of them a control's.
-fn plain(s: &str, max: usize) -> String {
+pub(crate) fn plain(s: &str, max: usize) -> String {
     let s: String = s
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })
@@ -595,185 +603,73 @@ fn points(a: &Value, b: &Value, t: f32) -> Value {
     )
 }
 
-// The folder of user looks.
+// The folder of user looks (`folder` has the writing).
+
+impl Kept for Look {
+    const KIND: &'static str = "look";
+    fn name(&self) -> &str {
+        &self.name
+    }
+    fn under(self, name: &str) -> Self {
+        let name = name.into();
+        Self { name, ..self }
+    }
+    fn read(text: &str) -> Result<Self> {
+        Self::parse(text)
+    }
+    fn sound(self) -> Result<Self> {
+        self.checked()
+    }
+    fn text(&self) -> String {
+        self.to_toml()
+    }
+    fn is_builtin(name: &str) -> bool {
+        builtin().iter().any(|l| l.name == name)
+    }
+}
 
 /// The looks in a folder, by name, and what could not be read. A folder
 /// that is not there holds none.
 pub fn load(dir: &Path) -> (Vec<Look>, Vec<(PathBuf, Error)>) {
-    let mut looks = Vec::new();
-    let mut failed = Vec::new();
-    let paths = match files(dir) {
-        Ok(paths) => paths,
-        Err(e) => return (looks, vec![(dir.to_owned(), e.into())]),
-    };
-    for path in paths {
-        match read(&path) {
-            Ok(l) => looks.push(l),
-            Err(e) => failed.push((path, e)),
-        }
-    }
-    looks.sort_by(|a, b| a.name.cmp(&b.name));
-    (looks, failed)
-}
-
-/// The folder's files that may be looks.
-fn files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(entries) => entries,
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(e) => return Err(e),
-    };
-    Ok(entries
-        .filter_map(|e| Some(e.ok()?.path()))
-        .filter(|p| p.extension().is_some_and(|x| x == "toml") && p.is_file())
-        .take(MAX_FILES)
-        .collect())
-}
-
-/// The folder's files whose look has this name.
-fn named(dir: &Path, name: &str) -> Result<Vec<(PathBuf, Look)>> {
-    Ok(files(dir)?
-        .into_iter()
-        .filter_map(|p| Some((read(&p).ok()?, p)))
-        .filter(|(l, _)| l.name == name)
-        .map(|(l, p)| (p, l))
-        .collect())
-}
-
-/// The one file of the user's look with this name.
-fn own(dir: &Path, name: &str) -> Result<(PathBuf, Look)> {
-    let mut found = named(dir, name)?;
-    match found.len() {
-        1 => Ok(found.remove(0)),
-        0 if is_builtin(name) => field("name", format!("{name} is built in")),
-        0 => field("name", format!("no look of yours is named {name}")),
-        n => field("name", format!("{n} files hold a look named {name}")),
-    }
-}
-
-fn is_builtin(name: &str) -> bool {
-    builtin().iter().any(|l| l.name == name)
+    folder::load(dir)
 }
 
 /// An error where the name is a built-in look's or one of the folder's.
 pub fn free(dir: &Path, name: &str) -> Result<()> {
-    if is_builtin(name) || !named(dir, name)?.is_empty() {
-        return field("name", format!("there is a look named {name} already"));
-    }
-    Ok(())
-}
-
-fn read(path: &Path) -> Result<Look> {
-    let mut text = String::new();
-    std::fs::File::open(path)?
-        .take(MAX_BYTES as u64 + 1)
-        .read_to_string(&mut text)?;
-    Look::parse(&text)
+    folder::free::<Look>(dir, name)
 }
 
 /// Saves a look in the folder, over the one of the same name if there is
 /// one, and never over another file. The file's name is the look's made
 /// safe.
 pub fn save(dir: &Path, look: &Look) -> Result<PathBuf> {
-    // What is saved is what would be read.
-    let look = look.clone().checked()?;
-    std::fs::create_dir_all(dir)?;
-    let stem = file_stem(&look.name);
-    let path = named(dir, &look.name)?
-        .into_iter()
-        .map(|(p, _)| p)
-        .next()
-        .or_else(|| {
-            (1..100)
-                .map(|n| match n {
-                    1 => dir.join(format!("{stem}.toml")),
-                    n => dir.join(format!("{stem}-{n}.toml")),
-                })
-                .find(|p| !p.exists())
-        })
-        .ok_or_else(|| Error::Parse(format!("too many looks named {stem}")))?;
-    // Written whole beside it first, so a full disk loses nothing.
-    let part = path.with_extension("toml.part");
-    std::fs::write(&part, look.to_toml())?;
-    std::fs::rename(&part, &path)?;
-    Ok(path)
+    folder::save(dir, look)
 }
 
 /// The look in file `file`, kept in the folder: under a name taken there
 /// or by a built-in look only with `replace`.
 pub fn import_file(dir: &Path, file: &Path, replace: bool) -> Result<Look> {
-    let look = read(file)?;
-    if !replace {
-        free(dir, &look.name)?;
-    }
-    save(dir, &look)?;
-    Ok(look)
+    folder::import_file(dir, file, replace)
 }
 
 /// `look` as a file at `to`, never over one there.
 pub fn export(look: &Look, to: &Path) -> Result<()> {
-    let look = look.clone().checked()?;
-    // Not `exists`, which a link to nothing is not.
-    if to.symlink_metadata().is_ok() {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::AlreadyExists,
-            format!("{} is there already", to.display()),
-        )
-        .into());
-    }
-    let part = to.with_extension("toml.part");
-    let mut file = std::fs::File::create_new(&part)?;
-    let wrote = file
-        .write_all(look.to_toml().as_bytes())
-        .and_then(|()| std::fs::rename(&part, to));
-    if wrote.is_err() {
-        let _ = std::fs::remove_file(&part);
-    }
-    Ok(wrote?)
+    folder::export(look, to)
 }
 
 /// The folder's look `from` under another name, not one taken.
 pub fn rename(dir: &Path, from: &str, to: &str) -> Result<()> {
-    let (old, look) = own(dir, from)?;
-    let look = Look {
-        name: to.into(),
-        ..look
-    }
-    .checked()?;
-    free(dir, &look.name)?;
-    // The new one first, so a crash between leaves both.
-    save(dir, &look)?;
-    Ok(std::fs::remove_file(old)?)
+    folder::rename::<Look>(dir, from, to)
 }
 
 /// The folder's look `name` deleted.
 pub fn delete(dir: &Path, name: &str) -> Result<()> {
-    let (path, _) = own(dir, name)?;
-    Ok(std::fs::remove_file(path)?)
+    folder::delete::<Look>(dir, name)
 }
 
 /// A file name of letters, digits and hyphens that every system takes.
 pub fn file_stem(name: &str) -> String {
-    let mut stem = String::new();
-    for c in name.chars().take(MAX_NAME) {
-        if c.is_ascii_alphanumeric() {
-            stem.push(c.to_ascii_lowercase());
-        } else if !stem.is_empty() && !stem.ends_with('-') {
-            stem.push('-');
-        }
-    }
-    let stem = stem.trim_matches('-');
-    let numbered = |p: &str| {
-        stem.strip_prefix(p)
-            .is_some_and(|n| n.len() == 1 && n != "0")
-    };
-    let reserved =
-        ["con", "prn", "aux", "nul"].contains(&stem) || numbered("com") || numbered("lpt");
-    match stem {
-        "" => "look".into(),
-        s if reserved => format!("look-{s}"),
-        s => s.into(),
-    }
+    folder::file_stem(name, Look::KIND)
 }
 
 #[cfg(test)]
@@ -855,6 +751,11 @@ mod tests {
         assert_eq!(set_strength(&e, 0.5, &looks), e);
         assert_eq!(set_strength(&hard, 0.5, &[]), hard);
         assert_eq!(apply(&e, &look("Hard"), f32::NAN), hard);
+        // The grade is left out of an edit at rest, and mixes from there.
+        let l = Look::parse("name = 'x'\n[tools.display]\ngrade = 5").unwrap();
+        let half = apply(&e, &l, 0.5);
+        assert_eq!(half.display.grade, 3.5);
+        assert_eq!(remove(&half, &[l]), e);
     }
 
     #[test]
@@ -1064,7 +965,7 @@ mod tests {
         let file = home.join("out.toml");
         export(&mine, &file).unwrap();
         assert!(export(&mine, &file).is_err());
-        assert_eq!(read(&file).unwrap(), mine);
+        assert_eq!(folder::read::<Look>(&file).unwrap(), mine);
         assert!(!home.join("out.toml.part").exists());
         #[cfg(unix)]
         {

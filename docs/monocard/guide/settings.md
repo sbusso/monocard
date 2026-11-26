@@ -107,7 +107,7 @@ When there is a new version, a button above **Settings...** says that it is avai
 | Library, collections, thumbnails, previews, masks, models, lens database | `%LOCALAPPDATA%\monocard` |
 | Log | `%LOCALAPPDATA%\monocard\logs` |
 
-In the settings folder, `settings.json` holds the settings, `presets` the presets, `looks-mono` the looks, and `cameras` the camera profiles. In the library folder, `library.sqlite` holds the index of your photos.
+In the settings folder, `settings.json` holds the settings, `presets` the presets, `looks-mono` the looks, `recipes` the [recipes](looks.md#recipes), and `cameras` the camera profiles. In the library folder, `library.sqlite` holds the index of your photos.
 
 Your edits are not in these folders. They are in `.mcd` files with your photos. See [Where your edits are kept](index.md#where-your-edits-are-kept).
 

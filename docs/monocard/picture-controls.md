@@ -244,6 +244,7 @@ from its own start. ExifTool reads it with its Pentax table. (confirmed)
 | --- | --- | --- |
 | `0x004f` | Mode | Confirmed |
 | `0x0247` | Parameters, int16: 2 key, 3 contrast, 4 highlight, 5 shadow, 6 sharpness, 9 shading, 10 clarity, 13 toning. -32768 is "not used". Bytes 38 and 39: grain | Layout from ExifTool for the GR III. Only default values seen |
+| `0x0247` int16 15 and 16 | HDR Tone only: 15 toning, 16 level. -1 in the other modes | The position is confirmed: 0 and 2 in three files, and ExifTool has the same for the GR III. Only those values seen. Names of the levels (0 low, 1 medium, 2 high) from ExifTool |
 | `0x0247` byte 68 | 1 in Solarized files, -1 in others, firmware 1.11 only | Guess: the solarize type |
 | `0x009e` | Red filter, 2 is on | Confirmed in DNGs by a third party |
 | `0x0069` | Highlight Correction | Auto in all, active in 124 |
@@ -496,7 +497,7 @@ S is under half a day, M about a day, L two days or more.
 | 7 | "Camera modes" group, hidden on a JPEG | Look panel | S | No |
 | 8 | Start from the recorded mode | engine, `greycard-ui` | M | No |
 | 9 | Grain, sharpening, vignette, toning | `mono-look/src/fit.rs` | L | Full set |
-| 10 | Parameters at -4 to +4 | later, only if wanted | L | A third set |
+| 10 | Parameters at -4 to +4. Draft built on 2026-11-26 | new `mono-look/src/settings.rs`, engine | L | The shot list |
 
 Steps 2 and 3 touch only `mono-look`. Steps 1, 4, 6, 7, and 8 touch files that other
 work has open on 2026-11-24, so they come after it. Each step has one test on a CPU
@@ -546,10 +547,73 @@ HDR Tone is under its free curve because the two measures do not choose the same
 | Hot pixels | Missing | `mono-profile` | Dark frames |
 | Solarize curves of the tool | Draft | `SOLAR` in `mono-look/src/finish.rs` | Not the camera's. A look of the user holds its own |
 | Grain, sharpening, vignette, toning per mode | Missing | step 9 of the build plan | The full photo set |
-| Parameters at -4 to +4 | Missing | step 10 | A third set |
+| Parameters at -4 to +4 | Draft. Toning, grain, and HDR Tone level are not put on | `mono-look/src/settings.rs` | The [shot list](#shot-list) |
 | Pass rule | Draft | `Errors::pass` in `mono-look/src/fit.rs` | A decision after more fits |
 | Highlight Correction | Missing | reader and fit | Two shots of one scene, off and on |
 | Learned denoise weights | Missing | `tools/denoise` | Training pairs |
+
+### Mode settings on a start
+
+With **Start from the camera's mode** on, a raw starts from the look of its mode. Then
+the photo's settings go over it, as steps from the mode's defaults. A photo shot at the
+defaults gets nothing more. The defaults are the ones in the
+[reported table](#parameters). The user's photos have the same values, Soft included.
+
+| Setting | Tool | One step (draft) |
+| --- | --- | --- |
+| Key | Exposure | 0.25 EV |
+| Contrast | Contrast | 10 |
+| Contrast (Highlight) | Whites, the other way | 10 |
+| Contrast (Shadow) | Blacks. Reported: +4 lightens the shadows | 10 |
+| Sharpness | Fine, in the contrast equalizer | 10 |
+| Shading | Vignette, darker corners for a plus | 10 |
+| Clarity | Local contrast | 10 |
+
+The edit keeps the steps in `look.camera`, so the start is still known as a start. Toning,
+grain, and HDR Tone level are not put on yet. The sizes are guesses until the shot list is
+measured.
+
+### Shot list
+
+The camera's in-camera RAW development makes all the JPEGs from a few DNGs. Monocard reads
+each JPEG's mode and settings from the file, so the names do not matter.
+
+Before you shoot:
+
+- Set the camera as the table in
+  [Camera settings that also change a JPEG](#camera-settings-that-also-change-a-jpeg) says:
+  the corrections off, RAW+JPEG.
+- Use a tripod, and do not change the light between shots.
+
+Shoot four DNGs:
+
+| DNG | What | ISO |
+| --- | --- | --- |
+| Chart | The test chart, as the settings page says | 160 |
+| Scene | A real scene with sky, shade, and fine texture | 160 |
+| Scene, high ISO | The same scene | 3200 |
+| Wall | A plain wall, evenly lit, that fills the frame | 160 |
+
+Then develop each DNG in the camera, once for each line. Leave each setting that a line
+does not name at its default.
+
+| DNG | Develop as | JPEGs | It fits |
+| --- | --- | --- | --- |
+| Chart | Grainy | 1 | Grainy's curve |
+| Chart | Standard, Key at -4 and at +4 | 2 | Key |
+| Chart | Standard, Contrast at -4 and at +4 | 2 | Contrast |
+| Chart | Standard, Contrast (Highlight) at -4 and at +4 | 2 | Contrast (Highlight) |
+| Chart | Standard, Contrast (Shadow) at -4 and at +4 | 2 | Contrast (Shadow) |
+| Chart | Standard, each toning | 5 | Toning |
+| Scene | Soft, High Contrast, Grainy | 3 | The drafts on a real scene |
+| Scene | HDR Tone, at each level | 3 | HDR Tone |
+| Scene | Standard, Sharpness at -4 and at +4 | 2 | Sharpness |
+| Scene | Standard, Clarity at -4 and at +4 | 2 | Clarity |
+| Scene, high ISO | Standard, and Grainy | 2 | Grain against ISO |
+| Wall | Standard, Shading at -4 and at +4 | 2 | Shading |
+| Wall | Standard, grain on, each size at each strength | 9 | Grain |
+
+That is 37 JPEGs. Copy the card's folder, the DNGs with the JPEGs, to a new folder.
 
 ### Features
 

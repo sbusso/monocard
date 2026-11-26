@@ -174,6 +174,7 @@ fn a_monochrome_jpeg_is_edited_like_a_raw() {
     assert!(value(&app, "basic.exposure").enabled);
     assert_eq!(app.global::<Mono>().get_rest_note(), "");
     assert!(OF_A_RAW.iter().all(|id| !shown(id)));
+    assert!(shown("display.grade"));
     app.global::<Mono>()
         .invoke_slid("basic.exposure".into(), 0.5);
     save(&app, &state);
@@ -330,6 +331,42 @@ fn a_drag_on_the_panel_moves_the_edit() {
         value(&app, "basic.midtones").value,
         mono_of(&state).basic.midtones
     );
+}
+
+#[test]
+fn the_paper_grade_stops_at_halves_resets_and_says_what_it_does() {
+    let (app, state) = open();
+    let (at, size) = labeled(&app, "Paper grade");
+    let y = at.y + size.height / 2.0;
+    let grade = || {
+        save(&app, &state);
+        (
+            mono_of(&state).display.grade,
+            value(&app, "display.grade").value,
+        )
+    };
+    crate::testing::click(&app, at.x + size.width - 110.0, y);
+    let (held, shown) = grade();
+    assert!(held > 2.0 && held == shown && held * 2.0 % 1.0 == 0.0);
+    i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_secs(2));
+    crate::testing::click(&app, at.x + 10.0, y);
+    crate::testing::click(&app, at.x + 10.0, y);
+    assert_eq!(grade(), (2.0, 2.0));
+    // 00 is typed as it shows, on this slider alone.
+    let typing = app.global::<crate::Typing>();
+    assert_eq!(typing.invoke_parse("00".into(), 1.0, -1.0, 5.0).value, -1.0);
+    assert_eq!(typing.invoke_parse("00".into(), 1.0, -5.0, 5.0).value, 0.0);
+    // The tip, after a rest.
+    for x in [2.0, at.x + 12.0] {
+        app.window()
+            .dispatch_event(slint::platform::WindowEvent::PointerMoved {
+                position: slint::LogicalPosition::new(x, y),
+            });
+        slint::platform::update_timers_and_animations();
+    }
+    i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_secs(2));
+    slint::platform::update_timers_and_animations();
+    assert_eq!(app.get_tip_text(), words::tip("display.grade"));
 }
 
 #[test]
@@ -508,8 +545,8 @@ fn the_welcome_shows_once() {
 fn a_new_frame_starts_from_its_profile() {
     const GR: &str = "RICOH GR IV Monochrome";
     let (app, state) = open();
-    let start =
-        greycard_engine::mono::start_of(GR, None).expect("the bundled profile says something");
+    let start = greycard_engine::mono::start_of(GR, None, None)
+        .expect("the bundled profile says something");
     let given = || Some(Box::new(start.clone()));
     {
         let mut st = state.borrow_mut();
@@ -570,7 +607,7 @@ fn a_new_frame_starts_from_its_mode() {
     mode_look(&dir, "Test solid", GR);
     let (app, state) = open();
     let mono = app.global::<Mono>();
-    let mut start = greycard_engine::mono::start_of(GR, None).unwrap();
+    let mut start = greycard_engine::mono::start_of(GR, None, None).unwrap();
     assert!(looks::pick(&mut start, "Test solid"));
     seed(&mut state.borrow_mut(), &app, || {
         Some(Box::new(start.clone()))
@@ -790,6 +827,7 @@ fn the_looks_are_drawn_of_the_picture() {
         iso: Some(800.0),
         white: 1.0,
         rendered: false,
+        raw: None,
     };
     let made = picture::thumbs(&frame, &MonoEdit::default(), || true);
     assert_eq!(made.len(), looks::all().len() + 1);
@@ -925,4 +963,65 @@ fn a_scale_moves_a_tenth_as_far_with_shift() {
         "{} from {whole}",
         scale()
     );
+}
+
+#[test]
+fn the_raw_histogram_is_shown_of_a_raw_alone() {
+    let app = window(2);
+    app.window()
+        .set_size(slint::LogicalSize::new(1500.0, 950.0));
+    let paths = ["/nowhere/a.DNG", "/nowhere/b.JPG"].map(PathBuf::from);
+    let (state, _worker) = state_for(&app, paths.to_vec());
+    stock_panels(&app, false);
+    (state.borrow_mut().develop.monochromes).extend(paths);
+    app.invoke_select(0);
+    show(&app, &state);
+    let mono = app.global::<Mono>();
+    let frame = mono_core::MonoFrame {
+        base: std::sync::Arc::new(mono_core::Plane::filled(1, 1, 0.2)),
+        guide: None,
+        detail: None,
+        local: None,
+        clip: None,
+        iso: None,
+        white: 2.0,
+        rendered: false,
+        raw: Some(std::sync::Arc::new(mono_core::RawHistogram {
+            bins: vec![1; mono_core::RawHistogram::BINS],
+            clipped: 0.004,
+            headroom: Some(0.71),
+        })),
+    };
+    raw::show(&app, Some(&frame));
+    assert_eq!(
+        mono.get_raw_note(),
+        "0.4% clipped, the rest 0.7 stops under"
+    );
+    // Middle grey, under a file's baseline exposure of 1 EV.
+    let zones = mono.get_raw_zones();
+    let five = zones.iter().find(|z| z.numeral == "V").unwrap();
+    assert!((five.x - (1.0 - (2.0f32 / 0.1845).log2() / 12.0)).abs() < 1e-6);
+    assert!(
+        zones.iter().all(|z| z.numeral != "X"),
+        "over the clip point"
+    );
+
+    let raw_shown = || count_labeled(&app, "Raw histogram");
+    assert_eq!((app.get_scope().as_str(), raw_shown()), ("RGB", 0));
+    crate::testing::click_segment(&app, "PanelHead::scope-row", "Raw");
+    assert_eq!((app.get_scope().as_str(), raw_shown()), ("Raw", 1));
+    // A JPEG has none: its picture's, and the choice kept for the next raw.
+    app.invoke_select(1);
+    show(&app, &state);
+    settle(&app);
+    assert_eq!((app.get_scope().as_str(), raw_shown()), ("Raw", 0));
+    crate::testing::click_segment(&app, "PanelHead::scope-row", "Raw");
+    assert_eq!(raw_shown(), 0);
+    app.invoke_select(0);
+    show(&app, &state);
+    settle(&app);
+    assert_eq!(raw_shown(), 1);
+    crate::testing::click_segment(&app, "PanelHead::scope-row", "Wave");
+    assert_eq!(state.borrow().develop.scope, crate::scope::Scope::Waveform);
+    assert_eq!(raw_shown(), 0);
 }

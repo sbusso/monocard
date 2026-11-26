@@ -76,6 +76,12 @@ export struct MonoZone {
     dark: bool,
 }
 
+// A zone's mark on the raw histogram, across it from 0 to 1.
+export struct MonoRawZone {
+    numeral: string,
+    x: float,
+}
+
 export struct MonoPoint {
     x: float,
     y: float,
@@ -133,7 +139,15 @@ export global Mono {
     in-out property <string> proof: "Off";
 
     /// The scopes' names on a mono frame: one channel is no RGB.
-    out property <[string]> scope-labels: ["Histogram", "Wave"];
+    out property <[string]> scope-labels: ["Histogram", "Wave", "Raw"];
+    out property <[string]> scope-tips: ["", "", "What the sensor recorded, in stops under its clip point. Zone V is middle grey."];
+    /// The open frame has a raw histogram, and why not where it has none.
+    in-out property <bool> raw-here: false;
+    out property <[string]> raw-why-not: ["", "", self.raw-here ? "" : "Only a monochrome raw has it. A JPEG has no sensor data."];
+    in-out property <image> raw-picture;
+    in-out property <[MonoRawZone]> raw-zones;
+    /// What clipped, and the room to the clip point.
+    in-out property <string> raw-note;
 
     callback slid(string, float);
     callback toggled(string, bool);
@@ -208,6 +222,10 @@ export global Mono {
     in-out property <bool> camera-popup: true;
     out property <string> camera-popup-label: "Open the camera window when a camera is connected";
     callback camera-popup-changed();
+
+    /// The recipe book, in the same menu.
+    out property <string> recipes-menu: "Recipes...";
+    callback recipes-asked();
 
     /// Where the mono build's sidecars go, in words.
     out property <string> sidecar-hidden: "In a hidden .monocard folder.";

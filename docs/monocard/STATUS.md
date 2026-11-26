@@ -9,11 +9,12 @@ opened and developed by hand, and one DNG from it.
 | Phase | State |
 | --- | --- |
 | Fork and route | `mono` feature, routing, one-channel develop, golden renders (synthetic), CI workflow |
-| Mono core | Profiled, wavelet and raw wavelet denoise, profile kit, sigmoid and AgX, clip map, shoulder, edge inpaint |
-| Darkroom tools | Tone equalizer, Zone view, contrast equalizer, local contrast, diffuse or sharpen, curve, masks |
+| Mono core | Profiled, wavelet and raw wavelet denoise, profile kit, sigmoid and AgX, clip map, raw histogram, shoulder, edge inpaint |
+| Darkroom tools | Tone equalizer, Zone view, contrast equalizer, local contrast, diffuse or sharpen, curve, paper grade, masks |
 | Looks and brand | Ten looks, grain, toning, vignette, solarize, TOML looks, XMP import, icon, theme, About, landing page |
 | Learned and AI | Learned runner and training tools (no weights), subject and sky masks, HDR merge |
-| Camera modes | Mode read from the MakerNote, `monocard mode`, `monocard profile modes`, look import, export, rename and delete, Camera modes group, start from the camera's mode (off by default). Settings page Camera profiles (table, fit from folders, sensor noise, test chart), `monocard profile list`. Standard, Solid and Solarized 1 to 3 pass on three real DNGs. Soft, High Contrast and HDR Tone are drafts, Grainy has no photos. See [picture-controls.md](picture-controls.md) |
+| Camera modes | Mode read from the MakerNote, `monocard mode`, `monocard profile modes`, look import, export, rename and delete, Camera modes group, start from the camera's mode (off by default). Settings page Camera profiles (table, fit from folders, sensor noise, test chart), `monocard profile list`. Standard, Solid and Solarized 1 to 3 pass on three real DNGs. Soft, High Contrast and HDR Tone are drafts, Grainy has no photos. The photo's settings go over the mode's look as draft steps (no toning, grain, or HDR level). See [picture-controls.md](picture-controls.md) |
+| Recipes | The recipe book: a recipe from the open photo, edit, compare, import, export, delete. Files in `recipes` in the settings folder. Not applied to photos or sent to the camera. See [the guide](guide/looks.md#recipes) |
 | USB import | The camera window: menu entry, opens when a camera is connected, grid of the camera's photos, import of the selected ones. macOS only, with the `mono-usb` feature. Tested with a made-up camera, not with the real one. See [camera-connection.md](camera-connection.md) |
 
 ## Measured (M5 Max)
@@ -35,6 +36,11 @@ A 4 GB PC GPU was not tried.
 - The upstream author, the name's trademark and domain, photos with written permission,
   the bundle id.
 
+## Later
+
+- A proof with the ICC profile of the user's own printer and paper. Low priority.
+- A panorama blended on one channel, for about half of the memory.
+
 ## Departures from SPEC.md
 
 - Subject and sky masks use Greycard's own models, not new ones.
@@ -42,7 +48,8 @@ A 4 GB PC GPU was not tried.
 - Denoise and the spatial detail tools run on the CPU. The pointwise tools and the look run
   on the GPU.
 - Retouch fills, and the pictures the learned masks see, make a temporary grey RGB copy.
-  Merges of more than five frames, focus stacks, and panoramas use the stock RGB path.
+  Merges of more than five frames and focus stacks use the stock RGB path. A panorama reads
+  Monocard's own planes and writes one, and is placed and blended in three equal channels.
 - Darktable's curve is left for our own roll-off in the last 1.5 stops under the clip point,
   so that clipped light reaches paper white.
 - The contrast equalizer, diffuse, midtones, blacks, and whites do not take a mask.

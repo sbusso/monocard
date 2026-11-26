@@ -41,7 +41,7 @@ use std::time::Instant;
 
 use anyhow::{Context, Result, bail};
 use greycard_core::develop::lens::LensCorrection;
-use greycard_core::dng::{LinearDngOptions, Merged, write_merged_dng};
+use greycard_core::dng::{LinearDngOptions, Merged, write_merged_dng, write_merged_plane_dng};
 use greycard_core::merge::blend::{self, Bands};
 use greycard_core::merge::features::{self, Corners, Keypoint};
 use greycard_core::merge::pano::{
@@ -50,7 +50,7 @@ use greycard_core::merge::pano::{
 use greycard_core::merge::seam::{Composite, Cut};
 use greycard_core::merge::{self, Geometry, PairNoise, Recipe};
 use greycard_core::output::OnExists;
-use greycard_core::raw::{Orientation, RawFrame};
+use greycard_core::raw::{Orientation, RawFrame, SensorLayout};
 use greycard_core::register::{self, Model};
 use greycard_core::{CameraImage, decode::RawMetadata};
 use greycard_edit::Edit;
@@ -454,6 +454,15 @@ fn laid(
                 names[k]
             );
         }
+        if let Some((reference, _)) = &frame_tags[anchor]
+            && one_plane(reference) != one_plane(&raw)
+        {
+            bail!(
+                "{} and {} are not of one kind: a panorama wants monochrome frames alone, or none",
+                names[anchor],
+                names[k]
+            );
+        }
         if k == anchor {
             raw_size = (raw.width, raw.height);
             focal_mm = raw.shot.focal_length;
@@ -464,7 +473,7 @@ fn laid(
                 Some(g) => g.lens.clone(),
                 None => lens_of(edit, &raw, (crop.width, crop.height), lenses.as_deref()),
             };
-            if corrections.is_empty() {
+            if corrections.is_empty() && !corrects_itself(&raw) {
                 let said = match given {
                     Some(_) => "the frames were not corrected for their lens when they were \
                                 merged, and are not now"
@@ -485,7 +494,7 @@ fn laid(
             .as_ref()
             .map(|(_, c)| c.iter().filter_map(vignetting_only).collect())
             .unwrap_or_default();
-        let (f, frame, meta) = walk_loaded(
+        let (f, frame, meta) = walk(
             &names[k],
             raw,
             metadata,
@@ -604,6 +613,13 @@ fn laid(
             }
         }
 
+        let mut f = f;
+        if one_plane(&frame) {
+            // The clip map travels in the last channel, the others' copy.
+            for (p, c) in f.rgb.chunks_mut(3).zip(&f.mask) {
+                p[2] = f32::from(u8::from(*c));
+            }
+        }
         let spill = Spill::write(reserved.join(&format!("{k}.frame")), &f.rgb)?;
         let f = Walked {
             rgb: Vec::new(),
@@ -648,12 +664,13 @@ fn laid(
         );
     }
     let (frame_lens, corrections) = lens.expect("the reference's lens");
-    // The file says its lens was corrected only when it was: a profile
-    // or a correction set by hand ran on the frames.
-    let lens_corrected = !corrections.is_empty();
     let (w, h) = size;
     let ref_walked = ref_walked.expect("the anchor walked");
     let (anchor_frame, _) = frame_tags[anchor].as_ref().expect("the anchor walked");
+    // The file says its lens was corrected only when it was: a profile
+    // or a correction set by hand ran on the frames.
+    let lens_corrected = !corrections.is_empty() || corrects_itself(anchor_frame);
+    let mono = one_plane(anchor_frame);
 
     // Every frame placed at once.
     progress.step(Step::Placing);
@@ -666,6 +683,13 @@ fn laid(
         let diagonal = 43.2666 / f64::from(crop);
         let width_mm = diagonal * w as f64 / (w as f64).hypot(h as f64);
         Some(f64::from(mm) * w as f64 / width_mm)
+    });
+    // A monochrome body is seldom in the lens database: the EXIF's focal
+    // length on a full frame says as much.
+    let exif_focal = exif_focal.or_else(|| {
+        let path = sources.path(anchor).filter(|_| mono && given.is_none())?;
+        let mm = greycard_core::decode::dng_focal_35mm(&path)?;
+        Some(f64::from(mm) * (w as f64).hypot(h as f64) / 43.2666)
     });
     let flat = match given {
         Some(g) => matches!(g.placed, merge::Placed::Planar { .. }),
@@ -969,6 +993,8 @@ fn laid(
     let mut bands = Bands::new(region.width, region.height, levels);
     let bands_bytes = bands.bytes();
     let mut noise = PairNoise::default();
+    // How far what each frame gives a pixel had clipped, of one plane.
+    let mut clipped = vec![0.0f32; if mono { region.area() } else { 0 }];
     let mut previous: Option<(Rect, Vec<f32>)> = None;
     for k in 0..n {
         progress.step(Step::Blending {
@@ -995,7 +1021,10 @@ fn laid(
             height: inside.y + inside.height - y,
         };
         let rgb = kept[k].as_ref().expect("walked").spill.read(w * h * 3)?;
-        let g = gains[k].map(|v| v as f32);
+        let mut g = gains[k].map(|v| v as f32);
+        if mono {
+            g[2] = 1.0;
+        }
         let warped = geo::warp(
             &Source {
                 rgb: &rgb,
@@ -1021,6 +1050,13 @@ fn laid(
             .chunks(3)
             .map(|p| p.iter().all(|v| v.is_finite()))
             .collect();
+        let mut clip = Vec::new();
+        if mono {
+            clip.extend(tile.chunks_mut(3).map(|p| {
+                let light = p[1];
+                std::mem::replace(&mut p[2], light)
+            }));
+        }
         // The noise from this frame and the last where they overlap,
         // both resampled as the file is.
         if let Some((prev_rect, prev)) = &previous
@@ -1037,6 +1073,11 @@ fn laid(
             noise.add(&pa, &ma, &pb, &mb, 1.0, 1.0);
         }
         let mask = upsampled_mask(&composite, k as u16, rect, &known);
+        let at = (rect.y - region.y) * region.width + rect.x - region.x;
+        for (i, c) in clip.iter().enumerate().filter(|(i, _)| known[*i]) {
+            let to = at + i / rect.width * region.width + i % rect.width;
+            clipped[to] += c * mask[i];
+        }
         let kept_tile = tile.clone();
         blend::fill(&mut tile, &known, rect.width, rect.height);
         bands.add(
@@ -1067,6 +1108,19 @@ fn laid(
     progress.step(Step::Writing);
     let t = Instant::now();
     let headroom = merge::headroom(&image, ref_walked.gains);
+    // What clipped is the file's white, so it reads back as clipped
+    // whatever a vignette's or a frame's gain made of it.
+    let plane: Vec<f32> = (0..if mono { crop.area() } else { 0 })
+        .map(|i| {
+            let (x, y) = (i % crop.width, i / crop.width);
+            let at = (crop.y - region.y + y) * region.width + crop.x - region.x + x;
+            match clipped[at] >= 0.5 {
+                true => headroom,
+                false => image.data[i * 3 + 1],
+            }
+        })
+        .collect();
+    drop(clipped);
     let sensor = noise.fit().unwrap_or(ref_walked.noise);
     if noise.fit().is_none() {
         warnings.push(
@@ -1109,7 +1163,17 @@ fn laid(
             })),
         }),
     };
-    let preview = merge::preview(&image, &ref_walked.white_balance, merge::PREVIEW_SIDE)?;
+    #[cfg(feature = "mono")]
+    let own = mono
+        .then(|| mono_core::Plane::new(crop.width, crop.height, plane.clone()))
+        .map(|p| super::mono::preview(&p))
+        .transpose()?;
+    #[cfg(not(feature = "mono"))]
+    let own = None;
+    let preview = match own {
+        Some(p) => p,
+        None => merge::preview(&image, &ref_walked.white_balance, merge::PREVIEW_SIDE)?,
+    };
     let software = software();
     let (ref_frame, ref_meta) = frame_tags[reference].take().expect("every frame walked");
     let metadata = without_lens(&ref_meta);
@@ -1123,17 +1187,17 @@ fn laid(
     let written = (|| -> Result<()> {
         let file = std::fs::File::create(to)?;
         let mut writer = std::io::BufWriter::new(file);
-        write_merged_dng(
-            &mut writer,
-            &ref_frame,
-            &image,
-            ref_walked.gains,
-            &dng,
-            &Merged {
-                noise_profile: profile,
-                tag: &tag,
-            },
-        )?;
+        let merged = Merged {
+            noise_profile: profile,
+            tag: &tag,
+        };
+        if mono {
+            let size = (crop.width, crop.height);
+            write_merged_plane_dng(&mut writer, &ref_frame, &plane, size, &dng, &merged)?;
+        } else {
+            let gains = ref_walked.gains;
+            write_merged_dng(&mut writer, &ref_frame, &image, gains, &dng, &merged)?;
+        }
         writer.flush()?;
         writer.get_ref().sync_all()?;
         drop(writer);
@@ -1184,7 +1248,8 @@ fn lens_of(
     let lens = edit
         .lens
         .over_file(facts.file_corrects())
-        .over_measured_ca(facts.measures_ca());
+        .over_measured_ca(facts.measures_ca())
+        .over_monochrome(facts.is_mono());
     let profile = crate::lens::profile_correction(
         size,
         Orientation::Normal,
@@ -1192,7 +1257,38 @@ fn lens_of(
         &lens,
         db,
     );
+    #[cfg(feature = "mono")]
+    if facts.is_mono() {
+        return crate::mono::corrections(frame, &lens, profile);
+    }
     lens.corrections(profile)
+}
+
+/// Whether `frame` is merged as one plane, the clip map beside it.
+fn one_plane(frame: &RawFrame) -> bool {
+    cfg!(feature = "mono") && frame.layout == SensorLayout::Monochrome
+}
+
+/// Whether the walk corrects the lens of `frame` by the file's own
+/// opcodes, of one merged as a plane.
+fn corrects_itself(frame: &RawFrame) -> bool {
+    one_plane(frame) && !(frame.dng.warps.is_empty() && frame.dng.vignettes.is_empty())
+}
+
+/// [`walk_loaded`], a monochrome frame on Monocard's own route.
+fn walk(
+    name: &str,
+    frame: RawFrame,
+    metadata: RawMetadata,
+    edit: &Edit,
+    merge: MergeInput,
+    models: &mut dyn Models,
+) -> Result<(Walked, RawFrame, RawMetadata)> {
+    #[cfg(feature = "mono")]
+    if one_plane(&frame) {
+        return super::mono::walked(name, frame, metadata, &merge.lens);
+    }
+    walk_loaded(name, frame, metadata, edit, merge, models)
 }
 
 /// Why the frames were not corrected for their lens, for the run's

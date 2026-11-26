@@ -79,6 +79,9 @@ pub struct Panel {
 /// A mask's panel, on the Masks tab.
 pub const MASK: &str = "mono-mask";
 
+/// The paper grade's slider, which has words for its numbers.
+const GRADE: &str = "display.grade";
+
 /// The panels' names in pipeline order.
 pub const NAMES: [&str; 6] = [
     "mono-look",
@@ -280,6 +283,21 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
             basic.exposure
         )),
         E(signed!("basic.contrast", "Contrast", basic.contrast)),
+        E(control(
+            GRADE,
+            "Paper grade",
+            Kind::Slider(Slider {
+                min: -1.0,
+                max: 5.0,
+                step: 0.5,
+                scale: 1.0,
+                places: 1,
+                unit: "",
+                get: |e: &MonoEdit| e.display.grade,
+                // Whole and half grades.
+                set: |e, v| e.display.grade = (2.0 * v).round() / 2.0,
+            }),
+        )),
         E(signed!("basic.blacks", "Blacks", basic.blacks)),
         E(signed!("basic.midtones", "Midtones", basic.midtones)),
         E(signed!("basic.whites", "Whites", highlights.shoulder)),
@@ -1089,7 +1107,11 @@ fn moved<T>(c: &Control<T>, b: &T, a: &T) -> Option<String> {
     match &c.kind {
         Kind::Slider(s) => {
             let v = (s.get)(a);
-            ((s.get)(b) != v).then(|| format!("{} {}", c.label, number(s, v)))
+            let shown = || match c.id {
+                GRADE => words::grade(v),
+                _ => number(s, v),
+            };
+            ((s.get)(b) != v).then(|| format!("{} {}", c.label, shown()))
         }
         Kind::Toggle { get, .. } => {
             (get(b) != get(a)).then(|| format!("{} {}", c.label, if get(a) { "on" } else { "off" }))
@@ -1385,6 +1407,22 @@ mod tests {
         let mut a = e.clone();
         a.toning = toning(1);
         assert_eq!(describe(&e, &a).as_deref(), Some("Toning: Selenium"));
+    }
+
+    #[test]
+    fn a_grade_is_named_as_the_paper_is() {
+        let (e, mut s) = (MonoEdit::default(), MonoUiState::default());
+        for (v, words) in [
+            (-1.0, "Paper grade 00"),
+            (-0.4, "Paper grade 00.5"),
+            (0.1, "Paper grade 0"),
+            (3.4, "Paper grade 3.5"),
+            (5.0, "Paper grade 5"),
+        ] {
+            let mut a = e.clone();
+            assert!(set(GRADE, &mut a, &mut s, Value::Number(v)));
+            assert_eq!(describe(&e, &a).as_deref(), Some(words));
+        }
     }
 
     #[test]

@@ -42,7 +42,7 @@ exposure change leaves `detail` as it was.
 
 ## Math every implementation shares
 
-- Linear scene light. `MonoFrame::base` has the DNG's BaselineExposure gain in it; `MonoFrame::white` is the light where the sensor clipped (2^baseline, or a merge's headroom). The clip point after exposure is `white * 2^exposure`. Middle grey 0.1845 (`mono_core::MIDDLE_GREY`).
+- Linear scene light. `MonoFrame::base` has the DNG's BaselineExposure gain in it; `MonoFrame::white` is the light where the sensor clipped (2^baseline, or a merge's headroom). The clip point after exposure is `white * 2^exposure`. `MonoFrame::raw` is the histogram of the samples before any repair or edit; none for a JPEG. Middle grey 0.1845 (`mono_core::MIDDLE_GREY`).
 - Curve domain: `g = x^(1/2.2)`, held to the curve on 0..1 and continued with the end slope beyond.
 - Display light 0..1 linear, paper white `display.white_ceiling`, black `display.black_floor`.
 - Grain, solarize, vignette act on display light; grain on the 1/2.2 encoded value.
@@ -74,10 +74,11 @@ mono-look:
 - `const WGSL` and params, the same way
 - `mod looks`: `struct Look { name, description, tools: partial MonoEdit }` in TOML, `fn builtin() -> Vec<Look>`,
   `fn apply(&MonoEdit, &Look, strength) -> MonoEdit`, `fn set_strength(&MonoEdit, strength, &[Look]) -> MonoEdit`,
-  load and save of a folder of user looks, `mod xmp`: Lightroom preset to `Look` with the list of what was skipped
+  load and save of a folder of user looks (`mod folder`, shared with `mod recipe`, the camera's settings as `struct Recipe` in TOML), `mod xmp`: Lightroom preset to `Look` with the list of what was skipped
+- `mod settings`: `fn steps(&Mode, value) -> Option<CameraSteps>` (a photo's settings from its mode's defaults), `fn add(&MonoEdit, &CameraSteps) -> MonoEdit` (draft step sizes, kept in `look.camera`)
 
 mono-decode:
-- `fn prepare(&RawFrame, &PrepareOptions) -> Result<Prepared>`; `Prepared { plane, clip: Plane, noise, iso, camera: String, serial: Option<String>, baseline_ev }`
+- `fn prepare(&RawFrame, &PrepareOptions) -> Result<Prepared>`; `Prepared { plane, clip: Plane, noise, iso, camera: String, serial: Option<String>, baseline_ev, raw: Option<RawHistogram> }`
 - `fn inpaint_edges(&mut Plane, clip: &Plane, radius: u32)`
 - `fn warp(&Plane, ...)`, `fn orient(&Plane, Orientation) -> Plane`, `fn vignette_correct`, lens on one plane
 - `mod hdr`: `fn merge(&[Bracket]) -> Result<Merged>`

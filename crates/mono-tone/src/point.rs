@@ -28,7 +28,7 @@
 //!   exactly where the original's is a least squares fit.
 
 use bytemuck::{Pod, Zeroable};
-use mono_core::edit::{Basic, Curve, Display, ToneEq, Transform};
+use mono_core::edit::{Basic, Curve, Display, NORMAL_GRADE, ToneEq, Transform};
 use mono_core::{MIDDLE_GREY, MonoEdit, MonoLocal, ZONES};
 use std::sync::OnceLock;
 
@@ -67,6 +67,8 @@ pub struct MonoParams {
     /// The rolloff, on log2 of light over middle grey: where it starts in,
     /// one over how long it is, where it starts out, how far it rises.
     pub roll: [f32; 4],
+    /// The paper's grade, see [`grade_constants`].
+    pub grade: [f32; 4],
     /// Zones on, the guide's shift, the guide's contrast factor, 0.
     pub zone: [f32; 4],
     /// The nine basis factors.
@@ -454,6 +456,63 @@ fn agx(l: f32, p: &MonoParams) -> f32 {
     decode(y.clamp(p.t2[0], p.t2[1]))
 }
 
+// The paper's grade (the end of step 11).
+
+/// How many grades make the print twice as hard: grade 5 is at 2 and grade
+/// 00 at a half. Over a normal paper's ISO range of R100 that is R50 and
+/// R200, where papers are sold from about R40 to R180.
+const GRADES_PER_STOP: f32 = 3.0;
+
+/// The slope at middle grey over grade 2's, middle grey's share of the
+/// paper's density, the deepest black's light over paper white's, and the
+/// density between the two in stops.
+fn grade_constants(d: &Display) -> [f32; 4] {
+    let slope = ((d.grade.clamp(-1.0, 5.0) - NORMAL_GRADE) / GRADES_PER_STOP).exp2();
+    let (white, floor) = paper_range(d);
+    let (dmin, dmax) = Paper::Baryta.densities();
+    let range = (dmax - dmin) * std::f32::consts::LOG2_10;
+    let black = (-range).exp2();
+    let grey = (MIDDLE_GREY - floor) / (white - floor);
+    [slope, density(grey, black, range), black, range]
+}
+
+/// The share of the paper's density that prints light `v`, 0 to 1 of the
+/// way from black to paper white.
+fn density(v: f32, black: f32, range: f32) -> f32 {
+    -(black + (1.0 - black) * v.clamp(0.0, 1.0)).log2() / range
+}
+
+/// Display light printed again on the paper's grade: an S in print density
+/// about middle grey. Between grey and paper white, and between grey and
+/// the deepest black, the density's share of the way goes through
+/// `t / (k + (1 - k) t)`, with the slope `k` at grey and `1 / k` at the
+/// paper's end. So grey, white and black stay and it rises throughout.
+///
+/// It is not one of the two Contrast sliders. Those work on scene light
+/// before it meets the paper, so they also move how much of the scene fits
+/// on it: more contrast takes more of the shadows under black, and on a
+/// picture already rendered more of the lights over white. The grade works
+/// after the transform and its rolloff, between a white and a black that
+/// stay where they are: a hard grade has a short straight part and presses
+/// the ends together without clipping, a soft one opens them, and the same
+/// grade does the same to a raw's print and to a camera's JPEG.
+fn grade(y: f32, p: &MonoParams) -> f32 {
+    let [k, grey, black, range] = p.grade;
+    if k == 1.0 {
+        return y;
+    }
+    let [white, floor, ..] = p.range;
+    let bend = |t: f32| t / (k + (1.0 - k) * t);
+    let d = density((y - floor) / (white - floor), black, range);
+    let d = if d < grey {
+        grey * bend(d / grey)
+    } else {
+        1.0 - (1.0 - grey) * bend((1.0 - d) / (1.0 - grey))
+    };
+    let v = ((-d * range).exp2() - black) / (1.0 - black);
+    floor + (white - floor) * v.clamp(0.0, 1.0)
+}
+
 /// The global tone, compiled from an edit.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Compiled {
@@ -499,6 +558,7 @@ impl Compiled {
             t2,
             range: [white, floor, 0.0, 0.0],
             roll: [0.0; 4],
+            grade: grade_constants(&e.display),
             zone: zones.zone,
             factors: zones.factors,
             curve: table(|g| levels(basic(g, b), &e.curve, &points)),
@@ -547,18 +607,19 @@ impl Compiled {
         }
     }
 
-    /// Step 11 alone.
+    /// Step 11 alone, the paper's grade with it.
     pub fn display(&self, x: f32) -> f32 {
         if self.p.head[0] == 2.0 {
             let [white, floor, ..] = self.p.range;
-            return floor + (white - floor) * x.min(1.0);
+            return grade(floor + (white - floor) * x.min(1.0), &self.p);
         }
         let l = (x.max(1e-20) / MIDDLE_GREY).log2();
-        if l >= self.p.roll[0] {
+        let y = if l >= self.p.roll[0] {
             roll(l, &self.p)
         } else {
             ported(l, &self.p)
-        }
+        };
+        grade(y, &self.p)
     }
 }
 
@@ -807,6 +868,7 @@ mod tests {
             toe: r.slider(0.0, 1.0),
             white_ceiling: r.slider(0.5, 1.0),
             black_floor: r.slider(0.0, 0.1),
+            ..Default::default()
         }
     }
 
@@ -990,6 +1052,7 @@ mod tests {
                 display: display(&mut r, transform),
                 ..Default::default()
             };
+            e.display.grade = r.slider(-1.0, 5.0);
             e.basic = Basic {
                 exposure: r.slider(-5.0, 5.0),
                 contrast: r.slider(-100.0, 100.0),
@@ -1022,6 +1085,60 @@ mod tests {
         let c = Compiled::new(&MonoEdit::default());
         assert!(c.tone(f32::NAN).is_finite() && c.tone(f32::INFINITY).is_finite());
         assert!(c.tone(-1.0) < 1e-6);
+    }
+
+    #[test]
+    fn a_grade_turns_about_middle_grey_between_the_paper_s_ends() {
+        let mut r = Rng(6);
+        for k in 0..400 {
+            let mut e = MonoEdit {
+                display: display(&mut r, [Transform::Sigmoid, Transform::Agx][k % 2]),
+                ..Default::default()
+            };
+            let rendered = k % 4 == 0;
+            let before = Compiled::of(&e, 1.0, rendered);
+            // A light that prints middle grey.
+            let (white, floor) = paper_range(&e.display);
+            let grey = if rendered {
+                (MIDDLE_GREY - floor) / (white - floor)
+            } else {
+                MIDDLE_GREY
+            };
+            e.display.grade = NORMAL_GRADE;
+            assert_eq!(Compiled::of(&e, 1.0, rendered), before);
+            e.display.grade = r.slider(-1.0, 5.0);
+            let c = Compiled::of(&e, 1.0, rendered);
+            close(c.tone(grey), MIDDLE_GREY, 1e-5, "grey");
+            close(c.tone(1.0), white, 1e-6, "white");
+            close(c.tone(0.0), before.tone(0.0), 1e-4, "black");
+            let mut last = c.tone(0.0);
+            for i in 0..=1000 {
+                let x = (i as f32 * 0.02 - 20.0).exp2();
+                let (y, was) = (c.tone(x), before.tone(x));
+                assert!(y >= last - 2e-6 && (floor - 1e-6..=white + 1e-6).contains(&y));
+                // Harder from grade 2 up, softer below, on both sides of grey.
+                let away = (y - was) * (was - MIDDLE_GREY) * (e.display.grade - NORMAL_GRADE);
+                assert!(away >= -1e-6, "{was} to {y}: {:?}", e.display);
+                last = y;
+            }
+            // No clip and no cliff: the slope at white and black is bounded.
+            if rendered {
+                for (from, to) in [(0.0, 5e-4), (0.98, 1.0)] {
+                    let rise = |c: &Compiled| c.tone(to) - c.tone(from);
+                    let steeper = rise(&c) / rise(&before);
+                    assert!((0.4..2.5).contains(&steeper), "{steeper}: {:?}", e.display);
+                }
+            }
+        }
+        // Whole grades are in order in a shadow and in a highlight.
+        let at = |grade: i32, x: f32| {
+            let mut e = MonoEdit::default();
+            e.display.grade = grade as f32;
+            Compiled::new(&e).tone(x)
+        };
+        for g in -1..5 {
+            assert!(at(g + 1, 0.05) < at(g, 0.05) && at(g + 1, 0.4) > at(g, 0.4));
+        }
     }
 
     #[test]

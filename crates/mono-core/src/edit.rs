@@ -62,6 +62,9 @@ pub struct LookRef {
     pub strength: f32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub before: Option<Box<MonoEdit>>,
+    /// The camera's settings that a start put over the look of its mode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub camera: Option<CameraSteps>,
 }
 
 impl Default for LookRef {
@@ -70,8 +73,23 @@ impl Default for LookRef {
             name: String::new(),
             strength: 1.0,
             before: None,
+            camera: None,
         }
     }
+}
+
+/// A camera mode's settings as steps from the mode's defaults: +2 is two
+/// steps over the default. Ricoh's sliders go from -4 to 4.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CameraSteps {
+    pub key: i8,
+    pub contrast: i8,
+    pub highlight: i8,
+    pub shadow: i8,
+    pub sharpness: i8,
+    pub shading: i8,
+    pub clarity: i8,
 }
 
 /// The BASIC panel. Exposure in EV (-5 to 5), the rest -100 to 100.
@@ -108,6 +126,16 @@ pub struct Display {
     pub white_ceiling: f32,
     /// Display light of the deepest black, 0 to 0.1 (a lifted print black).
     pub black_floor: f32,
+    /// The paper's grade, -1 (00) to 5. Not written at [`NORMAL_GRADE`].
+    #[serde(skip_serializing_if = "is_normal_grade")]
+    pub grade: f32,
+}
+
+/// The grade that changes nothing.
+pub const NORMAL_GRADE: f32 = 2.0;
+
+fn is_normal_grade(grade: &f32) -> bool {
+    *grade == NORMAL_GRADE
 }
 
 impl Default for Display {
@@ -119,6 +147,7 @@ impl Default for Display {
             toe: 0.5,
             white_ceiling: 1.0,
             black_floor: 0.0,
+            grade: NORMAL_GRADE,
         }
     }
 }

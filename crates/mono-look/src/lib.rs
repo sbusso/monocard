@@ -1,8 +1,11 @@
-//! Monocard: grain, solarize, toning, vignette, looks, and the Lightroom preset reader.
+//! Monocard: grain, solarize, toning, vignette, looks, recipes, and the Lightroom preset reader.
 
 pub mod finish;
 pub mod fit;
+mod folder;
 pub mod looks;
+pub mod recipe;
+pub mod settings;
 pub mod xmp;
 
 pub use finish::{
@@ -10,3 +13,4 @@ pub use finish::{
     tone_rgb, vignette,
 };
 pub use looks::{Look, apply, builtin, set_strength};
+pub use recipe::Recipe;

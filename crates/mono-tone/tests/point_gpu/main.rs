@@ -34,6 +34,7 @@ fn edit(r: &mut Rng, k: usize) -> MonoEdit {
             toe: r.slider(0.0, 1.0),
             white_ceiling: r.slider(0.5, 1.0),
             black_floor: r.slider(0.0, 0.1),
+            grade: r.slider(-1.0, 5.0),
         },
         basic: Basic {
             exposure: r.slider(-5.0, 5.0),

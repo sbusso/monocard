@@ -87,6 +87,7 @@ fn frame(r: &mut Rng) -> MonoFrame {
         iso: Some(6400.0),
         white: 1.0,
         rendered: false,
+        raw: None,
     }
 }
 
@@ -128,6 +129,7 @@ fn edit(r: &mut Rng) -> MonoEdit {
             toe: r.unit(),
             white_ceiling: 1.0 - r.slider(0.0, 0.5),
             black_floor: r.slider(0.0, 0.1),
+            ..Default::default()
         },
         tone_eq: ToneEq {
             zones: if r.unit() < 0.5 { [0.0; 9] } else { zones },
@@ -352,7 +354,8 @@ fn the_mono_shader_is_the_cpu_over_random_edits() {
             (shown.guide, shown.detail, shown.local) = (None, None, None);
         }
         renderer.set_mono(&shown);
-        let e = edit(&mut r);
+        let mut e = edit(&mut r);
+        e.display.grade = (k % 13) as f32 * 0.5 - 1.0;
         let adjustments = if k % 2 == 0 { masks(&mut r) } else { vec![] };
         let (origin, size) = if k % 3 == 2 {
             ((10.0, 6.0), (60.0, 44.0))
@@ -482,6 +485,7 @@ fn bare(base: Plane) -> MonoFrame {
         iso: None,
         white: 1.0,
         rendered: false,
+        raw: None,
     }
 }
 

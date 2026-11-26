@@ -29,6 +29,17 @@ offered. Use a yellow, orange, or red filter on the lens.";
 pub const KEYS_HELP: &str = "On this tab, A shows before, B after, S the split, Z the zones, and \
 C the clip map. The other tabs and the grid keep the usual keys: B collection, Z zoom, C cull.";
 
+/// A paper grade as paper boxes name it: 00 is the one under 0. The panel
+/// says the same (panels.slint).
+pub fn grade(v: f32) -> String {
+    let v = (10.0 * v).round() / 10.0;
+    if v < 0.0 {
+        format!("0{}", (10.0 * (v + 1.0)).round() / 10.0)
+    } else {
+        format!("{}", v.abs())
+    }
+}
+
 /// A control's tooltip; "" for none.
 pub fn tip(id: &str) -> &'static str {
     match id {
@@ -39,6 +50,10 @@ Elsewhere Z is Fit or 3:1."
         "view.clip" => {
             "C shows the clip map on this tab, in place of the cull key. \
 Elsewhere C culls."
+        }
+        "display.grade" => {
+            "Like darkroom paper. Low: soft, more greys. High: hard, more \
+black and white. 2 is normal."
         }
         _ => "",
     }

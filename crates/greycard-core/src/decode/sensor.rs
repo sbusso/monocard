@@ -1,5 +1,6 @@
-//! Whether a DNG is a monochrome sensor's, by its header alone: Monocard
-//! lists no other file, so this is asked of every file of a folder.
+//! What Monocard asks of a DNG's header alone: whether it is a monochrome
+//! sensor's, asked of every file of a folder since no other is listed, and
+//! its focal length on a full frame.
 
 use std::io::{Read, Seek};
 use std::path::Path;
@@ -11,6 +12,8 @@ const NEW_SUBFILE_TYPE: u16 = 254;
 const PHOTOMETRIC: u16 = 262;
 const SAMPLES: u16 = 277;
 const SUB_IFDS: u16 = 330;
+const EXIF_IFD: u16 = 34665;
+const FOCAL_35MM: u16 = 41989;
 
 const BLACK_IS_ZERO: i64 = 1;
 const CFA: i64 = 32803;
@@ -48,6 +51,25 @@ fn of(file: impl Read + Seek) -> Result<Option<bool>> {
     Ok(said)
 }
 
+/// The EXIF's `FocalLengthIn35mmFilm`, millimeters: none for a file that
+/// does not say, or says 0, EXIF's unknown.
+pub fn dng_focal_35mm(path: &Path) -> Option<u16> {
+    focal_35mm(std::fs::File::open(path).ok()?).ok()?
+}
+
+fn focal_35mm(file: impl Read + Seek) -> Result<Option<u16>> {
+    let mut tiff = Tiff::new(file)?;
+    let (ifd0, endian) = tiff_ifd0(&mut tiff)?;
+    let int = |tiff: &mut Tiff<_>, ifd: &[Field], tag| {
+        find(ifd, tag).and_then(|f| tiff.ints(&f)?.first().copied())
+    };
+    let at = int(&mut tiff, &ifd0, EXIF_IFD).and_then(|at| u64::try_from(at).ok());
+    let Some(at) = at else { return Ok(None) };
+    let exif = tiff.ifd(at, 0, endian)?;
+    let mm = int(&mut tiff, &exif, FOCAL_35MM).and_then(|mm| u16::try_from(mm).ok());
+    Ok(mm.filter(|mm| *mm > 0))
+}
+
 /// What one IFD's picture is, `None` for one that is no raw.
 fn picture<R: Read + Seek>(tiff: &mut Tiff<R>, ifd: &[Field]) -> Option<bool> {
     let mut int = |tag| find(ifd, tag).and_then(|f| tiff.ints(&f)?.first().copied());
@@ -65,8 +87,9 @@ fn picture<R: Read + Seek>(tiff: &mut Tiff<R>, ifd: &[Field]) -> Option<bool> {
 mod tests {
     use super::*;
 
-    /// A little-endian TIFF of IFD0 and one sub-IFD, each of these tags.
-    fn tiff(ifd0: &[(u16, u32)], sub: &[(u16, u32)]) -> Vec<u8> {
+    /// A little-endian TIFF of IFD0 and one IFD under its tag `under`, each
+    /// of these tags.
+    fn tiff_under(under: u16, ifd0: &[(u16, u32)], sub: &[(u16, u32)]) -> Vec<u8> {
         let table = |tags: &[(u16, u32)]| {
             let mut b = (tags.len() as u16).to_le_bytes().to_vec();
             for (tag, v) in tags {
@@ -80,11 +103,27 @@ mod tests {
         };
         let mut first = ifd0.to_vec();
         let at = 8 + 2 + 12 * (first.len() as u32 + 1) + 4;
-        first.push((SUB_IFDS, at));
+        first.push((under, at));
         let mut out = b"II\x2a\0\x08\0\0\0".to_vec();
         out.extend(table(&first));
         out.extend(table(sub));
         out
+    }
+
+    fn tiff(ifd0: &[(u16, u32)], sub: &[(u16, u32)]) -> Vec<u8> {
+        tiff_under(SUB_IFDS, ifd0, sub)
+    }
+
+    #[test]
+    fn the_exif_says_the_focal_length_on_a_full_frame() {
+        let said = |exif: &[(u16, u32)]| {
+            let file = tiff_under(EXIF_IFD, &[(PHOTOMETRIC, 2)], exif);
+            focal_35mm(std::io::Cursor::new(file)).unwrap()
+        };
+        assert_eq!(said(&[(FOCAL_35MM, 28)]), Some(28));
+        assert_eq!(said(&[(FOCAL_35MM, 0)]), None);
+        assert_eq!(said(&[(SAMPLES, 1)]), None);
+        assert_eq!(dng_focal_35mm(Path::new("/nowhere.dng")), None);
     }
 
     #[test]

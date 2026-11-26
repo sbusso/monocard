@@ -1,11 +1,12 @@
 //! Where the camera window is offered: in the build that compiles the import
-//! from a camera, and nowhere else.
+//! from a camera, and nowhere else. The recipe book is in every mono build.
 
 use slint::platform::Key;
 
 use super::*;
 
 const ITEM: &str = "From the camera...";
+const RECIPES: &str = "Recipes...";
 
 /// The pane's menu of the ways in.
 fn open_menu(app: &App) {
@@ -30,6 +31,7 @@ fn the_menu_offers_the_camera_where_its_import_is_compiled() {
     open_menu(&app);
     assert_eq!(count_labeled(&app, ITEM), usize::from(cfg!(mono_usb)));
     assert_eq!(count_labeled(&app, "From a card or folder..."), 1);
+    assert_eq!(count_labeled(&app, RECIPES), 1);
     press(&app, Key::DownArrow);
     press(&app, Key::Return);
     settle(&app);
@@ -43,6 +45,7 @@ fn the_menu_offers_the_camera_where_its_import_is_compiled() {
         .set_size(slint::LogicalSize::new(1500.0, 950.0));
     open_menu(&mono);
     assert_eq!(count_labeled(&mono, ITEM), 0, "stock");
+    assert_eq!(count_labeled(&mono, RECIPES), 0, "stock");
     assert_eq!(count_labeled(&mono, "From a card or folder..."), 1);
 }
 

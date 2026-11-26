@@ -2,6 +2,7 @@
 // was shot at, the undo and redo buttons, and the scopes.
 
 import { Mono } from "../../../mono-ui/ui/state.slint";
+import { RawScope } from "../../../mono-ui/ui/raw.slint";
 import { Theme } from "../theme.slint";
 import { NameTip, PanelButton, Segmented, ClipMark } from "../controls.slint";
 import { ScopeMark } from "../structs.slint";
@@ -57,6 +58,9 @@ export component PanelHead inherits VerticalLayout {
     callback sync-asked();
     /// A middle click on the Sync button: the sync at once.
     callback sync-now-asked();
+
+    // The scope on show: over a frame with no raw histogram, the picture's.
+    property <string> shown: root.scope == "Raw" && !Mono.raw-here ? "RGB" : root.scope;
 
     // While the vectorscope shows, the shot's lines fold away to make
     // room for its circle; the file's name and the undo buttons stay.
@@ -196,7 +200,7 @@ export component PanelHead inherits VerticalLayout {
             // away to make room for it, so the panel below moves by
             // tens of pixels when it is chosen rather than a hundred.
             height: root.scope == "Vector" ? 180px
-                : (root.scope == "RGB" ? 84px : 144px);
+                : (root.shown == "RGB" ? 84px : 144px);
             background: Theme.base;
             clip: true;
             // What the scope's picture fills, and its marks are placed
@@ -237,7 +241,7 @@ export component PanelHead inherits VerticalLayout {
                 for m in root.scope-marks: Rectangle {
                     property <length> cx: 1px + m.x * (parent.width - 2px);
                     property <length> cy: 1px + m.y * (parent.height - 2px);
-                    property <bool> line: root.scope == "RGB";
+                    property <bool> line: root.shown == "RGB";
                     property <length> size: self.line ? 3px : (m.channel == 3 ? 9px : 7px);
                     x: self.cx - self.size / 2;
                     y: self.line ? 1px : self.cy - self.size / 2;
@@ -249,7 +253,7 @@ export component PanelHead inherits VerticalLayout {
                     border-color: m.channel == 3 ? root.mark-tone(3) : #000000c0;
                     opacity: root.scope-marks-outside ? 0.4 : 1;
                     animate x, y { duration: 120ms; easing: ease-out; }
-                    if root.scope == "RGB": Rectangle {
+                    if root.shown == "RGB": Rectangle {
                         x: 1px;
                         width: 1px;
                         background: root.mark-tone(m.channel);
@@ -265,7 +269,7 @@ export component PanelHead inherits VerticalLayout {
                     }
                 }
             }
-            if root.scope == "RGB": ClipMark {
+            if root.shown == "RGB": ClipMark {
                 x: 1px;
                 y: 1px;
                 // Spoken by a screen reader: the histogram's square that
@@ -279,7 +283,7 @@ export component PanelHead inherits VerticalLayout {
                     root.warn-changed();
                 }
             }
-            if root.scope == "RGB": ClipMark {
+            if root.shown == "RGB": ClipMark {
                 x: parent.width - self.width - 1px;
                 y: 1px;
                 // Spoken by a screen reader: the histogram's square that
@@ -293,6 +297,7 @@ export component PanelHead inherits VerticalLayout {
                     root.warn-changed();
                 }
             }
+            if root.shown == "Raw": RawScope { }
         }
         HorizontalLayout {
             spacing: Theme.space-1;
@@ -308,8 +313,14 @@ export component PanelHead inherits VerticalLayout {
                 rounded: false;
                 padded: false;
                 bordered: false;
-                current <=> root.scope;
-                selected(name) => { root.scope-changed(name); }
+                tips: Mono.only ? Mono.scope-tips : [];
+                why-not: Mono.only ? Mono.raw-why-not : [];
+                current: root.shown;
+                picks: false;
+                selected(name) => {
+                    root.scope = name;
+                    root.scope-changed(name);
+                }
             }
             // Selection: every bin weighed by the mask, so a skin mask
             // shows the skin cloud on the vectorscope and a face its

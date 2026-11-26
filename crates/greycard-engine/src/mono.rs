@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use greycard_core::decode::RawMetadata;
+use greycard_core::decode::ricoh::ImageControl;
 use greycard_core::develop::lens::LensCorrection;
 use greycard_core::develop::noise::NoiseModel;
 use greycard_core::develop::retouch::{self, Region};
@@ -20,11 +21,14 @@ use greycard_core::register::Kernel;
 use greycard_edit::retouch::{Method, Patch, Retouch};
 use greycard_edit::{Edit, Lens};
 use greycard_render::export;
-use mono_core::edit::{ContrastEq, Denoise, DenoiseMode, Diffuse, LocalContrast, ToneEq};
-use mono_core::{MonoEdit, MonoFrame, Plane};
+use mono_core::edit::{
+    CameraSteps, ContrastEq, Denoise, DenoiseMode, Diffuse, LocalContrast, ToneEq,
+};
+use mono_core::{MonoEdit, MonoFrame, Plane, RawHistogram};
 pub use mono_decode::camera;
 use mono_denoise::learned::Mode;
 use mono_look::looks::{self, Look};
+use mono_look::settings;
 use mono_profile::Profile;
 use rayon::prelude::*;
 
@@ -140,6 +144,8 @@ pub struct Mono {
     pub white: f32,
     /// [`MonoFrame::rendered`].
     pub rendered: bool,
+    /// [`MonoFrame::raw`].
+    pub raw: Option<Arc<RawHistogram>>,
     pub guide: Option<Arc<Plane>>,
     pub detail: Option<Arc<Plane>>,
     pub local: Option<Arc<Plane>>,
@@ -172,6 +178,7 @@ impl Mono {
             iso: self.iso,
             white: self.white,
             rendered: self.rendered,
+            raw: self.raw.clone(),
         }
     }
 
@@ -196,6 +203,7 @@ impl Mono {
             iso: None,
             white: 1.0,
             rendered: false,
+            raw: None,
             guide: None,
             detail: None,
             local: None,
@@ -441,14 +449,14 @@ fn profiles_in(dir: Option<&Path>) -> Vec<Profile> {
 }
 
 /// What a new frame of `camera` starts from: its profile's defaults, and
-/// over them the user's look of the camera's mode `mode`, if there is one.
-/// None for the plain default.
-pub fn start_of(camera: &str, mode: Option<&str>) -> Option<MonoEdit> {
+/// over them the user's look of the camera's mode `mode`, if there is one,
+/// with the mode's settings `steps` on it. None for the plain default.
+pub fn start_of(camera: &str, mode: Option<&str>, steps: Option<CameraSteps>) -> Option<MonoEdit> {
     let looks = match (mode, look_dir()) {
         (Some(_), Some(dir)) => looks::load(&dir).0,
         _ => Vec::new(),
     };
-    start_in(&profiles(), &looks, camera, mode)
+    start_in(&profiles(), &looks, camera, mode, steps)
 }
 
 fn start_in(
@@ -456,12 +464,13 @@ fn start_in(
     looks: &[Look],
     camera: &str,
     mode: Option<&str>,
+    steps: Option<CameraSteps>,
 ) -> Option<MonoEdit> {
     let plain = mono_profile::matching(profiles, camera).map(Profile::defaults);
     let plain = plain.unwrap_or_default();
     let of_mode = |l: &&Look| l.mode.as_deref() == mode && is_mode_of(l, camera);
     let start = match looks.iter().find(of_mode) {
-        Some(look) => looks::apply(&plain, look, 1.0),
+        Some(look) => with_steps(looks::apply(&plain, look, 1.0), steps),
         None => plain,
     };
     Some(start).filter(|e| *e != MonoEdit::default())
@@ -488,7 +497,33 @@ pub fn is_start(first: &MonoEdit, profiles: &[Profile], looks: &[Look]) -> bool 
     let look = looks.iter().find(|l| l.name == first.look.name);
     (of_profile(before) || **before == MonoEdit::default())
         && first.look.strength == 1.0
-        && look.is_none_or(|l| l.mode.is_some() && looks::apply(before, l, 1.0) == *first)
+        && look.is_none_or(|l| {
+            l.mode.is_some()
+                && with_steps(looks::apply(before, l, 1.0), first.look.camera) == *first
+        })
+}
+
+fn with_steps(e: MonoEdit, steps: Option<CameraSteps>) -> MonoEdit {
+    match steps {
+        Some(s) => settings::add(&e, &s),
+        None => e,
+    }
+}
+
+/// The settings that `c` holds as steps from its mode's defaults.
+fn steps_of(c: &ImageControl) -> Option<CameraSteps> {
+    use mono_look::recipe::Param::*;
+    let mode = mono_look::recipe::mode(&c.id())?;
+    settings::steps(mode, |p| match p {
+        Key => c.key,
+        Contrast => c.contrast,
+        ContrastHighlight => c.contrast_highlight,
+        ContrastShadow => c.contrast_shadow,
+        Sharpness => c.sharpness,
+        Shading => c.shading,
+        Clarity => c.clarity,
+        Toning | HdrLevel => None,
+    })
 }
 
 /// [`start_of`] the frame read from `path` that nothing was done to: none
@@ -498,12 +533,13 @@ pub fn start(path: &Path, frame: &RawFrame) -> Option<Box<MonoEdit>> {
     if !mono_decode::is_mono(&frame.layout) || frame.dng.rendered.is_some() {
         return None;
     }
-    let mode = crate::settings::Shared::load()
+    let control = crate::settings::Shared::load()
         .mono_start_mode
         .then(|| greycard_core::decode::ricoh::image_control(path))
-        .flatten()
-        .map(|c| c.id());
-    start_of(&mono_decode::camera(frame), mode.as_deref()).map(Box::new)
+        .flatten();
+    let mode = control.as_ref().map(ImageControl::id);
+    let steps = control.as_ref().and_then(steps_of);
+    start_of(&mono_decode::camera(frame), mode.as_deref(), steps).map(Box::new)
 }
 
 /// The mono section the file at `path` is developed under: `edit`'s, or
@@ -761,6 +797,27 @@ fn own_lens(profile: Option<&Profile>, frame: &RawFrame) -> Option<LensCorrectio
         .flatten()
 }
 
+/// What corrects `frame`'s lens in a panorama, whose warp runs it: as
+/// [`lens_run`] has it, `profile` the lens database's.
+pub(crate) fn corrections(
+    frame: &RawFrame,
+    lens: &Lens,
+    profile: Option<LensCorrection>,
+) -> Vec<LensCorrection> {
+    let from_file = matches!(lens.chosen, greycard_edit::lens::LensChoice::FromFile);
+    let profile = profile.or_else(|| {
+        let own = lens.wants_profile() && from_file;
+        let camera = mono_decode::camera(frame);
+        own.then(|| own_lens(mono_profile::matching(&profiles(), &camera), frame))
+            .flatten()
+    });
+    let mut corrections = lens.corrections(profile);
+    if !frame.dng.vignettes.is_empty() {
+        corrections.iter_mut().for_each(|c| c.vignetting = None);
+    }
+    corrections
+}
+
 /// The plane of `frame`, from nothing.
 pub(crate) fn prepare(frame: &RawFrame) -> Result<Mono, String> {
     let profiles = profiles();
@@ -796,6 +853,7 @@ pub(crate) fn prepare(frame: &RawFrame) -> Result<Mono, String> {
         iso: p.iso,
         white: 1.0,
         rendered: frame.dng.rendered.is_some(),
+        raw: p.raw.map(Arc::new),
         guide: None,
         detail: None,
         local: None,
@@ -803,11 +861,13 @@ pub(crate) fn prepare(frame: &RawFrame) -> Result<Mono, String> {
     })
 }
 
-/// The stops the plane is lifted by before any edit: a merge's headroom,
-/// or the maker's `BaselineExposure`.
+/// The stops the plane is lifted by before any edit: `BaselineExposure`.
+/// In a file of ours it is the source's, with a merge's headroom on top.
 fn baseline(frame: &RawFrame) -> f32 {
-    let ev = greycard_edit::baseline::headroom(frame)
-        + greycard_edit::baseline::makers(frame).unwrap_or(0.0);
+    let ev = frame
+        .dng
+        .baseline_exposure
+        .unwrap_or_else(|| greycard_edit::baseline::headroom(frame));
     if ev.is_finite() {
         ev.clamp(-10.0, 10.0)
     } else {

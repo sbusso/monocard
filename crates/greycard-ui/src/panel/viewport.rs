@@ -1627,7 +1627,11 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, worker: &Rc<Worker>) {
             let Some(app) = app_weak.upgrade() else {
                 return;
             };
-            if let Some(chosen) = scope::Scope::from_name(name.as_str()) {
+            let chosen = scope::Scope::from_name(name.as_str());
+            // Under the raw histogram, the picture's.
+            #[cfg(feature = "mono")]
+            let chosen = chosen.or_else(|| (name == crate::mono::raw::RAW).then(Default::default));
+            if let Some(chosen) = chosen {
                 let mut st = state.borrow_mut();
                 st.develop.scope = chosen;
                 show_hover(&mut st, &app);

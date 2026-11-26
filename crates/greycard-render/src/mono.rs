@@ -315,6 +315,7 @@ fn try_map_planes<E>(
         iso: frame.iso,
         white: frame.white,
         rendered: frame.rendered,
+        raw: None,
     })
 }
 
@@ -720,6 +721,7 @@ mod tests {
             iso: None,
             white: 4.0,
             rendered: false,
+            raw: None,
         };
         let mut edit = Edit::default();
         let m = edit.mono.get_or_insert_default();

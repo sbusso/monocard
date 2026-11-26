@@ -19,6 +19,7 @@ struct MonoParams {
     t2: vec4<f32>,
     range: vec4<f32>,
     roll: vec4<f32>,
+    grade: vec4<f32>,
     zone: vec4<f32>,
     factors: array<vec4<f32>, 3>,
     curve: array<vec4<f32>, 64>,
@@ -113,15 +114,33 @@ fn mono_roll(l: f32) -> f32 {
     return min(MONO_GREY * exp2(y), mono.range.x);
 }
 
-// Step 11.
+// The paper's grade, on display light.
+fn mono_grade_bend(t: f32) -> f32 { return t / (mono.grade.x + (1.0 - mono.grade.x) * t); }
+
+fn mono_grade(y: f32) -> f32 {
+    if (mono.grade.x == 1.0) { return y; }
+    let grey = mono.grade.y;
+    let black = mono.grade.z;
+    let span = mono.range.x - mono.range.y;
+    let v = clamp((y - mono.range.y) / span, 0.0, 1.0);
+    var d = -log2(black + (1.0 - black) * v) / mono.grade.w;
+    if (d < grey) {
+        d = grey * mono_grade_bend(d / grey);
+    } else {
+        d = 1.0 - (1.0 - grey) * mono_grade_bend((1.0 - d) / (1.0 - grey));
+    }
+    return mono.range.y + span * clamp((exp2(-d * mono.grade.w) - black) / (1.0 - black), 0.0, 1.0);
+}
+
+// Step 11, the paper's grade with it.
 fn mono_display(x: f32) -> f32 {
     if (mono.head.x == 2.0) {
-        return mono.range.y + (mono.range.x - mono.range.y) * min(x, 1.0);
+        return mono_grade(mono.range.y + (mono.range.x - mono.range.y) * min(x, 1.0));
     }
     let l = log2(max(x, 1e-20) / MONO_GREY);
-    if (l >= mono.roll.x) { return mono_roll(l); }
-    if (mono.head.x == 0.0) { return mono_sigmoid(l); }
-    return mono_agx(l);
+    if (l >= mono.roll.x) { return mono_grade(mono_roll(l)); }
+    if (mono.head.x == 0.0) { return mono_grade(mono_sigmoid(l)); }
+    return mono_grade(mono_agx(l));
 }
 
 // `Compiled::tone`.

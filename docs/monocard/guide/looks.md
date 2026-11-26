@@ -1,6 +1,6 @@
 # Looks
 
-A look sets several controls of the [Develop](develop.md) tab at once. This chapter covers the bundled looks, your own looks, and the picture modes of a Ricoh GR.
+A look sets several controls of the [Develop](develop.md) tab at once. This chapter covers the bundled looks, your own looks, the picture modes of a Ricoh GR, and recipes.
 
 ## Put a look on
 
@@ -122,6 +122,8 @@ Under **TEST CHART**, **Test chart** fills the screen with 40 grey steps over 10
 
 In **Settings...**, **Editing**, turn on **Start from the camera's mode**. A raw with no edit then starts from the look that you fitted to its mode. The setting is off by default.
 
+The photo's own settings, such as Key and Contrast, then go over the look. A photo shot at the mode's defaults gets nothing more. Each setting moves one tool: Key moves Exposure, and Contrast moves Contrast. The size of each step is a first guess for now. Toning, grain, and HDR Tone level are not put on yet.
+
 ## Measure the sensor's noise
 
 Take flat frames, evenly lit, and dark frames, with the lens cap on, a few at each ISO. Dark frames of one second or longer are for hot pixels.
@@ -130,3 +132,32 @@ Take flat frames, evenly lit, and dark frames, with the lens cap on, a few at ea
 2. Choose the folder of the frames.
 
 A report shows the result. Monocard keeps the profile in the `cameras` folder beside `looks-mono`, and uses it from the next develop. No look changes.
+
+## Recipes
+
+A recipe is the picture settings of the Ricoh GR IV Monochrome: a mode of Image Control and its parameters. Monocard keeps recipes to look at, compare, and set on the camera. A recipe does not change a photo or the camera. To develop a raw like a mode, use [a look](#the-cameras-picture-modes).
+
+To open the book, go to the grid, click **Import...** in the left pane, and choose **Recipes...**.
+
+| Button | What it does |
+| --- | --- |
+| **From this photo** | Makes a recipe from the settings that the open photo records. If the book has a recipe with the same settings, Monocard chooses that one |
+| **New** | Makes a recipe of Standard with the default settings |
+| **Import...** | Adds a recipe from a `.toml` file. A name that is in use is refused |
+| **Compare with** | Shows the values of a second recipe. Rows with another value say **Differs** |
+| **Duplicate**, **Export...**, **Delete** | Copies the recipe, writes it to a file in a folder, or deletes it |
+| **Copy as text** | Puts the settings on the clipboard as plain text |
+
+The rows are in the order of the camera's menu. A recipe has only the settings of its mode. When you choose another **Mode**, the settings that both modes have keep their values, and the others take their defaults. Changes are saved as you make them.
+
+To use a recipe, set its values on the camera in Image Control, then save them in Custom 1 to 3.
+
+The notes of a recipe from a photo start with the ISO, and with the red filter if it was on.
+
+What is not certain:
+
+- Ricoh does not publish which mode has which setting, the ranges, or the defaults. Monocard uses what others report.
+- The names of the tonings and of the HDR Tone levels are reported too. No photo with a toning, or with a level other than **High**, was seen.
+- The meaning of the recorded grain is known in part. **Recorded** and two numbers, or **Grainy default**, is what the photo says. If you choose a size, that value is replaced.
+
+Each recipe is a file in the `recipes` folder beside `looks-mono`. A setting out of range is set to the nearest end. A file with an unknown mode, toning, or level is refused.

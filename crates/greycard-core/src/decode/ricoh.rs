@@ -67,8 +67,13 @@ pub struct ImageControl {
     pub sharpness: Option<i16>,
     pub shading: Option<i16>,
     pub clarity: Option<i16>,
-    /// 0 is none; the others are not confirmed.
+    /// 0 is none; the others are not confirmed. HDR Tone has its own, at
+    /// position 15, seen at 0 only.
     pub toning: Option<i16>,
+    /// The HDR Tone Level, at position 16. Confirmed: only HDR Tone files
+    /// have one, and the three seen hold 2. Not confirmed: that 0 is low, 1
+    /// medium and 2 high, as ExifTool has it of the GR III.
+    pub hdr_level: Option<i16>,
     /// Two bytes as stored: 8 and 0 in Standard and Solid files, 3 and 3 in
     /// Grainy ones.
     pub grain: Option<[u8; 2]>,
@@ -178,6 +183,8 @@ fn in_note<R: Read + Seek>(tiff: &mut Tiff<R>, f: &Field) -> Option<ImageControl
         let v = i16::from_le_bytes([*set.get(2 * i)?, *set.get(2 * i + 1)?]);
         (v != NOT_USED).then_some(v)
     };
+    // Where -1 is a mode's lack of it, as ExifTool has it.
+    let own = |i| parameter(i).filter(|v| *v != -1);
     // Set and not 0, by the tag's first byte.
     let mut on = |tag| bytes(tag).first().map(|v| *v != 0);
     Some(ImageControl {
@@ -194,7 +201,8 @@ fn in_note<R: Read + Seek>(tiff: &mut Tiff<R>, f: &Field) -> Option<ImageControl
         sharpness: parameter(6),
         shading: parameter(9),
         clarity: parameter(10),
-        toning: parameter(13),
+        toning: own(13).or_else(|| own(15)),
+        hdr_level: own(16),
         grain: set.get(38..40).map(|g| [g[0], g[1]]),
         red_filter: on(RED_FILTER),
         highlight_correction: on(HIGHLIGHT_CORRECTION),
@@ -327,6 +335,7 @@ mod tests {
                 shading: None,
                 clarity: None,
                 toning: Some(0),
+                hdr_level: None,
                 grain: Some([3, 3]),
                 red_filter: Some(true),
                 highlight_correction: Some(false),
@@ -346,6 +355,21 @@ mod tests {
         assert_eq!(got(SOLARIZED, &parameters(0xff)).id(), "solarized");
         assert_eq!(got(SOLARIZED, &parameters(1)[..50]).id(), "solarized");
         assert_eq!(got(0x8101, &parameters(2)).solarize, 0);
+    }
+
+    #[test]
+    fn an_hdr_tone_file_has_a_level_and_a_toning_of_its_own() {
+        let mut set = parameters(0xff);
+        for (i, n) in [(13, -1), (14, -1), (15, 1), (16, 0)] {
+            set[2 * i..2 * i + 2].copy_from_slice(&i16::to_le_bytes(n));
+        }
+        let got = of(&jpeg(&tiff(&note(0x8105, &set), b""))).unwrap();
+        assert_eq!((got.toning, got.hdr_level), (Some(1), Some(0)));
+        // The 50 bytes of firmware 1.00 reach the two.
+        assert_eq!(of(&jpeg(&tiff(&note(0x8105, &set[..50]), b""))), Some(got));
+        set[32..34].fill(0xff);
+        let got = of(&jpeg(&tiff(&note(0x8105, &set), b""))).unwrap();
+        assert_eq!(got.hdr_level, None);
     }
 
     #[test]

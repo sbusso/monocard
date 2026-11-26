@@ -231,9 +231,12 @@ fn a_drag_runs_what_it_moves() {
     assert!(!ran.contains(&"denoise") && ran.contains(&"sensor grain"));
     // The denoise: from the plane before it.
     e.mono.as_mut().unwrap().denoise.strength = 70.0;
-    let (from, ran, _) = run(&e);
+    let (from, ran, last) = run(&e);
     assert_eq!(from, Some(Keep::Prepared));
     assert!(!ran.contains(&"prepare") && ran.contains(&"denoise"));
+    // The raw histogram is of the file, whatever moved.
+    assert!(!Arc::ptr_eq(&last.base, &first.base));
+    assert!(Arc::ptr_eq(&last.raw.unwrap(), &first.raw.unwrap()));
 }
 
 /// A learned denoise with no model is the profiled one, and says so; its
@@ -543,7 +546,7 @@ fn a_new_frame_starts_from_its_profile() {
     write_dng(&grey, &f);
     crate::testing::linear_dng(&color, 64, 48, "Test", "Color");
     let bundled = mono_profile::bundled();
-    let want = start_in(&bundled, &[], "RICOH GR IV Monochrome", None);
+    let want = start_in(&bundled, &[], "RICOH GR IV Monochrome", None, None);
     let want = want.expect("the profile has its own");
     assert_eq!(start(&grey, &f).as_deref(), Some(&want));
     f.layout = greycard_core::raw::SensorLayout::Linear;
@@ -584,12 +587,12 @@ fn a_new_frame_starts_from_the_mode_it_records() {
     let other = look("Other", "[tools.grain]\namount = 0.9").of_mode("Leica M11", "soft");
     let mine = look("Mine", "[tools.grain]\namount = 0.7");
     let looks = [other, mine.clone(), solid.clone()];
-    let plain = start_in(&bundled, &looks, GR, None).unwrap();
+    let plain = start_in(&bundled, &looks, GR, None, None).unwrap();
     assert_eq!(
-        start_in(&bundled, &looks, GR, Some("soft")),
+        start_in(&bundled, &looks, GR, Some("soft"), None),
         Some(plain.clone())
     );
-    let start = start_in(&bundled, &looks, GR, Some("solid")).unwrap();
+    let start = start_in(&bundled, &looks, GR, Some("solid"), None).unwrap();
     assert_eq!(
         (start.look.name.as_str(), start.look.strength),
         ("Solid", 1.0)
@@ -598,7 +601,7 @@ fn a_new_frame_starts_from_the_mode_it_records() {
     assert_eq!(start.denoise, plain.denoise, "the profile's under it");
     assert_eq!(looks::remove(&start, &looks), plain);
     // With no profile of its own, over the plain default.
-    let bare = start_in(&[], &looks, GR, Some("solid")).unwrap();
+    let bare = start_in(&[], &looks, GR, Some("solid"), None).unwrap();
     assert_eq!(bare.grain.amount, 0.4);
     for e in [&plain, &start, &bare] {
         assert!(is_start(e, &bundled, &looks));
@@ -615,6 +618,27 @@ fn a_new_frame_starts_from_the_mode_it_records() {
     let picked = looks::apply(&plain, &mine, 1.0);
     assert!(!is_start(&picked, &bundled, &looks), "a look of the user's");
     assert!(!is_start(&MonoEdit::default(), &[], &looks));
+    // The photo's settings go over the look, and the start is still known.
+    let steps = mono_core::edit::CameraSteps {
+        key: 1,
+        ..Default::default()
+    };
+    let set = start_in(&bundled, &looks, GR, Some("solid"), Some(steps)).unwrap();
+    assert_eq!(set.basic.exposure, start.basic.exposure + 0.25);
+    assert!(is_start(&set, &bundled, &looks));
+    let mut moved = set.clone();
+    moved.basic.exposure = start.basic.exposure;
+    assert!(!is_start(&moved, &bundled, &looks));
+    // A photo shot at the mode's defaults has no steps.
+    let control = |key| greycard_core::decode::ricoh::ImageControl {
+        code: 0x8102,
+        key: Some(key),
+        contrast: Some(-2),
+        sharpness: Some(-1),
+        ..Default::default()
+    };
+    assert_eq!(steps_of(&control(1)), None, "Soft's defaults");
+    assert_eq!(steps_of(&control(3)).map(|s| s.key), Some(2));
 }
 
 /// The denoise reads the noise about the black whole, and no sample under
@@ -685,6 +709,14 @@ fn the_baseline_is_in_the_base() {
     assert_eq!((a.white, b.white), (1.0, 2.0));
     let i = 80 * 240 + 100;
     assert!((b.base.data[i] - 2.0 * a.base.data[i]).abs() < 1e-5);
+    // A merge's holds its source's and its own headroom.
+    f.dng.merged = Some(greycard_core::merge::Tag {
+        headroom_stops: 1.5,
+        ..Default::default()
+    });
+    assert_eq!(flat(&f).white, 2.0);
+    f.dng.baseline_exposure = None;
+    assert_eq!(flat(&f).white, 1.5f32.exp2());
 }
 
 /// The sidecar keeps the mono section through a save and a load.

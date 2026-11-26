@@ -65,8 +65,9 @@ import { KeysSheet } from "panel/keys-sheet.slint";
 import { Mono } from "../../mono-ui/ui/state.slint";
 import { MonoPanels } from "../../mono-ui/ui/panels.slint";
 import { CameraView, CameraWindow } from "../../mono-ui/ui/camera.slint";
+import { RecipeView, RecipesWindow } from "../../mono-ui/ui/recipes.slint";
 import { MonoWelcome, MonoReport } from "../../mono-ui/ui/words.slint";
-export { Mono, CameraView }
+export { Mono, CameraView, RecipeView }
 
 export component App inherits Window {
     title: Mono.on ? "Monocard" : "greycard";
@@ -3212,11 +3213,14 @@ export component App inherits Window {
             || root.time-shift-open
             || root.settings-open || root.sync-open || root.import-open || root.match-open
             || root.root-sheet-open || root.collection-picker-open || root.collection-sheet-open || root.preset-group-sheet-open || root.preset-report-open
-            || root.lr-open || root.rt-open || root.keys-open || root.camera-open;
+            || root.lr-open || root.rt-open || root.keys-open || root.camera-open || root.recipes-open;
     }
     // Monocard's camera window.
     property <bool> camera-open: Mono.camera-offered && CameraView.open;
     changed camera-open => { if (!root.camera-open) { CameraView.closed(); } }
+    // Monocard's recipe book.
+    property <bool> recipes-open: RecipeView.open;
+    changed recipes-open => { if (!root.recipes-open) { RecipeView.closed(); } }
 
     /// A mouse's back (true) or forward button pressed anywhere over
     /// the window, heard from the window's own events before any
@@ -3309,7 +3313,8 @@ export component App inherits Window {
         + (root.match-open ? 1 : 0) + (root.root-sheet-open ? 1 : 0)
         + (root.collection-picker-open ? 1 : 0) + (root.collection-sheet-open ? 1 : 0) + (root.preset-group-sheet-open ? 1 : 0)
         + (root.preset-report-open ? 1 : 0) + (root.lr-open ? 1 : 0) + (root.rt-open ? 1 : 0)
-        + (root.keys-open ? 1 : 0) + (root.camera-open ? 1 : 0);
+        + (root.keys-open ? 1 : 0) + (root.camera-open ? 1 : 0)
+        + (root.recipes-open ? 1 : 0);
     property <int> sheets-were: 0;
     changed sheets-up => {
         if (root.sheets-up < root.sheets-were) { keys.focus(); }
@@ -3362,6 +3367,7 @@ export component App inherits Window {
             root.menu-up = false;
             // The camera window has keys of its own.
             if (root.camera-open) { CameraView.keys-back += 1; }
+            if (root.recipes-open) { RecipeView.keys-back += 1; }
         }
         key-released(e) => {
             root.shift-held = e.modifiers.shift;
@@ -4183,7 +4189,7 @@ export component App inherits Window {
                     shot-time: root.shot-time;
                     scope-picture: root.scope-picture;
                     // One channel has no parade and no vectorscope.
-                    scopes: Mono.only ? ["RGB", "Wave"] : root.scopes;
+                    scopes: Mono.only ? ["RGB", "Wave", "Raw"] : root.scopes;
                     scope-labels: Mono.only ? Mono.scope-labels : [];
                     scope <=> root.scope;
                     scope-changed(a) => { root.scope-changed(a); }
@@ -4191,7 +4197,7 @@ export component App inherits Window {
                     scope-readout: root.scope-readout;
                     scope-marks-outside: root.scope-marks-outside;
                     scope-selection <=> root.scope-selection;
-                    scope-mask-active: root.scope-mask-active;
+                    scope-mask-active: root.scope-mask-active && !(root.scope == "Raw" && Mono.raw-here);
                     scope-selection-changed => { root.scope-selection-changed(); }
                     clip-shadows-lit: root.clip-shadows-lit;
                     clip-shadows-mark: root.clip-shadows-mark;
@@ -6074,6 +6080,10 @@ export component App inherits Window {
                                     title: @tr("A Lightroom catalog...");
                                     activated => { root.lr-asked(); }
                                 }
+                                if Mono.only: MenuItem {
+                                    title: Mono.recipes-menu;
+                                    activated => { Mono.recipes-asked(); }
+                                }
                             }
                         }
                     }
@@ -7044,6 +7054,9 @@ export component App inherits Window {
         backup-cleared => { root.import-backup-cleared(); }
         stop => { root.import-stop(); }
     }
+
+    // Monocard's recipe book.
+    if root.recipes-open: RecipesWindow { }
 
     // The settings sheet, over everything, until closed.
     if root.settings-open: SettingsSheet {

@@ -22,7 +22,7 @@ pub mod style;
 pub use rawler_backend::{
     CameraWhite, IndexRead, MosaicRead, Probe, RawMetadata, RawlerDecoder, inside_decoder,
 };
-pub use sensor::dng_monochrome;
+pub use sensor::{dng_focal_35mm, dng_monochrome};
 pub use style::{Adaptive, AdaptiveKind, CameraStyle, Maker};
 
 pub trait Decoder {

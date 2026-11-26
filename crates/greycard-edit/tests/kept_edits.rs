@@ -15,6 +15,8 @@ fn an_edit_of_0_1_2_is_read_and_written_as_it_was() {
     assert_eq!(s.to_json(), KEPT);
     let m = s.current().mono.as_deref().unwrap();
     assert_eq!(m.look.name, "Street");
+    // From before the paper grade.
+    assert_eq!(m.display.grade, 2.0);
     assert_eq!(m.basic.exposure, 0.7);
     assert_eq!(m.tone_eq.zones[3], -0.5);
     assert_eq!(m.curve.points[1], [0.4, 0.5]);

@@ -1,0 +1,72 @@
+// The raw histogram, over the scope's box: the zones, the bars, the stops
+// under the clip point, and what clipped.
+
+import { Theme } from "../../greycard-slint/ui/theme.slint";
+import { Mono } from "state.slint";
+
+component Mark inherits Text {
+    in property <length> at;
+    x: self.at - self.width / 2;
+    width: 32px;
+    height: 14px;
+    color: Theme.text-secondary;
+    font-size: Theme.font-xs;
+    font-family: Mono.figures;
+    horizontal-alignment: center;
+    vertical-alignment: center;
+    accessible-role: none;
+}
+
+export component RawScope inherits Rectangle {
+    background: Theme.base;
+    accessible-role: image;
+    accessible-label: "Raw histogram";
+    accessible-description: Mono.raw-note;
+    property <length> inset: 13px;
+    property <length> plot-width: self.width - 2 * self.inset;
+    plot := Rectangle {
+        x: root.inset;
+        y: 16px;
+        width: root.plot-width;
+        height: 94px;
+        background: Theme.scope-ink;
+        Image {
+            width: 100%;
+            height: 100%;
+            source: Mono.raw-picture;
+            image-fit: fill;
+            image-rendering: smooth;
+            // So that a zone's line shows over the bars.
+            opacity: 0.6;
+        }
+        for zone in Mono.raw-zones: Rectangle {
+            x: zone.x * parent.width;
+            width: 1px;
+            background: Theme.text.with-alpha(zone.numeral == "V" ? 0.5 : 0.18);
+        }
+    }
+    for zone in Mono.raw-zones: Mark {
+        y: 1px;
+        at: root.inset + zone.x * root.plot-width;
+        text: zone.numeral;
+    }
+    // Every second stop.
+    for i in 7: Mark {
+        y: 111px;
+        at: root.inset + i / 6 * root.plot-width;
+        text: i == 6 ? "0" : "\u{2212}" + (12 - 2 * i);
+    }
+    Text {
+        x: 0;
+        y: 125px;
+        width: 100%;
+        height: 17px;
+        text: Mono.raw-note;
+        color: Theme.text;
+        font-size: Theme.font-xs;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        overflow: elide;
+        accessible-role: none;
+    }
+}

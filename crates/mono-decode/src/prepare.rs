@@ -7,9 +7,10 @@ use greycard_core::develop::noise::{NoiseModel, estimate_noise};
 use greycard_core::develop::{apply_dng_mosaic, crop_samples};
 use greycard_core::opcodes::{Curve, GainMap, MosaicOp, Remap};
 use greycard_core::raw::{CfaPattern, LevelPattern, RawFrame, Rect, Samples, camera_name};
-use mono_core::Plane;
+use mono_core::{Plane, RawHistogram};
 use rayon::prelude::*;
 
+use crate::histogram::raw_histogram;
 use crate::{Error, Result, hotpixels, is_mono};
 
 /// What [`prepare`] runs.
@@ -50,6 +51,8 @@ pub struct Prepared {
     pub serial: Option<String>,
     /// `BaselineExposure`, 0 without one. Not applied to `plane`.
     pub baseline_ev: f32,
+    /// Of the samples before any repair; `None` for a rendered picture.
+    pub raw: Option<RawHistogram>,
 }
 
 /// Levels, linearized already by the decode, to 0..1; the crop; the
@@ -60,6 +63,16 @@ pub fn prepare(frame: &RawFrame, options: &PrepareOptions) -> Result<Prepared> {
     let crop = frame.effective_crop();
     let clip = clip_map(frame, crop);
     let (mut samples, width, height) = crop_samples(&levels(frame), frame.width, 1, crop);
+
+    let raw = frame.dng.rendered.is_none().then(|| {
+        let steps = match &frame.samples {
+            Samples::U16(_) => {
+                (frame.levels.white.at(0, 0, 0) - frame.levels.black.at(0, 0, 0)) as usize
+            }
+            Samples::F32(_) => 65535,
+        };
+        raw_histogram(&samples, &clip.data, steps)
+    });
 
     // A float file's NaN is a photosite without a value.
     let mut bad: Vec<bool> = samples.iter().map(|v| v.is_nan()).collect();
@@ -107,6 +120,7 @@ pub fn prepare(frame: &RawFrame, options: &PrepareOptions) -> Result<Prepared> {
         camera: camera(frame),
         serial: frame.dng.camera_serial.clone(),
         baseline_ev: frame.dng.baseline_exposure.unwrap_or(0.0),
+        raw,
     })
 }
 

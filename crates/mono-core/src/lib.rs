@@ -5,7 +5,7 @@ pub mod edit;
 pub mod plane;
 
 pub use edit::{MonoEdit, MonoLocal};
-pub use plane::{MonoFrame, Plane};
+pub use plane::{MonoFrame, Plane, RawHistogram};
 
 /// Middle grey, in linear scene and display light. Zone V.
 pub const MIDDLE_GREY: f32 = 0.1845;

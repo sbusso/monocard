@@ -1182,7 +1182,7 @@ impl Rect {
         let y = self.y.max(other.y);
         let r = (self.x + self.width).min(other.x + other.width);
         let b = (self.y + self.height).min(other.y + other.height);
-        (r > x && b > y).then_some(Rect {
+        (r > x && b > y).then(|| Rect {
             x,
             y,
             width: r - x,

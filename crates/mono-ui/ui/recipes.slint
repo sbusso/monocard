@@ -1,0 +1,690 @@
+// The recipe book: the picture settings of the camera, kept here to look at,
+// compare, and set on the camera by hand.
+
+import { ComboBox, LineEdit, TextEdit } from "std-widgets.slint";
+import { Theme } from "../../greycard-slint/ui/theme.slint";
+import { PanelButton, ScrollPane, Segmented } from "../../greycard-slint/ui/controls.slint";
+
+export struct RecipeItem {
+    name: string,
+    mode: string,
+}
+
+// A setting of the card.
+export struct RecipeRow {
+    label: string,
+    /// "step", "choice", or "none" where the mode does not have it.
+    kind: string,
+    /// Of a step: the number, and how far it goes each way.
+    value: int,
+    most: int,
+    /// The value in words.
+    text: string,
+    options: [string],
+    enabled: bool,
+    /// The second recipe's, and whether it is another.
+    other: string,
+    differs: bool,
+}
+
+export global RecipeView {
+    /// The book is over the app.
+    in-out property <bool> open: false;
+    callback closed();
+    /// Counted up where the keys are the list's again.
+    in-out property <int> keys-back;
+
+    in-out property <[RecipeItem]> items;
+    /// The chosen one's place, -1 for none.
+    in-out property <int> chosen: -1;
+    callback choose(string);
+
+    /// Why no recipe can be made from the open photo; empty where one can.
+    in-out property <string> photo-why;
+    callback from-photo();
+    callback new-asked();
+    callback import-asked();
+    /// What was last done.
+    in-out property <string> note;
+
+    /// The chosen one's card.
+    in-out property <string> name;
+    callback name-typed(string);
+    callback name-done();
+    callback name-dropped();
+    in-out property <string> source;
+    in-out property <[string]> modes;
+    in-out property <int> mode-row;
+    callback mode-picked(int);
+    in-out property <[RecipeRow]> rows;
+    callback stepped(string, int);
+    callback picked(string, string);
+    in-out property <string> notes;
+    callback notes-typed(string);
+    /// The card as plain text, for the clipboard.
+    in-out property <string> card;
+
+    /// The second recipe: the names there are, and its row; 0 is none.
+    in-out property <[string]> others;
+    in-out property <int> other-row;
+    callback other-picked(string);
+    in-out property <string> other-mode;
+    in-out property <bool> mode-differs;
+    in-out property <string> compared;
+
+    callback duplicate();
+    callback export-asked();
+    /// The question before the delete is up.
+    in-out property <bool> asking: false;
+    callback deleted();
+}
+
+component Words inherits Text {
+    font-size: Theme.font-xs;
+    color: Theme.text-secondary;
+    wrap: word-wrap;
+}
+
+component Label inherits Text {
+    // Said by the control that it names.
+    accessible-role: none;
+    color: Theme.text;
+    font-size: Theme.font-sm;
+    vertical-alignment: center;
+    overflow: elide;
+}
+
+// A number between two ends, with a button on each side.
+component Stepper inherits Rectangle {
+    in property <string> label;
+    in property <string> text;
+    in property <int> value;
+    in property <int> most;
+    callback stepped(int);
+    function by(d: int) {
+        if (root.value + d >= -root.most && root.value + d <= root.most) {
+            root.stepped(root.value + d);
+        }
+    }
+    width: 120px;
+    height: Theme.control-height;
+    border-radius: Theme.radius-md;
+    border-width: fs.has-focus ? 2px : 1px;
+    border-color: fs.has-focus ? Theme.focus-ring : Theme.border;
+    background: Theme.base;
+    accessible-role: spinbox;
+    accessible-label: root.label;
+    accessible-value: root.text;
+    accessible-value-minimum: -root.most;
+    accessible-value-maximum: root.most;
+    accessible-value-step: 1;
+    accessible-action-increment => { root.by(1); }
+    accessible-action-decrement => { root.by(-1); }
+    fs := FocusScope {
+        key-pressed(e) => {
+            if (e.modifiers.control || e.modifiers.alt || e.modifiers.meta) { return reject; }
+            if (e.text == Key.RightArrow || e.text == Key.UpArrow || e.text == "+" || e.text == "=") {
+                root.by(1);
+                return accept;
+            }
+            if (e.text == Key.LeftArrow || e.text == Key.DownArrow || e.text == "-") {
+                root.by(-1);
+                return accept;
+            }
+            return reject;
+        }
+    }
+    for d in [-1, 1]: Rectangle {
+        property <bool> live: d < 0 ? root.value > -root.most : root.value < root.most;
+        x: d < 0 ? 2px : parent.width - self.width - 2px;
+        y: 2px;
+        width: 34px;
+        height: parent.height - 4px;
+        border-radius: Theme.radius-sm;
+        background: !self.live ? transparent : ta.pressed ? Theme.pressed : ta.has-hover ? Theme.hover : Theme.raised;
+        Text {
+            accessible-role: none;
+            text: d < 0 ? "\u{2212}" : "+";
+            color: parent.live ? Theme.text : Theme.text-muted;
+            font-size: Theme.font-sm;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+        ta := TouchArea {
+            mouse-cursor: parent.live ? MouseCursor.pointer : MouseCursor.default;
+            clicked => {
+                fs.focus();
+                root.by(d);
+            }
+        }
+    }
+    Text {
+        accessible-role: none;
+        text: root.text;
+        color: Theme.text;
+        font-size: Theme.font-sm;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+// The second recipe's value, and the word where it is another.
+component Other inherits HorizontalLayout {
+    in property <string> label;
+    in property <string> text;
+    in property <bool> differs;
+    in property <bool> head: false;
+    spacing: Theme.space-2;
+    accessible-role: AccessibleRole.text;
+    accessible-label: root.head ? root.text
+        : root.label + " in " + RecipeView.others[RecipeView.other-row] + ": " + root.text
+            + (root.differs ? ", differs" : "");
+    Text {
+        accessible-role: none;
+        width: 112px;
+        text: root.text;
+        color: root.head ? Theme.text : Theme.text-secondary;
+        font-size: Theme.font-sm;
+        font-weight: root.head || root.differs ? Theme.weight-medium : 400;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+    Rectangle {
+        width: 56px;
+        if root.differs: Rectangle {
+            height: 20px;
+            y: (parent.height - self.height) / 2;
+            border-radius: 3px;
+            border-width: 1px;
+            border-color: Theme.text-muted;
+            Text {
+                accessible-role: none;
+                text: "Differs";
+                color: Theme.text;
+                font-size: Theme.font-xs;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+        }
+    }
+}
+
+component Item inherits Rectangle {
+    in property <RecipeItem> item;
+    in property <int> index;
+    in property <bool> on;
+    in property <bool> keys;
+    callback press();
+    height: 44px;
+    border-radius: Theme.radius-md;
+    background: root.on ? Theme.selection : ta.has-hover ? Theme.hover-veil : transparent;
+    border-width: root.on ? 1px : 0px;
+    border-color: root.keys ? Theme.focus-ring : Theme.border-strong;
+    accessible-role: list-item;
+    accessible-label: root.item.name + ", " + root.item.mode;
+    accessible-item-selectable: true;
+    accessible-item-selected: root.on;
+    accessible-item-index: root.index;
+    accessible-item-count: RecipeView.items.length;
+    accessible-action-default => { root.press(); }
+    VerticalLayout {
+        padding: 5px;
+        padding-left: Theme.space-2;
+        padding-right: Theme.space-2;
+        Text {
+            accessible-role: none;
+            text: root.item.name;
+            color: Theme.text;
+            font-size: Theme.font-sm;
+            overflow: elide;
+        }
+        Text {
+            accessible-role: none;
+            text: root.item.mode;
+            color: Theme.text-secondary;
+            font-size: Theme.font-xs;
+            overflow: elide;
+        }
+    }
+    ta := TouchArea {
+        clicked => { root.press(); }
+    }
+}
+
+export component RecipesWindow inherits Rectangle {
+    property <bool> comparing: RecipeView.other-row > 0;
+    property <bool> some: RecipeView.chosen >= 0;
+    // Of a row: its label, and its value.
+    property <length> label-width: 164px;
+    property <length> value-width: 300px;
+    property <length> card-width: root.label-width + root.value-width + Theme.space-3
+        + (root.comparing ? 112px + 56px + Theme.space-2 + Theme.space-3 : 0px);
+    property <int> keys-back: RecipeView.keys-back;
+    changed keys-back => { list-keys.focus(); }
+    property <bool> asking: RecipeView.asking;
+    changed asking => { if (!root.asking) { list-keys.focus(); } }
+    init => { list-keys.focus(); }
+    background: Theme.surface;
+    accessible-role: groupbox;
+    accessible-label: "Recipes";
+    // Nothing falls through to the window behind.
+    TouchArea {
+        scroll-event(e) => { return accept; }
+    }
+    // The keys that a control turned away.
+    FocusScope {
+        focus-on-tab-navigation: false;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text != Key.Escape) { return reject; }
+            if (RecipeView.asking) {
+                RecipeView.asking = false;
+            } else {
+                RecipeView.open = false;
+            }
+            return accept;
+        }
+        VerticalLayout {
+            // The header.
+            Rectangle {
+                height: 48px;
+                HorizontalLayout {
+                    padding-left: Theme.space-4;
+                    padding-right: Theme.space-4;
+                    padding-top: 10px;
+                    padding-bottom: 10px;
+                    spacing: Theme.space-3;
+                    Rectangle {
+                        width: Theme.icon;
+                        Image {
+                            source: @image-url("../../greycard-slint/ui/icons/bookmark.svg");
+                            colorize: Theme.text-secondary;
+                            width: Theme.icon;
+                            height: Theme.icon;
+                            accessible-role: none;
+                        }
+                    }
+                    Text {
+                        text: "Recipes";
+                        color: Theme.text;
+                        font-size: Theme.font-lg;
+                        font-weight: Theme.weight-medium;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+                    }
+                    PanelButton {
+                        text: "Close";
+                        clicked => { RecipeView.open = false; }
+                    }
+                }
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: Theme.border;
+                }
+            }
+            HorizontalLayout {
+                // The book.
+                VerticalLayout {
+                    width: 264px;
+                    Rectangle {
+                        vertical-stretch: 1;
+                        list-keys := FocusScope {
+                            accessible-role: list;
+                            accessible-label: "Recipes in the book";
+                            key-pressed(e) => {
+                                if (e.modifiers.control || e.modifiers.alt || e.modifiers.meta) { return reject; }
+                                if (e.text == Key.DownArrow || e.text == Key.UpArrow) {
+                                    let to = RecipeView.chosen + (e.text == Key.DownArrow ? 1 : -1);
+                                    if (to >= 0 && to < RecipeView.items.length) {
+                                        RecipeView.choose(RecipeView.items[to].name);
+                                        pane.reveal(to);
+                                    }
+                                    return accept;
+                                }
+                                return reject;
+                            }
+                            pane := ScrollPane {
+                                content-width: self.visible-width;
+                                content-height: items.preferred-height;
+                                function reveal(i: int) {
+                                    let y = Theme.space-3 + i * 46px;
+                                    if (y + self.content-y < 0px) { self.content-y = -y; }
+                                    if (y + 46px + self.content-y > self.visible-height) {
+                                        self.content-y = self.visible-height - y - 46px;
+                                    }
+                                }
+                                items := VerticalLayout {
+                                    width: pane.visible-width;
+                                    padding: Theme.space-3;
+                                    padding-right: Theme.space-3 + Theme.scrollbar-band;
+                                    spacing: 2px;
+                                    alignment: start;
+                                    for item[i] in RecipeView.items: Item {
+                                        item: item;
+                                        index: i;
+                                        on: i == RecipeView.chosen;
+                                        keys: list-keys.has-focus;
+                                        press => {
+                                            list-keys.focus();
+                                            RecipeView.choose(item.name);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                    VerticalLayout {
+                        padding: Theme.space-4;
+                        spacing: Theme.space-2;
+                        if RecipeView.note != "": Words {
+                            width: 264px - 2 * Theme.space-4;
+                            text: RecipeView.note;
+                            color: Theme.text;
+                            accessible-role: AccessibleRole.text;
+                            accessible-label: self.text;
+                        }
+                        PanelButton {
+                            text: "From this photo";
+                            primary: true;
+                            enabled: RecipeView.photo-why == "";
+                            accessible-description: RecipeView.photo-why;
+                            clicked => { RecipeView.from-photo(); }
+                        }
+                        if RecipeView.photo-why != "": Words {
+                            width: 264px - 2 * Theme.space-4;
+                            text: RecipeView.photo-why;
+                        }
+                        HorizontalLayout {
+                            spacing: Theme.space-2;
+                            PanelButton {
+                                horizontal-stretch: 1;
+                                text: "New";
+                                accessible-label: "New recipe";
+                                clicked => { RecipeView.new-asked(); }
+                            }
+                            PanelButton {
+                                horizontal-stretch: 1;
+                                text: "Import...";
+                                accessible-label: "Import a recipe";
+                                clicked => { RecipeView.import-asked(); }
+                            }
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 1px;
+                    background: Theme.border;
+                }
+                // The card.
+                Rectangle {
+                    horizontal-stretch: 1;
+                    background: Theme.sheet;
+                    clip: true;
+                    if !root.some: VerticalLayout {
+                        alignment: center;
+                        padding: Theme.space-5;
+                        spacing: Theme.space-3;
+                        Text {
+                            text: RecipeView.items.length == 0 ? "There are no recipes." : "Choose a recipe.";
+                            color: Theme.text;
+                            font-size: Theme.font-lg;
+                            horizontal-alignment: center;
+                        }
+                        if RecipeView.items.length == 0: Text {
+                            text: "A recipe holds the picture settings of the camera. Open a photo from the camera and click From this photo, or click New.";
+                            color: Theme.text-secondary;
+                            font-size: Theme.font-sm;
+                            horizontal-alignment: center;
+                            wrap: word-wrap;
+                        }
+                    }
+                    if root.some: card := ScrollPane {
+                        content-width: self.visible-width;
+                        content-height: fields.preferred-height;
+                        fields := VerticalLayout {
+                            width: card.visible-width;
+                            padding: Theme.space-5;
+                            padding-right: Theme.space-5 + Theme.scrollbar-band;
+                            spacing: Theme.space-2;
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: Theme.space-3;
+                                Label { text: "Name"; width: root.label-width; }
+                                LineEdit {
+                                    width: root.value-width;
+                                    accessible-label: "Recipe name";
+                                    text <=> RecipeView.name;
+                                    edited(t) => { RecipeView.name-typed(t); }
+                                    accepted(t) => {
+                                        RecipeView.name-done();
+                                        list-keys.focus();
+                                    }
+                                    key-pressed(e) => {
+                                        if (e.text == Key.Escape) {
+                                            RecipeView.name-dropped();
+                                            list-keys.focus();
+                                            return accept;
+                                        }
+                                        return reject;
+                                    }
+                                    changed has-focus => {
+                                        if (!self.has-focus) { RecipeView.name-done(); }
+                                    }
+                                }
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: Theme.space-3;
+                                Label { text: "From"; width: root.label-width; }
+                                Text {
+                                    width: root.value-width;
+                                    accessible-label: "From " + self.text;
+                                    text: RecipeView.source;
+                                    color: Theme.text-secondary;
+                                    font-size: Theme.font-sm;
+                                    vertical-alignment: center;
+                                    overflow: elide;
+                                }
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: Theme.space-3;
+                                Label { text: "Compare with"; width: root.label-width; }
+                                ComboBox {
+                                    width: root.value-width;
+                                    accessible-label: "Compare with";
+                                    enabled: RecipeView.others.length > 1;
+                                    model: RecipeView.others;
+                                    current-index <=> RecipeView.other-row;
+                                    selected(name) => { RecipeView.other-picked(self.current-index == 0 ? "" : name); }
+                                }
+                                if root.comparing: Label {
+                                    accessible-role: AccessibleRole.text;
+                                    text: RecipeView.compared;
+                                    color: Theme.text-secondary;
+                                }
+                            }
+                            Rectangle { height: Theme.space-1; }
+                            Rectangle {
+                                width: min(root.card-width, card.visible-width - 2 * Theme.space-5 - Theme.scrollbar-band);
+                                height: 1px;
+                                background: Theme.border;
+                            }
+                            if root.comparing: HorizontalLayout {
+                                alignment: start;
+                                spacing: Theme.space-3;
+                                Rectangle { width: root.label-width; }
+                                Text {
+                                    width: root.value-width;
+                                    text: RecipeView.name;
+                                    color: Theme.text;
+                                    font-size: Theme.font-sm;
+                                    font-weight: Theme.weight-medium;
+                                    overflow: elide;
+                                }
+                                Other {
+                                    head: true;
+                                    text: RecipeView.others[RecipeView.other-row];
+                                }
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: Theme.space-3;
+                                Label { text: "Mode"; width: root.label-width; }
+                                ComboBox {
+                                    width: root.value-width;
+                                    accessible-label: "Mode";
+                                    model: RecipeView.modes;
+                                    current-index <=> RecipeView.mode-row;
+                                    selected => { RecipeView.mode-picked(self.current-index); }
+                                }
+                                if root.comparing: Other {
+                                    label: "Mode";
+                                    text: RecipeView.other-mode;
+                                    differs: RecipeView.mode-differs;
+                                }
+                            }
+                            for row in RecipeView.rows: HorizontalLayout {
+                                alignment: start;
+                                spacing: Theme.space-3;
+                                height: Theme.control-height;
+                                Label {
+                                    width: root.label-width;
+                                    text: row.label;
+                                    color: row.kind == "none" || !row.enabled ? Theme.text-muted : Theme.text;
+                                }
+                                Rectangle {
+                                    width: root.value-width;
+                                    if row.kind == "step": Stepper {
+                                        x: 0;
+                                        label: row.label;
+                                        text: row.text;
+                                        value: row.value;
+                                        most: row.most;
+                                        stepped(v) => { RecipeView.stepped(row.label, v); }
+                                    }
+                                    if row.kind == "choice": Segmented {
+                                        width: 100%;
+                                        name: row.label;
+                                        options: row.options;
+                                        current: row.text;
+                                        enabled: row.enabled;
+                                        picks: false;
+                                        selected(o) => { RecipeView.picked(row.label, o); }
+                                    }
+                                    if row.kind == "none": Text {
+                                        accessible-label: row.label + ": " + row.text;
+                                        width: 100%;
+                                        height: 100%;
+                                        text: row.text;
+                                        color: Theme.text-muted;
+                                        font-size: Theme.font-sm;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                                if root.comparing: Other {
+                                    label: row.label;
+                                    text: row.other;
+                                    differs: row.differs;
+                                }
+                            }
+                            HorizontalLayout {
+                                alignment: start;
+                                spacing: Theme.space-3;
+                                Label {
+                                    width: root.label-width;
+                                    height: Theme.control-height;
+                                    text: "Notes";
+                                }
+                                TextEdit {
+                                    width: root.value-width;
+                                    height: 96px;
+                                    accessible-label: "Notes";
+                                    font-size: Theme.font-sm;
+                                    wrap: word-wrap;
+                                    text <=> RecipeView.notes;
+                                    edited(t) => { RecipeView.notes-typed(t); }
+                                    key-pressed(e) => {
+                                        if (e.text == Key.Escape) {
+                                            list-keys.focus();
+                                            return accept;
+                                        }
+                                        return reject;
+                                    }
+                                }
+                            }
+                            Rectangle { height: Theme.space-1; }
+                            if !RecipeView.asking: HorizontalLayout {
+                                alignment: start;
+                                spacing: Theme.space-2;
+                                PanelButton {
+                                    text: "Duplicate";
+                                    accessible-label: "Duplicate recipe";
+                                    clicked => { RecipeView.duplicate(); }
+                                }
+                                PanelButton {
+                                    text: "Export...";
+                                    accessible-label: "Export recipe";
+                                    clicked => { RecipeView.export-asked(); }
+                                }
+                                PanelButton {
+                                    text: "Copy as text";
+                                    accessible-label: "Copy recipe as text";
+                                    clicked => {
+                                        clip.select-all();
+                                        clip.copy();
+                                        RecipeView.note = "Copied";
+                                    }
+                                    // Never seen: it has the clipboard.
+                                    clip := TextInput {
+                                        width: 0px;
+                                        height: 0px;
+                                        visible: false;
+                                        enabled: false;
+                                        read-only: true;
+                                        single-line: false;
+                                        text: RecipeView.card;
+                                    }
+                                }
+                                PanelButton {
+                                    text: "Delete";
+                                    accessible-label: "Delete recipe";
+                                    clicked => { RecipeView.asking = true; }
+                                }
+                            }
+                            if RecipeView.asking: HorizontalLayout {
+                                alignment: start;
+                                spacing: Theme.space-2;
+                                Label {
+                                    accessible-role: AccessibleRole.text;
+                                    max-width: root.value-width;
+                                    text: "Delete " + RecipeView.name + "?";
+                                }
+                                PanelButton {
+                                    text: "Cancel";
+                                    init => { self.focus(); }
+                                    clicked => { RecipeView.asking = false; }
+                                }
+                                PanelButton {
+                                    text: "Delete";
+                                    accessible-label: "Delete recipe for good";
+                                    primary: true;
+                                    clicked => { RecipeView.deleted(); }
+                                }
+                            }
+                            Words {
+                                width: min(root.card-width, card.visible-width - 2 * Theme.space-5 - Theme.scrollbar-band);
+                                text: "Set these values on the camera in Image Control, then save them in Custom 1 to 3. Monocard does not change the camera.";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

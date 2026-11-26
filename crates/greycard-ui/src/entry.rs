@@ -91,7 +91,14 @@ pub(crate) fn install(app: &App) {
     let entry = app.global::<Typing>();
     entry.on_editable(|shown| editable(shown.as_str()).into());
     entry.on_parse(|text, scale, minimum, maximum| {
-        match parse(text.as_str(), scale, minimum, maximum) {
+        let value = parse(text.as_str(), scale, minimum, maximum);
+        // The paper grade is typed as it shows: 00 is the one under 0.
+        #[cfg(feature = "mono")]
+        let value = value.map(|v| {
+            let under = (minimum, maximum) == (-1.0, 5.0) && text.trim_start().starts_with("00");
+            if under { v - 1.0 } else { v }
+        });
+        match value {
             Some(value) => TypedNumber { ok: true, value },
             None => TypedNumber {
                 ok: false,

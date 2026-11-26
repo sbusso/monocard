@@ -1397,6 +1397,20 @@ export component EditSlider inherits Rectangle {
     // double-click calls `reset` and leaves the value to the owner.
     in property <bool> owner-resets: false;
     callback reset();
+    // What it does, at the pointer after a rest; empty for none.
+    in property <string> tip;
+    if root.tip != "": NameTip {
+        width: 100%;
+        height: 100%;
+        name: root.tip;
+        cut: true;
+        row-hover: ta.has-hover;
+        hover: ta.has-hover;
+        pointer-x: ta.mouse-x;
+        pointer-y: ta.mouse-y;
+        downs: ta.pressed ? 1 : 0;
+    }
+    accessible-description: root.tip;
     accessible-role: slider;
     accessible-label: root.label;
     accessible-value: root.text;

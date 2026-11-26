@@ -34,9 +34,11 @@ Elsewhere, some of these keys do something else. See [Keys](keys.md).
 
 ## Scopes
 
-The scopes stay above the tabs. **Histogram** shows how many pixels are at each level. **Wave** shows the levels across the width of the picture. **Selection** counts only the pixels of the chosen mask, on the Masks tab. Point at the picture to see its level, **L** from 0 to 255.
+The scopes stay above the tabs. **Histogram** shows how many pixels are at each level. **Wave** shows the levels across the width of the picture. **Raw** shows what the sensor recorded, before any edit, in stops under its clip point. **Selection** counts only the pixels of the chosen mask, on the Masks tab. Point at the picture to see its level, **L** from 0 to 255.
 
 ![The histogram at the left and the waveform at the right](images/scopes.webp "Histogram and Wave. The white square says that the picture reaches white")
+
+The numerals over **Raw** are zones, a stop each, with **V** at middle grey. The line under it says how much of the photo clipped, and how many stops its brightest light that did not clip is under the clip point. No slider changes it. A JPEG has no **Raw**.
 
 The squares in the corners of **Histogram** light when the picture reaches black or white. Click one to mark those pixels with lines. **J** turns both marks on or off. They show what the file clips. The [clip map](#highlights) shows what the sensor clipped.
 
@@ -52,6 +54,7 @@ A look sets several controls at once. Click a tile to put it on, and **None** to
 | --- | --- | --- | --- |
 | **Exposure** | -5 to +5 EV | 0 | Brightens or darkens in stops |
 | **Contrast** | -100 to +100 | 0 | Changes contrast around middle grey |
+| **Paper grade** | 00 to 5 | 2 | Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. Middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG |
 | **Blacks** | -100 to +100 | 0 | Lifts or lowers the tones below middle grey |
 | **Midtones** | -100 to +100 | 0 | Lightens or darkens between black and white |
 | **Whites** | -100 to +100 | 0 | The same control as **Shoulder** in [HIGHLIGHTS](#highlights). Positive values compress |

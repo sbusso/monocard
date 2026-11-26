@@ -29,6 +29,8 @@ mod chart;
 pub(crate) mod picture;
 mod profile;
 mod profiles;
+pub(crate) mod raw;
+mod recipes;
 #[cfg(test)]
 mod tests;
 #[cfg(mono_usb)]
@@ -141,6 +143,8 @@ pub(crate) fn set_frame(st: &State, app: &App, monochrome: bool) {
         show_looks(app);
     }
     let color = !monochrome && open.is_some() && COLOR.with_borrow(|c| *c == open);
+    // A raw not decoded yet keeps the scope it will have.
+    mono.set_raw_here(open.is_some() && !picture && !color);
     let note = if color { words::COLOR_PHOTO } else { "" };
     if mono.get_rest_note() != note {
         mono.set_rest_note(note.into());
@@ -1124,8 +1128,7 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, _worker: &Rc<Worker>) {
     picture::install(app);
     #[cfg(mono_usb)]
     camera::install(app, state);
-    #[cfg(not(mono_usb))]
-    let _ = state;
+    recipes::install(app, state);
     show_looks(app);
     refresh(app);
 

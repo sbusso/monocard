@@ -393,6 +393,11 @@ export component MonoPanels inherits VerticalLayout {
             : name == "mono-finish" ? @image-url("../../greycard-slint/ui/icons/stamp.svg")
             : @image-url("../../greycard-slint/ui/icons/layers.svg");
     }
+    // A paper grade's name, as `mono_ui::words::grade` has it.
+    pure function grade(v: float) -> string {
+        let r = round(v * 10);
+        return r < 0 ? "0" + (r + 10) / 10 : r / 10;
+    }
     if Mono.rest-note != "": Rectangle {
         height: rest.preferred-height + 2 * Theme.space-3;
         rest := Note {
@@ -425,7 +430,9 @@ export component MonoPanels inherits VerticalLayout {
                 scale: row.scale;
                 enabled: row.enabled;
                 value <=> row.value;
-                text: (row.minimum < 0 && self.value > 0 ? "+" : "")
+                tip: row.tip;
+                text: row.id == "display.grade" ? root.grade(self.value)
+                    : (row.minimum < 0 && self.value > 0 ? "+" : "")
                     + round(self.value * row.scale * pow(10, row.places)) / pow(10, row.places)
                     + row.unit;
                 changed(v) => { Mono.slid(row.id, v); }

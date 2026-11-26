@@ -502,6 +502,10 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     crate::panel::shares::show(&app, &remembered.shares);
     crate::panel::sizes::show(&app, &remembered);
     app.set_scope(opening_scope(&cli, &remembered).name().into());
+    #[cfg(feature = "mono")]
+    if cli.scope.as_ref().unwrap_or(&remembered.scope) == crate::mono::raw::RAW {
+        app.set_scope(crate::mono::raw::RAW.into());
+    }
     app.set_scope_selection(cli.scope_selection);
     app.set_show_sharpen_mask(cli.sharpen_mask);
     show_overlays(&app, cli.clipping, &remembered);

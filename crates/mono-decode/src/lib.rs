@@ -9,6 +9,7 @@
 
 pub mod geometry;
 pub mod hdr;
+mod histogram;
 pub mod hotpixels;
 mod inpaint;
 mod prepare;

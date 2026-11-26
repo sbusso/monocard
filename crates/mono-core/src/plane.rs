@@ -78,4 +78,26 @@ pub struct MonoFrame {
     /// The picture is already rendered (a camera's JPEG): display light,
     /// which no display transform is run on.
     pub rendered: bool,
+    /// What the sensor recorded, whatever the edit; `None` for a rendered
+    /// picture.
+    pub raw: Option<Arc<RawHistogram>>,
+}
+
+/// The samples of a raw counted by light, before anything is done to them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawHistogram {
+    /// Pixels by stops under the clip point: [`Self::BINS`] over
+    /// [`Self::STOPS`], the first holds what is darker too and the last
+    /// the clipped.
+    pub bins: Vec<u32>,
+    /// The share of the pixels that clipped, 0 to 1.
+    pub clipped: f32,
+    /// Stops from the brightest light that did not clip (its 99.9th
+    /// percentile) to the clip point; `None` when everything clipped.
+    pub headroom: Option<f32>,
+}
+
+impl RawHistogram {
+    pub const BINS: usize = 256;
+    pub const STOPS: f32 = 12.0;
 }

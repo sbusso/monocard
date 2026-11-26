@@ -539,6 +539,7 @@ mod tests {
             iso: Some(800.0),
             white: 1.0,
             rendered: false,
+            raw: None,
         });
         let landed = |image| Landed {
             image,

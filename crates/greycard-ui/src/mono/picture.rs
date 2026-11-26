@@ -54,19 +54,23 @@ pub(super) fn forget(name: &str) {
 pub(super) fn left(app: &App) {
     WANTED.fetch_add(1, Ordering::Relaxed);
     CLIPS_AT.set(None);
+    super::raw::show(app, None);
     if !THUMBS.take().is_empty() {
         super::show_looks(app);
     }
 }
 
-/// A mono develop went up: its thumbnails are made, and its clipping
-/// looked for, on a thread.
+/// A mono develop went up: its raw histogram is shown, its thumbnails are
+/// made, and its clipping looked for, on a thread.
 // Ceiling: the frame whole, with no crop and no masks, and an edit as it
 // was when the develop landed; the next develop makes them again.
 pub(crate) fn went_up(frame: &Arc<MonoFrame>) {
     let Some(weak) = APP.with_borrow(Clone::clone) else {
         return;
     };
+    if let Some(app) = weak.upgrade() {
+        super::raw::show(&app, Some(frame));
+    }
     let (frame, edit) = (frame.clone(), super::HELD.with_borrow(|h| h.edit.clone()));
     let asked = WANTED.fetch_add(1, Ordering::Relaxed) + 1;
     std::thread::spawn(move || {
