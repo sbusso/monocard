@@ -119,8 +119,9 @@
 </table></div>
 <p>Elsewhere, some of these keys do something else. See <a href="keys.html">Keys</a>.</p>
 <h2 id="scopes">Scopes</h2>
-<p>The scopes stay above the tabs. <strong>Histogram</strong> shows how many pixels are at each level. <strong>Wave</strong> shows the levels across the width of the picture. <strong>Selection</strong> counts only the pixels of the chosen mask, on the Masks tab. Point at the picture to see its level, <strong>L</strong> from 0 to 255.</p>
+<p>The scopes stay above the tabs. <strong>Histogram</strong> shows how many pixels are at each level. <strong>Wave</strong> shows the levels across the width of the picture. <strong>Raw</strong> shows what the sensor recorded, before any edit, in stops under its clip point. <strong>Selection</strong> counts only the pixels of the chosen mask, on the Masks tab. Point at the picture to see its level, <strong>L</strong> from 0 to 255.</p>
 <figure><a href="images/scopes.webp"><img src="images/scopes.webp" alt="The histogram at the left and the waveform at the right" width="728" height="170" loading="lazy" decoding="async"></a><figcaption>Histogram and Wave. The white square says that the picture reaches white</figcaption></figure>
+<p>The numerals over <strong>Raw</strong> are zones, a stop each, with <strong>V</strong> at middle grey. The line under it says how much of the photo clipped, and how many stops its brightest light that did not clip is under the clip point. No slider changes it. A JPEG has no <strong>Raw</strong>.</p>
 <p>The squares in the corners of <strong>Histogram</strong> light when the picture reaches black or white. Click one to mark those pixels with lines. <strong>J</strong> turns both marks on or off. They show what the file clips. The <a href="#highlights">clip map</a> shows what the sensor clipped.</p>
 <h2 id="look">LOOK</h2>
 <p>A look sets several controls at once. Click a tile to put it on, and <strong>None</strong> to take it off. <strong>Strength</strong> goes from 0 to 100%. See <a href="looks.html">Looks</a>.</p>
@@ -147,6 +148,12 @@
 <td>-100 to +100</td>
 <td>0</td>
 <td>Changes contrast around middle grey</td>
+</tr>
+<tr>
+<td><strong>Paper grade</strong></td>
+<td>00 to 5</td>
+<td>2</td>
+<td>Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. Middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG</td>
 </tr>
 <tr>
 <td><strong>Blacks</strong></td>

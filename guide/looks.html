@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0f0f0f">
-<meta name="description" content="A look sets several controls of the Develop tab at once. This chapter covers the bundled looks, your own looks, and the picture modes of a Ricoh GR.">
+<meta name="description" content="A look sets several controls of the Develop tab at once. This chapter covers the bundled looks, your own looks, the picture modes of a Ricoh GR, and recipes.">
 <link rel="canonical" href="https://sbusso.github.io/monocard/guide/looks.html">
 <title>Looks: Monocard user guide</title>
 <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
@@ -62,12 +62,13 @@
         <li><a href="#save-your-own-look">Save your own look</a></li>
         <li><a href="#the-cameras-picture-modes">The camera's picture modes</a></li>
         <li><a href="#measure-the-sensors-noise">Measure the sensor's noise</a></li>
+        <li><a href="#recipes">Recipes</a></li>
       </ul>
     </nav>
   </div>
   <main id="main" class="guide-text">
 <h1 id="looks">Looks</h1>
-<p>A look sets several controls of the <a href="develop.html">Develop</a> tab at once. This chapter covers the bundled looks, your own looks, and the picture modes of a Ricoh GR.</p>
+<p>A look sets several controls of the <a href="develop.html">Develop</a> tab at once. This chapter covers the bundled looks, your own looks, the picture modes of a Ricoh GR, and recipes.</p>
 <h2 id="put-a-look-on">Put a look on</h2>
 <p>Click a tile in the <strong>LOOK</strong> panel. Each tile shows the open photo under that look. A look replaces the one before it. <strong>None</strong> takes it off and puts its controls back.</p>
 <p><strong>Strength</strong> fades the look, from 0 to 100%. The controls hold the values of the look, so you can change any of them afterward.</p>
@@ -279,6 +280,7 @@ amount = 0.25
 <p>Under <strong>TEST CHART</strong>, <strong>Test chart</strong> fills the screen with 40 grey steps over 10 stops. <strong>Save chart...</strong> saves it as a picture. The page says how to photograph it.</p>
 <h3 id="start-from-the-cameras-mode">Start from the camera's mode</h3>
 <p>In <strong>Settings...</strong>, <strong>Editing</strong>, turn on <strong>Start from the camera's mode</strong>. A raw with no edit then starts from the look that you fitted to its mode. The setting is off by default.</p>
+<p>The photo's own settings, such as Key and Contrast, then go over the look. A photo shot at the mode's defaults gets nothing more. Each setting moves one tool: Key moves Exposure, and Contrast moves Contrast. The size of each step is a first guess for now. Toning, grain, and HDR Tone level are not put on yet.</p>
 <h2 id="measure-the-sensors-noise">Measure the sensor's noise</h2>
 <p>Take flat frames, evenly lit, and dark frames, with the lens cap on, a few at each ISO. Dark frames of one second or longer are for hot pixels.</p>
 <ol>
@@ -286,6 +288,53 @@ amount = 0.25
 <li>Choose the folder of the frames.</li>
 </ol>
 <p>A report shows the result. Monocard keeps the profile in the <code>cameras</code> folder beside <code>looks-mono</code>, and uses it from the next develop. No look changes.</p>
+<h2 id="recipes">Recipes</h2>
+<p>A recipe is the picture settings of the Ricoh GR IV Monochrome: a mode of Image Control and its parameters. Monocard keeps recipes to look at, compare, and set on the camera. A recipe does not change a photo or the camera. To develop a raw like a mode, use <a href="#the-cameras-picture-modes">a look</a>.</p>
+<p>To open the book, go to the grid, click <strong>Import...</strong> in the left pane, and choose <strong>Recipes...</strong>.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Button</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>From this photo</strong></td>
+<td>Makes a recipe from the settings that the open photo records. If the book has a recipe with the same settings, Monocard chooses that one</td>
+</tr>
+<tr>
+<td><strong>New</strong></td>
+<td>Makes a recipe of Standard with the default settings</td>
+</tr>
+<tr>
+<td><strong>Import...</strong></td>
+<td>Adds a recipe from a <code>.toml</code> file. A name that is in use is refused</td>
+</tr>
+<tr>
+<td><strong>Compare with</strong></td>
+<td>Shows the values of a second recipe. Rows with another value say <strong>Differs</strong></td>
+</tr>
+<tr>
+<td><strong>Duplicate</strong>, <strong>Export...</strong>, <strong>Delete</strong></td>
+<td>Copies the recipe, writes it to a file in a folder, or deletes it</td>
+</tr>
+<tr>
+<td><strong>Copy as text</strong></td>
+<td>Puts the settings on the clipboard as plain text</td>
+</tr>
+</tbody>
+</table></div>
+<p>The rows are in the order of the camera's menu. A recipe has only the settings of its mode. When you choose another <strong>Mode</strong>, the settings that both modes have keep their values, and the others take their defaults. Changes are saved as you make them.</p>
+<p>To use a recipe, set its values on the camera in Image Control, then save them in Custom 1 to 3.</p>
+<p>The notes of a recipe from a photo start with the ISO, and with the red filter if it was on.</p>
+<p>What is not certain:</p>
+<ul>
+<li>Ricoh does not publish which mode has which setting, the ranges, or the defaults. Monocard uses what others report.</li>
+<li>The names of the tonings and of the HDR Tone levels are reported too. No photo with a toning, or with a level other than <strong>High</strong>, was seen.</li>
+<li>The meaning of the recorded grain is known in part. <strong>Recorded</strong> and two numbers, or <strong>Grainy default</strong>, is what the photo says. If you choose a size, that value is replaced.</li>
+</ul>
+<p>Each recipe is a file in the <code>recipes</code> folder beside <code>looks-mono</code>. A setting out of range is set to the nearest end. A file with an unknown mode, toning, or level is refused.</p>
     <nav class="guide-next" aria-label="Chapters"><a href="develop.html" rel="prev">← Develop</a><a href="masks.html" rel="next">Masks →</a></nav>
   </main>
 </div>
