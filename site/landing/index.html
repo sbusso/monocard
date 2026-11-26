@@ -186,7 +186,7 @@
         <p>Dodge and burn by zone. The tone equalizer has nine zones, from −8&nbsp;EV to 0&nbsp;EV, and follows edges, to avoid halos. The curve and the LIGHT sliders stay on screen.</p>
         <dl class="spec">
           <div><dt>LIGHT</dt><dd>Nine sliders, one a stop, from <span class="fig">−8&nbsp;EV</span> to <span class="fig">0&nbsp;EV</span>. A zone mask. The zone view switch.</dd></div>
-          <div><dt>BASIC</dt><dd>Exposure, contrast, blacks, midtones, whites. Display transform: sigmoid or AgX.</dd></div>
+          <div><dt>BASIC</dt><dd>Exposure, contrast, paper grade 00 to 5, blacks, midtones, whites. Display transform: sigmoid or AgX. On a color photo, a black and white film filter.</dd></div>
           <div><dt>Curve</dt><dd>Drawn over the histogram. Presets: linear, soft S, strong S, lifted, faded.</dd></div>
         </dl>
       </div>
@@ -236,6 +236,7 @@
         <p>Clipped light is lost. A monochrome sensor has no other channel to take it from. Monocard shows what the sensor clipped and shapes the way into white.</p>
       </div>
       <dl class="spec">
+        <div><dt>Raw histogram</dt><dd>The sensor’s own values, and how much of the picture it clipped.</dd></div>
         <div><dt>Clip map</dt><dd>Key <kbd>C</kbd> marks what the sensor clipped, apart from what the display clips.</dd></div>
         <div><dt>Shoulder</dt><dd>A roll-off into white under the clip point.</dd></div>
         <div><dt>Bracket merge</dt><dd>Merges 2 to 5 frames of one scene to keep more range.</dd></div>
@@ -336,7 +337,7 @@
     <div class="head head-fig">
       <div class="head-main">
         <h2><span class="num" aria-hidden="true">VIII</span>Camera modes</h2>
-        <p>The camera’s own picture modes, as looks. Monocard reads the mode from the file. Each mode is fitted from pairs of a raw and the camera’s JPEG, and kept in a profile table with a test chart.</p>
+        <p>The camera’s own picture modes, as looks. Monocard reads the mode and its settings from the file. Each mode is fitted from pairs of a raw and the camera’s JPEG, and kept in a profile table with a test chart. A recipe book keeps the camera’s settings: make a recipe from a photo, compare two, and copy one as text to set on the camera.</p>
         <table class="tbl tbl-modes">
           <caption class="vh">State of each camera mode</caption>
           <thead><tr><th scope="col">Mode</th><th scope="col">State</th></tr></thead>

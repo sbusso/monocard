@@ -35,19 +35,22 @@ Windows versions are for 64-bit Intel and AMD. They are new and have had little 
 - **Color photos in grey.** A color raw or JPEG opens in grey, mixed through a black and
   white film filter: none, yellow, orange, red, green, or blue. Then the looks and tools work
   on it. A setting hides color photos.
-- **Light and curve.** Sliders for light, and a curve that is always in view. Sigmoid or AgX
-  as the display transform.
+- **Light and curve.** Sliders for light, a paper grade from 00 to 5 as darkroom paper, and
+  a curve that is always in view. Sigmoid or AgX as the display transform.
 - **Zones.** A view of the picture in zones 0 to X, and a tone equalizer of nine zones that
   keeps to edges.
-- **Highlights.** A map of what the sensor clipped, a shoulder into white, and a merge of
-  brackets.
+- **Highlights.** A raw histogram of the sensor's own values, a map of what the sensor
+  clipped, a shoulder into white, and a merge of brackets.
 - **Detail.** Profiled and wavelet denoise that can keep some of the sensor's grain, local
   contrast, a contrast equalizer, and deblurring.
 - **Looks.** Ten looks that stay editable: Street, Hard, Soft Print, Night Push, High Key,
   Selenium, Warm Fibre, and Solar 1 to 3. Grain, toning, vignette, and solarize. A look is a
   small text file.
 - **The camera's picture modes.** Monocard reads the mode that a Ricoh GR recorded in the
-  file. It can fit a mode's look from pairs of DNG and JPEG that you shot.
+  file, and its settings, such as Key and Contrast. It can fit a mode's look from pairs of
+  DNG and JPEG that you shot.
+- **Recipe book.** Keeps the camera's picture settings. Make a recipe from a photo, compare
+  two, import, export, and copy one as text to set on the camera.
   [How well it fits](../docs/monocard/picture-controls.md).
 - **Masks.** Brush, gradient, luminance, subject, and sky. Each one drives the same tone
   tools.

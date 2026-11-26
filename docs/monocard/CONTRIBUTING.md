@@ -75,6 +75,19 @@ The Mac's disk image is made on a Mac, from the same commit:
 scripts/monocard-package.sh --dmg
 ```
 
+Each release keeps these in step, in the release's commit:
+
+1. The version: `VERSION` in `crates/greycard-core/src/brand.rs`. A minor step for new
+   features, a patch step for fixes.
+2. The changelog: an article for the version in `site/landing/changelog.html`.
+3. The landing page: the version and the date in `site/landing/index.html`, and each new
+   feature in its section.
+4. The user guide in `docs/monocard/guide/`: each new control, setting, and menu item.
+5. The feature list in `.github/README.md` and the state in `STATUS.md`.
+
+Then tag `monocard-vX.Y.Z`, publish the GitHub release with the four files and their
+checksums, and publish the website.
+
 ## Website
 
 The website and the user guide are on the branch `gh-pages`. They need no test and no
