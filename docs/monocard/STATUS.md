@@ -53,17 +53,19 @@ A 4 GB PC GPU was not tried.
 - Darktable's curve is left for our own roll-off in the last 1.5 stops under the clip point,
   so that clipped light reaches paper white.
 - The contrast equalizer, diffuse, midtones, blacks, and whites do not take a mask.
-- Color photos are not listed, imported, or opened, and their files are left alone. No
-  color tool is offered anywhere in the window. A raw that is not a DNG counts as color. A
-  raw's JPEG goes with its raw.
+- Color photos are listed and develop in grey: Greycard's color develop at the open, with
+  the camera's white balance, then a mix through a filter (None, Yellow, Orange, Red, Green,
+  Blue; draft weights) in `mono_decode::prepare`. **Hide color photos** in Settings leaves
+  them out, read at the start. No color tool is offered anywhere in the window. A raw that
+  is not a DNG counts as color. A raw's JPEG goes with its raw. The lens opcodes and the clip
+  map of a color raw are not carried. The grid's camera previews are grey by luma, with no
+  filter.
 - A JPEG, PNG, or TIFF is listed when its header names a monochrome camera or it has one
   channel. It is edited on one channel with the six panels. No display transform runs on it,
   because the camera already rendered it, so with no edit it is the camera's picture. Hot
   pixel repair and the camera profile do not apply to it.
-- A grey picture from another camera or a scanner, kept in three channels, counts as color
-  and is not listed.
-- A monochrome camera's JPEG with a color tone in it (sepia, for example) is listed and
-  shown, and cannot be edited.
+- A grey picture from another camera or a scanner, kept in three channels, counts as color.
+- A monochrome camera's JPEG with a color tone in it (sepia, for example) counts as color.
 - The color labels of culling, and the plus and minus dots of the Object mask, keep their colors.
 - The `monocard develop` command keeps Greycard's color options for color files.
 - The mono panel's text is English only.

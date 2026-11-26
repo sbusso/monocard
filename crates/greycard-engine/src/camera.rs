@@ -35,6 +35,17 @@ fn camera_picture_sized(
     path: &Path,
     long_edge: Option<u32>,
 ) -> anyhow::Result<(image::RgbImage, Orientation)> {
+    #[allow(unused_mut)]
+    let (mut rgb, orientation) = camera_picture_read(path, long_edge)?;
+    #[cfg(feature = "mono")]
+    crate::mono::grey_shown(&mut rgb);
+    Ok((rgb, orientation))
+}
+
+fn camera_picture_read(
+    path: &Path,
+    long_edge: Option<u32>,
+) -> anyhow::Result<(image::RgbImage, Orientation)> {
     #[cfg(any(test, feature = "testing"))]
     FILE_READS
         .lock()

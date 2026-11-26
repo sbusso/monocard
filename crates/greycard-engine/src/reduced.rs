@@ -231,6 +231,8 @@ fn open(path: &Path) -> anyhow::Result<Input> {
     // The decode's camera frame is the last word for the keys
     // (`edited_pictures::note_decoded`).
     crate::edited_pictures::note_decoded(path, frame.shot.camera_frame);
+    #[cfg(feature = "mono")]
+    let frame = crate::mono::opened(frame)?;
     Ok(Input::Raw(Arc::new(frame)))
 }
 

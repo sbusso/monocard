@@ -31,8 +31,10 @@ Windows versions are for 64-bit Intel and AMD. They are new and have had little 
 ## What it does
 
 - **One channel.** No demosaic, no white balance, and no color conversion. A monochrome
-  camera's JPEG is edited with the same tools. Color photos are not listed, and their files
-  are left alone.
+  camera's JPEG is edited with the same tools.
+- **Color photos in grey.** A color raw or JPEG opens in grey, mixed through a black and
+  white film filter: none, yellow, orange, red, green, or blue. Then the looks and tools work
+  on it. A setting hides color photos.
 - **Light and curve.** Sliders for light, and a curve that is always in view. Sigmoid or AgX
   as the display transform.
 - **Zones.** A view of the picture in zones 0 to X, and a tone equalizer of nine zones that

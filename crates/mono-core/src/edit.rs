@@ -100,7 +100,62 @@ pub struct Basic {
     pub contrast: f32,
     pub blacks: f32,
     pub midtones: f32,
+    /// The color filter a color photo is mixed to grey through. Nothing
+    /// to a monochrome one.
+    #[serde(skip_serializing_if = "Filter::is_none")]
+    pub filter: Filter,
     // Whites is `Highlights::shoulder`: one control, two sliders.
+}
+
+/// A black and white film photographer's color filter, as a mix of the
+/// three channels of a color photo, linear Rec.2020.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Filter {
+    /// The lightness the eye sees: Rec.2020's luminance.
+    #[default]
+    None,
+    Yellow,
+    Orange,
+    Red,
+    Green,
+    Blue,
+}
+
+impl Filter {
+    pub const ALL: [Filter; 6] = [
+        Filter::None,
+        Filter::Yellow,
+        Filter::Orange,
+        Filter::Red,
+        Filter::Green,
+        Filter::Blue,
+    ];
+
+    pub fn is_none(&self) -> bool {
+        *self == Filter::None
+    }
+
+    /// Red, green and blue's parts, adding up to 1: the luminance's,
+    /// each times how much of that channel the filter lets through.
+    /// A grey stays the same grey through any filter.
+    // Ceiling: the transmissions are a draft of the usual Wratten filters
+    // on three wide bands (yellow 8, orange 21, red 25, green 11, blue
+    // 47), not a filter's measured curve on a camera's sensitivities.
+    pub fn weights(self) -> [f32; 3] {
+        const LUMINANCE: [f32; 3] = [0.2627, 0.6780, 0.0593];
+        let through = match self {
+            Filter::None => [1.0, 1.0, 1.0],
+            Filter::Yellow => [1.0, 0.95, 0.35],
+            Filter::Orange => [1.0, 0.7, 0.15],
+            Filter::Red => [1.0, 0.25, 0.05],
+            Filter::Green => [0.4, 1.0, 0.35],
+            Filter::Blue => [0.15, 0.35, 1.0],
+        };
+        let w = [0, 1, 2].map(|c| LUMINANCE[c] * through[c]);
+        let sum: f32 = w.iter().sum();
+        w.map(|v| v / sum)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]

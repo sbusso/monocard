@@ -129,7 +129,7 @@ What to do instead of a develop command:
 | Import without a window: scan, copy, read back, names, backup, preset | `crates/greycard-ui/src/import.rs` (`scan`, `run`, `land_with`) |
 | Card search, through mounted disks with a `DCIM` folder | `import.rs` (`volumes`, `find_card`) |
 | "Already imported" rule: size, first 64 KiB, last 64 KiB | `crates/greycard-library/src/hash.rs` (`hash_bytes`), `import.rs` (`hash_tail`) |
-| Color photos left out | `greycard_library::monochrome::kept`, called by `import::scan` |
+| Color photos left out when hidden | `greycard_library::monochrome::kept`, called by `import::scan` |
 | Folder watcher, new files appear in the grid | `crates/greycard-library/src/roots.rs` |
 | HTTP client | `ureq`, already in `crates/greycard-ui/Cargo.toml` |
 | Apple bindings | `objc2` 0.6, already in `crates/greycard-ui/Cargo.toml` |

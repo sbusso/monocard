@@ -4,7 +4,7 @@ The Library shows your photos as a grid. This chapter describes how to open fold
 
 ## Which photos are listed
 
-Monocard lists monochrome photos only. Color photos are not listed, counted, or opened, and their files stay as they are. When a folder has no monochrome photos, the status line says so. For the exact rule, see [Which photos are listed](index.md#which-photos-are-listed).
+Monocard lists monochrome photos, and color photos in grey. With **Hide color photos** on, color photos are not listed, counted, or opened, and when a folder has no monochrome photos, the status line says so. For the exact rule, see [Which photos are listed](index.md#which-photos-are-listed).
 
 A DNG and a JPEG with the same name in the same folder are one photo. The photo has the mark **+JPEG**, and one rating, flag, label, and set of keywords. To list the JPEG as its own photo, turn on **Treat a JPEG beside its raw as a separate frame** in [Settings](settings.md#library).
 

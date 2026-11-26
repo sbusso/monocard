@@ -1427,6 +1427,8 @@ mod tests {
                 #[cfg(feature = "mono")]
                 mono_start_mode: true,
                 #[cfg(feature = "mono")]
+                mono_hide_color: true,
+                #[cfg(feature = "mono")]
                 mono_fit_folders: vec!["/home/x/chart".into()],
                 last_file: "/home/x/Pictures/IMG_0001.CR3".into(),
                 author: "Zoë Ångström".into(),

@@ -8,7 +8,7 @@ use crate::curve;
 use crate::looks;
 use crate::state::{MonoUiState, Proof, Split, Surround, ZONE_COUNT};
 use crate::words;
-use mono_core::edit::{DenoiseMode, DiffusePreset, SolarizeKind, Toning, Transform};
+use mono_core::edit::{DenoiseMode, DiffusePreset, Filter, SolarizeKind, Toning, Transform};
 use mono_core::{MonoEdit, MonoLocal};
 use mono_look::TonePreset;
 use std::collections::BTreeSet;
@@ -81,6 +81,8 @@ pub const MASK: &str = "mono-mask";
 
 /// The paper grade's slider, which has words for its numbers.
 const GRADE: &str = "display.grade";
+/// The color filter, on show for a color photo alone.
+const FILTER: &str = "basic.filter";
 
 /// The panels' names in pipeline order.
 pub const NAMES: [&str; 6] = [
@@ -272,6 +274,15 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
         E(button("look.import", "Import look or preset")),
     ];
     let mut basic = vec![
+        E(control(
+            FILTER,
+            "Filter",
+            Kind::Choice {
+                options: &["None", "Yellow", "Orange", "Red", "Green", "Blue"],
+                get: |e: &MonoEdit| index(&Filter::ALL, &e.basic.filter),
+                set: |e, i| e.basic.filter = Filter::ALL[i.min(Filter::ALL.len() - 1)],
+            },
+        )),
         E(slider!(
             "basic.exposure",
             "Exposure",
@@ -866,6 +877,7 @@ pub fn rows(name: &str, e: &MonoEdit, s: &MonoUiState, open: &BTreeSet<String>) 
             Row::Edit(c) => view(c, e, &d, open),
             Row::View(c) => view(c, s, &ds, open),
         })
+        .filter(|r| r.id != FILTER || s.color)
         .map(|mut r| {
             if r.id == "solarize.kind" && e.solarize.nodes.is_none() {
                 r.options = &r.options[..4];
@@ -1284,6 +1296,22 @@ mod tests {
             assert_eq!((s.get)(&l), want, "{}", c.id);
             assert!(describe_mask(&MonoLocal::default(), &l).is_some());
         }
+    }
+
+    /// The filter is on show for a color photo alone.
+    #[test]
+    fn the_filter_is_a_color_photos() {
+        let e = MonoEdit::default();
+        let shown = |color| {
+            let s = MonoUiState {
+                color,
+                ..MonoUiState::default()
+            };
+            rows("mono-basic", &e, &s, &BTreeSet::new())
+                .iter()
+                .any(|r| r.id == FILTER)
+        };
+        assert!(shown(true) && !shown(false));
     }
 
     #[test]

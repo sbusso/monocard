@@ -48,6 +48,10 @@ pub(crate) fn main() -> Result<std::process::ExitCode> {
     // By the program, not the feature: the mono build's tests also run the
     // one named greycard, on color files.
     greycard_library::monochrome::only(env!("CARGO_BIN_NAME").starts_with("monocard"));
+    #[cfg(feature = "mono")]
+    greycard_library::monochrome::colors(
+        !greycard_engine::settings::Shared::load().mono_hide_color,
+    );
     let cli = Cli::parse();
     // A launch with a path alone, or with nothing, hands it to the
     // editor this user has running, and ends. Before the log starts,
@@ -2591,6 +2595,8 @@ fn merged(
                 #[cfg(feature = "mono")]
                 mono_start_mode,
                 #[cfg(feature = "mono")]
+                mono_hide_color,
+                #[cfg(feature = "mono")]
                 mono_fit_folders,
                 author,
                 copyright,
@@ -2693,6 +2699,7 @@ fn merged(
     #[cfg(feature = "mono")]
     {
         settings.shared.mono_start_mode = mono_start_mode;
+        settings.shared.mono_hide_color = mono_hide_color;
         settings.shared.mono_fit_folders = mono_fit_folders;
     }
     settings.shared.author = author;
@@ -2867,6 +2874,8 @@ pub(crate) fn remember(app: &App) -> settings::Settings {
             lens_on_new: true,
             #[cfg(feature = "mono")]
             mono_start_mode: false,
+            #[cfg(feature = "mono")]
+            mono_hide_color: false,
             #[cfg(feature = "mono")]
             mono_fit_folders: Vec::new(),
             last_file: String::new(),

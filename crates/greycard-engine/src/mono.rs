@@ -22,7 +22,7 @@ use greycard_edit::retouch::{Method, Patch, Retouch};
 use greycard_edit::{Edit, Lens};
 use greycard_render::export;
 use mono_core::edit::{
-    CameraSteps, ContrastEq, Denoise, DenoiseMode, Diffuse, LocalContrast, ToneEq,
+    CameraSteps, ContrastEq, Denoise, DenoiseMode, Diffuse, Filter, LocalContrast, ToneEq,
 };
 use mono_core::{MonoEdit, MonoFrame, Plane, RawHistogram};
 pub use mono_decode::camera;
@@ -44,8 +44,9 @@ use crate::worker::LearnedReport;
 /// kept point is of one frame.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
-    /// Samples to the plane and its clip map.
-    Prepare,
+    /// Samples to the plane and its clip map; a color photo's mixed
+    /// through the filter.
+    Prepare(Filter),
     /// Both reduced by a whole factor, for the edit's pictures.
     Reduce(usize),
     /// The threshold; none is the profile's for the ISO.
@@ -74,7 +75,7 @@ pub enum Op {
 impl Op {
     pub fn name(&self) -> &'static str {
         match self {
-            Op::Prepare => "prepare",
+            Op::Prepare(_) => "prepare",
             Op::Reduce(_) => "reduce",
             Op::RawWavelet(_) => "raw denoise",
             Op::Denoise(_) => "denoise",
@@ -239,7 +240,7 @@ pub(crate) fn stages(
     let mut s = Steps::default();
     let op = |s: &mut Steps, op: Op| s.steps.push(Step::Op(Stage::Mono(op)));
     let keep = |s: &mut Steps, k: Keep| s.steps.push(Step::Keep(k));
-    op(&mut s, Op::Prepare);
+    op(&mut s, Op::Prepare(mono.basic.filter));
     let denoise = mono.denoise;
     if reduced {
         if bin > 1 {
@@ -544,17 +545,18 @@ pub fn start(path: &Path, frame: &RawFrame) -> Option<Box<MonoEdit>> {
 
 /// The mono section the file at `path` is developed under: `edit`'s, or
 /// where it has none the frame's [`start`] for one nothing was done to
-/// (`fresh`) and the default for the rest. None for a color raw, and for a
-/// file that does not read.
+/// (`fresh`) and the default for the rest. A color photo's starts from the
+/// default in Monocard, and has none in the mono build's other programs.
+/// None for a file that does not read.
 // Ceiling: the file is decoded whole for its layout and camera.
 pub fn section_of(path: &Path, edit: &Edit, fresh: bool) -> Option<Box<MonoEdit>> {
+    let ours = greycard_library::monochrome::is_only();
     if greycard_core::picture::is_picture_path(path) {
-        return greycard_core::picture::is_monochrome(path)
-            .ok()?
+        return (greycard_core::picture::is_monochrome(path).ok()? || ours)
             .then(|| edit.mono.clone().unwrap_or_default());
     }
     let frame = greycard_core::decode::decode_path(path).ok()?;
-    if !mono_decode::is_mono(&frame.layout) {
+    if !mono_decode::is_mono(&frame.layout) && !ours {
         return None;
     }
     let section = edit.mono.clone();
@@ -567,28 +569,28 @@ pub fn section_of(path: &Path, edit: &Edit, fresh: bool) -> Option<Box<MonoEdit>
 }
 
 /// The picture at `path` read as [`frame_of`], with its metadata; none for
-/// a color one.
+/// a color one outside Monocard.
 pub fn picture(path: &Path) -> anyhow::Result<Option<(RawFrame, RawMetadata)>> {
     let picture = greycard_core::picture::decode_picture_path(path)?;
     Ok(frame_of(path, &picture).map(|f| (f, picture.metadata)))
 }
 
-/// The picture read from `path` as a frame of one channel: a monochrome
-/// camera's JPEG, edited as its raw is but for what is a sensor's
-/// ([`Rendered`]). None for a color picture, by its header
+/// The picture read from `path` as a frame: a monochrome camera's JPEG as
+/// one channel, edited as its raw is but for what is a sensor's
+/// ([`Rendered`]). A color picture, by its header
 /// (`picture::is_monochrome`) or, in one the camera or an export toned, by
-/// its pixels.
+/// its pixels, is a [`color_picture`] in Monocard, and none in the mono
+/// build's other programs, which develop it in color.
 pub(crate) fn frame_of(path: &Path, picture: &Picture) -> Option<RawFrame> {
-    if !greycard_core::picture::is_monochrome(path).unwrap_or(false) {
-        return None;
-    }
     let image = &picture.image;
     let grey = |p: &[f32]| {
         let (lo, hi) = (p[0].min(p[1]).min(p[2]), p[0].max(p[1]).max(p[2]));
         hi - lo <= 1e-4 + 1e-3 * hi
     };
-    if !image.data.par_chunks(3).all(grey) {
-        return None;
+    if !greycard_core::picture::is_monochrome(path).unwrap_or(false)
+        || !image.data.par_chunks(3).all(grey)
+    {
+        return greycard_library::monochrome::is_only().then(|| color_picture(picture));
     }
     // Ceiling: a float file's light over white is held to white.
     let data = image.data.par_chunks(3).map(|p| {
@@ -624,6 +626,107 @@ pub(crate) fn frame_of(path: &Path, picture: &Picture) -> Option<RawFrame> {
             ..Default::default()
         },
     })
+}
+
+/// A color picture as a frame of three channels that the develop mixes to
+/// one ([`DngTags::from_color`]).
+fn color_picture(picture: &Picture) -> RawFrame {
+    let image = &picture.image;
+    let mut frame = color_of(
+        picture.make.clone(),
+        picture.model.clone(),
+        image.width,
+        image.height,
+        image.data.clone(),
+    );
+    frame.shot = picture.shot.clone();
+    frame.dng.rendered = Some(Rendered {
+        space: picture.space.clone(),
+        bits: picture.bits,
+    });
+    frame
+}
+
+/// In Monocard, sRGB bytes of a camera's preview or a picture as grey: a
+/// color photo shows as grey before it is developed.
+// Ceiling: Rec.709 luma of the encoded values, with no filter. The develop
+// mixes in linear light through the edit's filter. Upgrade path: the same
+// mix on linearized values, once a thumbnail knows its edit.
+pub(crate) fn grey_shown(rgb: &mut [u8]) {
+    if !greycard_library::monochrome::is_only() {
+        return;
+    }
+    rgb.par_chunks_mut(3).for_each(|p| {
+        let y = 0.2126 * f32::from(p[0]) + 0.7152 * f32::from(p[1]) + 0.0722 * f32::from(p[2]);
+        let y = y.round().clamp(0.0, 255.0) as u8;
+        p.fill(y);
+    });
+}
+
+/// A decoded raw as Monocard develops it: a monochrome one as it is, a
+/// color one as a [`color_frame`]. The mono build's other programs develop
+/// it in color.
+pub(crate) fn opened(frame: RawFrame) -> anyhow::Result<RawFrame> {
+    if mono_decode::is_mono(&frame.layout) || !greycard_library::monochrome::is_only() {
+        Ok(frame)
+    } else {
+        color_frame(&frame)
+    }
+}
+
+/// A color raw as a frame of three channels that the develop mixes to one
+/// ([`DngTags::from_color`]): demosaiced, balanced as shot, and in the
+/// working space by Greycard's develop, once, at the open.
+// Ceiling: the file's lens opcodes and its clip map are not carried, and
+// the noise is measured again on the mix. Upgrade path: carry them from
+// the color develop.
+pub fn color_frame(frame: &RawFrame) -> anyhow::Result<RawFrame> {
+    let settings = greycard_core::develop::DevelopSettings {
+        orientation: Some(Orientation::Normal),
+        ..Default::default()
+    };
+    let image = greycard_core::develop::develop(frame, &settings)?.image;
+    let mut out = color_of(
+        frame.make.clone(),
+        frame.model.clone(),
+        image.width,
+        image.height,
+        image.data,
+    );
+    out.other_names = frame.other_names.clone();
+    out.orientation = frame.orientation;
+    out.shot = frame.shot.clone();
+    out.dng.baseline_exposure = Some(greycard_edit::baseline::for_frame(frame));
+    out.dng.camera_serial = frame.dng.camera_serial.clone();
+    Ok(out)
+}
+
+fn color_of(make: String, model: String, width: usize, height: usize, rgb: Vec<f32>) -> RawFrame {
+    RawFrame {
+        make,
+        model,
+        other_names: Vec::new(),
+        width,
+        height,
+        channels: 3,
+        layout: SensorLayout::Linear,
+        samples: Samples::F32(rgb),
+        levels: Levels {
+            black: LevelPattern::uniform(0.0, 3),
+            white: LevelPattern::uniform(1.0, 3),
+            black_deltas: None,
+            saturation: None,
+        },
+        as_shot_coefficients: Some([1.0; 3]),
+        calibrations: Vec::new(),
+        crop: None,
+        orientation: Orientation::Normal,
+        shot: Default::default(),
+        dng: DngTags {
+            from_color: true,
+            ..Default::default()
+        },
+    }
 }
 
 /// `frame` developed under `edit` with no window, no model and nothing
@@ -820,6 +923,11 @@ pub(crate) fn corrections(
 
 /// The plane of `frame`, from nothing.
 pub(crate) fn prepare(frame: &RawFrame) -> Result<Mono, String> {
+    prepare_with(frame, Filter::None)
+}
+
+/// [`prepare`], a color photo mixed through `filter`.
+fn prepare_with(frame: &RawFrame, filter: Filter) -> Result<Mono, String> {
     let profiles = profiles();
     let camera = mono_decode::camera(frame);
     // A profile is of a sensor's samples: nothing in it is a rendered
@@ -832,6 +940,7 @@ pub(crate) fn prepare(frame: &RawFrame) -> Result<Mono, String> {
         &mono_decode::PrepareOptions {
             defects,
             hot_pixels: (!rendered).then(Default::default),
+            mix: filter.weights(),
         },
     )
     .map_err(|e| e.to_string())?;
@@ -878,7 +987,7 @@ fn baseline(frame: &RawFrame) -> f32 {
 /// `op` on the plane.
 pub(crate) fn run(op: &Op, m: &mut Mono, on: On<'_>) -> Result<(), String> {
     match op {
-        Op::Prepare => *m = prepare(on.frame)?,
+        Op::Prepare(filter) => *m = prepare_with(on.frame, *filter)?,
         Op::Reduce(bin) => {
             m.set(greycard_render::mono::reduced(&m.plane, *bin));
             m.clip = Arc::new(greycard_render::mono::reduced(&m.clip, *bin));
@@ -989,7 +1098,7 @@ pub(crate) fn run(op: &Op, m: &mut Mono, on: On<'_>) -> Result<(), String> {
 /// What `op` says of the picture, for the walk's [`Meta`].
 pub(crate) fn measured(op: &Op, m: &Mono, meta: &mut Meta) {
     match op {
-        Op::Prepare => meta.full = (m.plane.width as u32, m.plane.height as u32),
+        Op::Prepare(_) => meta.full = (m.plane.width as u32, m.plane.height as u32),
         Op::Reduce(bin) => meta.bin = *bin,
         Op::Opcodes => meta.clip_level = m.white,
         Op::Orient(o) if stages::swaps(*o) => meta.full = (meta.full.1, meta.full.0),

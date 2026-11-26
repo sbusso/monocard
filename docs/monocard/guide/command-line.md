@@ -13,7 +13,7 @@ The `monocard` program does the work of Monocard from a terminal or a script. It
 
 Every subcommand takes `-h` for help and `-v` for more messages. `monocard -V` prints the version.
 
-Color photos are refused, with the message that Monocard opens monochrome photos only.
+Color photos develop in grey, as in the window. With **Hide color photos** on, they are refused.
 
 ## Look at files
 

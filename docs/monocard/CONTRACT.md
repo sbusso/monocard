@@ -78,7 +78,7 @@ mono-look:
 - `mod settings`: `fn steps(&Mode, value) -> Option<CameraSteps>` (a photo's settings from its mode's defaults), `fn add(&MonoEdit, &CameraSteps) -> MonoEdit` (draft step sizes, kept in `look.camera`)
 
 mono-decode:
-- `fn prepare(&RawFrame, &PrepareOptions) -> Result<Prepared>`; `Prepared { plane, clip: Plane, noise, iso, camera: String, serial: Option<String>, baseline_ev, raw: Option<RawHistogram> }`
+- `fn prepare(&RawFrame, &PrepareOptions) -> Result<Prepared>`; a frame with `DngTags::from_color` (three channels, linear Rec.2020, made at the open by `greycard_engine::mono::color_frame` or `frame_of`) is first mixed by `PrepareOptions::mix`, the weights of `edit::Filter`; `Prepared { plane, clip: Plane, noise, iso, camera: String, serial: Option<String>, baseline_ev, raw: Option<RawHistogram> }`
 - `fn inpaint_edges(&mut Plane, clip: &Plane, radius: u32)`
 - `fn warp(&Plane, ...)`, `fn orient(&Plane, Orientation) -> Plane`, `fn vignette_correct`, lens on one plane
 - `mod hdr`: `fn merge(&[Bracket]) -> Result<Merged>`

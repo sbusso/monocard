@@ -159,6 +159,12 @@ pub(crate) fn opened(st: &mut State, app: &App, monochrome: bool) {
         let open = st.current.map(|c| st.path_of(c).clone());
         COLOR.set(open);
     }
+    let color = st
+        .develop
+        .frame
+        .as_ref()
+        .is_some_and(|(f, _)| f.dng.from_color);
+    HELD.with_borrow_mut(|h| h.ui.color = color);
     // The modes, the start, and the welcome are of a sensor's own data.
     let frame = st.develop.frame.as_ref().map(|(f, _)| f.clone());
     let frame = frame.filter(|f| monochrome && f.dng.rendered.is_none());
@@ -1188,6 +1194,11 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, _worker: &Rc<Worker>) {
     with!(on_chart_saved, |app| chart::asked(&app));
     let kept = crate::settings::Settings::load().shared;
     mono.set_start_mode(kept.mono_start_mode);
+    mono.set_hide_color(kept.mono_hide_color);
+    with!(on_hide_color_changed, |app| {
+        let on = app.global::<Mono>().get_hide_color();
+        crate::settings::Settings::change(|s| s.shared.mono_hide_color = on);
+    });
     profiles::show_folders(app, kept.mono_fit_folders);
     with!(on_start_mode_changed, |app| {
         let on = app.global::<Mono>().get_start_mode();

@@ -1361,6 +1361,7 @@ fn dng_tags(decoder: &dyn ::rawler::decoders::Decoder) -> DngTags {
         unique_camera_model,
         camera_serial,
         rendered: None,
+        from_color: false,
     }
 }
 

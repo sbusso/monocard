@@ -126,6 +126,8 @@ pub struct MonoUiState {
     pub split_at: f32,
     pub surround: Surround,
     pub proof: Proof,
+    /// The open photo is a color one, mixed to grey through a filter.
+    pub color: bool,
 }
 
 impl Default for MonoUiState {
@@ -138,6 +140,7 @@ impl Default for MonoUiState {
             split_at: 0.5,
             surround: Surround::Grey,
             proof: Proof::Off,
+            color: false,
         }
     }
 }

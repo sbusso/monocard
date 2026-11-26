@@ -268,6 +268,14 @@ pub fn cut_to_camera(
 /// and turned as the camera says; else a bilinear demosaic, box
 /// downscaled.
 pub fn thumbnail(path: &std::path::Path, size: u32) -> anyhow::Result<(u32, u32, Vec<u8>)> {
+    #[allow(unused_mut)]
+    let (w, h, mut rgb) = thumbnail_read(path, size)?;
+    #[cfg(feature = "mono")]
+    crate::mono::grey_shown(&mut rgb);
+    Ok((w, h, rgb))
+}
+
+fn thumbnail_read(path: &std::path::Path, size: u32) -> anyhow::Result<(u32, u32, Vec<u8>)> {
     let size = size.max(1) as usize;
     if is_picture_path(path) {
         // The picture itself, taken to sRGB by its embedded profile.

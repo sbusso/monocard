@@ -28,7 +28,7 @@ The line below **Name** shows where the first photo goes.
 - The camera's JPEG of a raw, with the raw's new name.
 - An `.xmp` file, with the photo that it belongs to.
 
-Color photos, videos, and other files stay on the card.
+Videos and other files stay on the card. With **Hide color photos** on, color photos stay on the card too.
 
 ### Patterns
 
@@ -99,6 +99,6 @@ Choose the catalog, and set the folders that were not found. Click **Check** and
 
 It brings ratings, flags, color labels, keywords, titles, captions, crops, virtual copies as versions, stacks, and collections, and adds the folders as roots. Tone and color settings come as a step in the history, but the develop of a monochrome photo does not use them.
 
-The import does not check whether a photo is monochrome. It also writes `.mcd` files beside the color photos of the catalog.
+The import does not check whether a photo is monochrome. It writes `.mcd` files beside the color photos of the catalog too.
 
 A photo that you edited or rated in Monocard is left as it is, unless you turn on the switch to write over it.

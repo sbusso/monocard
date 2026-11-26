@@ -226,7 +226,7 @@ impl Facts {
                 headroom: greycard_edit::baseline::headroom(frame),
                 makers: greycard_edit::baseline::makers(frame),
                 lens_corrected: frame.dng.merged.as_ref().is_some_and(|m| m.lens_corrected),
-                monochrome: frame.layout == SensorLayout::Monochrome,
+                monochrome: frame.layout == SensorLayout::Monochrome || frame.dng.from_color,
                 rendered: frame.dng.rendered.is_some(),
             },
             identity: Identity {

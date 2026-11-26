@@ -3,8 +3,8 @@
 Monocard is a raw editor for monochrome sensors, built on
 [Greycard](https://github.com/jessolmstead/greycard) by Jess Olmstead. It develops
 a monochrome DNG on one channel. Its first camera is the Ricoh GR IV Monochrome.
-A monochrome camera's JPEG is edited with the same tools. Color photos are not listed, and
-no color tool is offered.
+A monochrome camera's JPEG is edited with the same tools. A color photo opens in grey,
+mixed through a black and white film filter, and no color tool is offered.
 
 Monocard is a soft fork. Its code is in the `mono-*` crates and behind the `mono`
 Cargo feature, so a build without the feature is Greycard. It is not published or
@@ -85,7 +85,7 @@ the cache folder.
 at a release, with the ones in `site/landing/index.html`, and add its notes to
 `site/landing/changelog.html`. `GREYCARD` beside it is the Greycard that the branch is merged with.
 Move it at a merge, to Greycard's version, the commits since its tag, and its
-commit. The app says both: "0.2.0 (the commit), Greycard 0.12.0+191 (0cf4e83)".
+commit. The app says both: "0.3.0 (the commit), Greycard 0.12.0+191 (0cf4e83)".
 
 ## Rebase
 

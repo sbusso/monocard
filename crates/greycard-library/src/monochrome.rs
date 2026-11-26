@@ -1,5 +1,6 @@
 //! Monocard's rule for what it lists: monochrome raws, each with its
-//! camera JPEG, monochrome pictures, and no color photo. Off until [`only`] turns it on, which
+//! camera JPEG, monochrome pictures, and color photos unless the user
+//! hides them ([`colors`]). Off until [`only`] turns it on, which
 //! Monocard's programs do as they start; Greycard never does.
 //!
 //! A file left out is left alone: it is in no listing, so nothing is done
@@ -13,15 +14,26 @@ use std::sync::{LazyLock, Mutex};
 use std::time::SystemTime;
 
 static ONLY: AtomicBool = AtomicBool::new(false);
+static COLORS: AtomicBool = AtomicBool::new(false);
 
 /// List monochrome photos alone from now on, in this process.
 pub fn only(on: bool) {
     ONLY.store(on, Ordering::Relaxed);
 }
 
-/// Whether monochrome photos alone are listed.
+/// Whether this is Monocard: monochrome photos, and color ones as grey.
 pub fn is_only() -> bool {
     ONLY.load(Ordering::Relaxed)
+}
+
+/// List color photos too from now on, in Monocard: it develops them as
+/// grey.
+pub fn colors(on: bool) {
+    COLORS.store(on, Ordering::Relaxed);
+}
+
+fn lists_all() -> bool {
+    !is_only() || COLORS.load(Ordering::Relaxed)
 }
 
 /// Whether the file at `path` is, or may be, a monochrome photo: a raw of
@@ -67,7 +79,7 @@ pub fn kept(files: Vec<PathBuf>) -> Vec<PathBuf> {
 
 /// [`kept`], asking `monochrome` of each file.
 pub fn kept_by(files: Vec<PathBuf>, monochrome: impl Fn(&Path) -> bool) -> Vec<PathBuf> {
-    if !is_only() {
+    if lists_all() {
         return files;
     }
     sorted_out(files, monochrome)
@@ -92,7 +104,7 @@ fn sorted_out(files: Vec<PathBuf>, monochrome: impl Fn(&Path) -> bool) -> Vec<Pa
 
 /// Whether `path`, named on its own, is listed.
 pub fn opens(path: &Path) -> bool {
-    !is_only() || lists(path)
+    lists_all() || lists(path)
 }
 
 fn lists(path: &Path) -> bool {

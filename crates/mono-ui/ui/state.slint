@@ -182,6 +182,10 @@ export global Mono {
     callback start-mode-changed();
     out property <string> start-mode-label: "Start from the camera's mode";
     out property <string> start-mode-note: "A raw with no edit starts from the look you fitted to its camera's mode.";
+    in-out property <bool> hide-color: false;
+    callback hide-color-changed();
+    out property <string> hide-color-label: "Hide color photos";
+    out property <string> hide-color-note: "Monocard shows color photos in grey. Turn this on to leave them out. It takes effect the next time Monocard starts.";
 
     /// The settings page of the camera's modes: its name, its rows, the
     /// key of the one that is open, and what that one asks: "delete" or

@@ -104,7 +104,7 @@ pub fn list(path: &Path, apart: bool) -> Result<crate::pairs::Paired> {
         }
         anyhow::ensure!(
             crate::monochrome::opens(&mapped),
-            "{} is a color photo: {} opens monochrome photos only",
+            "{} is a color photo, and {} is set to hide color photos (Settings, Editing)",
             mapped.display(),
             greycard_core::brand::NAME
         );

@@ -87,6 +87,8 @@ pub(super) fn open(
         ));
     }
     let (f, m) = greycard_core::decode::decode_path_with_metadata(path)?;
+    #[cfg(feature = "mono")]
+    let f = crate::mono::opened(f)?;
     Ok((Input::Raw(Arc::new(f)), m))
 }
 

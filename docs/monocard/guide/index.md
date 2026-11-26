@@ -117,17 +117,16 @@ Monocard is built on [Greycard](https://github.com/jessolmstead/greycard), and y
 
 ## Which photos are listed
 
-Monocard lists monochrome photos only:
+Monocard lists monochrome photos and color photos:
 
 - DNG files of a monochrome sensor.
 - A JPEG, PNG, or TIFF whose camera name says that it is monochrome, for example `RICOH GR IV Monochrome`.
 - A JPEG, PNG, or TIFF with one channel.
+- Color photos: raws of color cameras, and color JPEG, PNG, and TIFF files. Monocard shows them in grey. See [Color photos](develop.md#color-photos).
 
-A JPEG beside a DNG of the same name goes with that DNG. When the DNG is in color, neither is listed.
+A JPEG beside a DNG of the same name goes with that DNG.
 
-Color photos are not listed, imported, or opened, and Monocard leaves their files alone. A raw that is not a DNG counts as color. So does a black and white photo from another camera or a scanner that is kept in three channels.
-
-A monochrome camera's JPEG with a color tone in it, such as sepia, is listed but cannot be edited. The right pane says that the photo has color in it.
+To leave color photos out, turn on **Hide color photos** in **Settings...**, **Editing**. Monocard reads it when it starts. A raw that is not a DNG counts as color. So does a black and white photo from another camera or a scanner that is kept in three channels, and a monochrome camera's JPEG with a color tone in it, such as sepia.
 
 A camera's JPEG is already rendered by the camera. You edit it with the same panels, but some controls are for a raw only. See [Develop a JPEG](develop.md#develop-a-jpeg).
 

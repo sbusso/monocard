@@ -52,6 +52,7 @@ A look sets several controls at once. Click a tile to put it on, and **None** to
 
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
+| **Filter** | **None**, **Yellow**, **Orange**, **Red**, **Green**, **Blue** | **None** | On a color photo only. Mixes its colors into grey as a black and white film filter does. See [Color photos](#color-photos) |
 | **Exposure** | -5 to +5 EV | 0 | Brightens or darkens in stops |
 | **Contrast** | -100 to +100 | 0 | Changes contrast around middle grey |
 | **Paper grade** | 00 to 5 | 2 | Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. Middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG |
@@ -63,6 +64,22 @@ A look sets several controls at once. Click a tile to put it on, and **None** to
 ![The BASIC panel with Transform open](images/panel-basic.webp "BASIC, with Transform open")
 
 ![A photo of sheets on a line with Sigmoid and with AgX](images/transform-effect.webp "The display transforms, at the same settings")
+
+### Color photos
+
+Monocard opens a color photo in grey. It uses Greycard's color develop with the camera's own white balance, and then mixes red, green, and blue into one grey picture. After that, every panel and every look works on it as on a monochrome photo.
+
+**Filter** sets the mix. **None** gives the lightness that the eye sees. The others work as color filters on black and white film: a filter lightens its own color and darkens the opposite one. A grey stays the same grey through every filter.
+
+| Filter | Use it to |
+| --- | --- |
+| **Yellow** | Darken a blue sky a little |
+| **Orange** | Darken a blue sky more, and soften skin |
+| **Red** | Make a blue sky almost black, and lighten red |
+| **Green** | Lighten leaves and grass, and darken red and skin |
+| **Blue** | Lighten a blue sky, and darken red and yellow |
+
+The filters are first versions, not measured filters. The grid shows a color photo's camera preview in grey without the filter until the photo has an edit.
 
 ### Transform
 

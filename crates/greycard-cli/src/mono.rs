@@ -191,7 +191,8 @@ pub(crate) fn route(files: &[PathBuf]) -> Result<()> {
     let mut failed = 0;
     for file in files {
         let mono = match greycard_core::picture::is_picture_path(file) {
-            true => greycard_engine::mono::picture(file).map(|p| p.is_some()),
+            true => greycard_engine::mono::picture(file)
+                .map(|p| p.is_some_and(|(f, _)| !f.dng.from_color)),
             false => crate::common::load(file).map(|f| is_mono(&f)),
         };
         match mono {

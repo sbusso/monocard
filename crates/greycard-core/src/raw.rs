@@ -802,6 +802,10 @@ pub struct DngTags {
     /// camera's JPEG, Monocard's): its samples are display light, upright,
     /// and no sensor's.
     pub rendered: Option<Rendered>,
+    /// Set on a frame Monocard made of a color photo: three samples a
+    /// pixel, demosaiced, white balanced, and linear in the working
+    /// space, upright, with no crop. Its develop mixes them to one.
+    pub from_color: bool,
 }
 
 /// What a picture says of its samples.

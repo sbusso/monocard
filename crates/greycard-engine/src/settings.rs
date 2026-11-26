@@ -63,6 +63,10 @@ pub struct Shared {
     /// Off by default. Written as the switch is flipped.
     #[cfg(feature = "mono")]
     pub mono_start_mode: bool,
+    /// Whether color photos are left out of the listings. Off by default:
+    /// Monocard lists them and develops them as grey. Read at the start.
+    #[cfg(feature = "mono")]
+    pub mono_hide_color: bool,
     /// The folders of photos a camera's modes are fitted from. Written as
     /// the list changes.
     #[cfg(feature = "mono")]
@@ -102,6 +106,8 @@ impl Default for Shared {
             lens_on_new: true,
             #[cfg(feature = "mono")]
             mono_start_mode: false,
+            #[cfg(feature = "mono")]
+            mono_hide_color: false,
             #[cfg(feature = "mono")]
             mono_fit_folders: Vec::new(),
             last_file: String::new(),

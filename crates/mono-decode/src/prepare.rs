@@ -21,6 +21,9 @@ pub struct PrepareOptions {
     /// Photosites known to be bad (a camera profile's map), `[x, y]` in
     /// sensor samples. Always made again.
     pub defects: Vec<[usize; 2]>,
+    /// Red, green and blue's parts in the grey of a frame made of a color
+    /// photo (`DngTags::from_color`). Nothing to a monochrome one.
+    pub mix: [f32; 3],
 }
 
 impl Default for PrepareOptions {
@@ -28,6 +31,7 @@ impl Default for PrepareOptions {
         Self {
             hot_pixels: Some(HotPixelOptions::default()),
             defects: Vec::new(),
+            mix: mono_core::edit::Filter::None.weights(),
         }
     }
 }
@@ -59,6 +63,20 @@ pub struct Prepared {
 /// first two opcode lists; defects; the noise; hot pixels. An error for a
 /// frame that is not monochrome or whose parts disagree.
 pub fn prepare(frame: &RawFrame, options: &PrepareOptions) -> Result<Prepared> {
+    if frame.dng.from_color {
+        // Its samples are a develop's, so nothing in them is a sensor's
+        // to repair or to count.
+        let grey = grey_of(frame, options.mix)?;
+        let options = PrepareOptions {
+            hot_pixels: None,
+            defects: Vec::new(),
+            ..options.clone()
+        };
+        return Ok(Prepared {
+            raw: None,
+            ..prepare(&grey, &options)?
+        });
+    }
     check(frame)?;
     let crop = frame.effective_crop();
     let clip = clip_map(frame, crop);
@@ -121,6 +139,54 @@ pub fn prepare(frame: &RawFrame, options: &PrepareOptions) -> Result<Prepared> {
         serial: frame.dng.camera_serial.clone(),
         baseline_ev: frame.dng.baseline_exposure.unwrap_or(0.0),
         raw,
+    })
+}
+
+/// A frame made of a color photo as one channel: each pixel's three
+/// samples mixed by `mix`, and nothing under 0, which a color outside the
+/// working space can give.
+fn grey_of(frame: &RawFrame, mix: [f32; 3]) -> Result<RawFrame> {
+    let Samples::F32(rgb) = &frame.samples else {
+        return Err(Error::Unsupported("a color frame of integers".into()));
+    };
+    if frame.channels != 3
+        || frame
+            .width
+            .checked_mul(frame.height)
+            .and_then(|n| n.checked_mul(3))
+            != Some(rgb.len())
+    {
+        return Err(Error::Unsupported(
+            "a color frame whose size is not its samples'".into(),
+        ));
+    }
+    let grey = rgb
+        .par_chunks(3)
+        .map(|p| (mix[0] * p[0] + mix[1] * p[1] + mix[2] * p[2]).max(0.0))
+        .collect();
+    let mut dng = frame.dng.clone();
+    dng.from_color = false;
+    Ok(RawFrame {
+        channels: 1,
+        layout: greycard_core::raw::SensorLayout::Monochrome,
+        samples: Samples::F32(grey),
+        levels: greycard_core::raw::Levels {
+            black: LevelPattern::uniform(0.0, 1),
+            white: LevelPattern::uniform(1.0, 1),
+            black_deltas: None,
+            saturation: None,
+        },
+        dng,
+        make: frame.make.clone(),
+        model: frame.model.clone(),
+        other_names: frame.other_names.clone(),
+        width: frame.width,
+        height: frame.height,
+        as_shot_coefficients: frame.as_shot_coefficients,
+        calibrations: Vec::new(),
+        crop: frame.crop,
+        orientation: frame.orientation,
+        shot: frame.shot.clone(),
     })
 }
 
@@ -279,6 +345,33 @@ mod tests {
     use greycard_core::opcodes::{BadPixels, OpcodeList};
     use greycard_core::raw::{BlackDeltas, SensorLayout};
 
+    /// A color photo's frame is mixed through the filter: a red filter
+    /// lightens red and darkens green, a grey stays the grey it was.
+    #[test]
+    fn a_color_frame_is_mixed_through_its_filter() {
+        use mono_core::edit::Filter;
+        let mut frame = frame_of(3, 1, |_, _| 0);
+        frame.channels = 3;
+        frame.layout = SensorLayout::Linear;
+        frame.samples = Samples::F32(vec![0.5, 0.0, 0.0, 0.0, 0.5, 0.0, 0.3, 0.3, 0.3]);
+        frame.dng.from_color = true;
+        let plane = |f: Filter| {
+            let o = PrepareOptions {
+                mix: f.weights(),
+                ..Default::default()
+            };
+            prepare(&frame, &o).unwrap().plane.data
+        };
+        let (none, red) = (plane(Filter::None), plane(Filter::Red));
+        assert!(none[1] > none[0] && red[0] > red[1]);
+        for p in [none, red] {
+            assert!((p[2] - 0.3).abs() < 1e-5, "a grey stays: {}", p[2]);
+        }
+        for f in Filter::ALL {
+            assert!((f.weights().iter().sum::<f32>() - 1.0).abs() < 1e-6);
+        }
+    }
+
     /// Black pattern, deltas, and crop, each taken off where it belongs.
     #[test]
     fn levels_and_crop() {
@@ -379,6 +472,7 @@ mod tests {
         let options = PrepareOptions {
             hot_pixels: None,
             defects: vec![[10, 10], [99, 99]],
+            ..Default::default()
         };
         let p = prepare(&frame, &options).unwrap();
         for (got, want) in p.plane.data.iter().zip(&truth) {

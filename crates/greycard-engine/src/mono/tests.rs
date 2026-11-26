@@ -132,7 +132,7 @@ fn the_route_is_by_the_layout() {
             let steps = stages(&busy(), p, &facts, None);
             let first = steps.ops().next().unwrap();
             assert_eq!(
-                matches!(first, Stage::Mono(Op::Prepare)),
+                matches!(first, Stage::Mono(Op::Prepare(_))),
                 is_mono,
                 "{p:?}: {first:?}"
             );
@@ -521,7 +521,7 @@ fn a_monochrome_jpeg_is_the_cameras_until_it_is_edited() {
     assert!(mean(&lit) > mean(&want) + 20.0);
     // The edit's thumbnail takes the same road.
     assert_eq!(section_of(&path, &plain, true), Some(Default::default()));
-    // Toned in the camera, or another camera's: in color.
+    // Toned in the camera, or another camera's: in color, outside Monocard.
     px[9 * w as usize..].fill([120, 100, 80]);
     let (toned, other) = (dir.join("R2.JPG"), dir.join("R3.JPG"));
     jpeg(&toned, model, w, &px);
@@ -554,7 +554,7 @@ fn a_new_frame_starts_from_its_profile() {
     let plain = Edit::default();
     assert_eq!(section_of(&grey, &plain, true).as_deref(), Some(&want));
     assert_eq!(section_of(&grey, &plain, false), Some(Default::default()));
-    assert_eq!(section_of(&color, &plain, true), None);
+    assert_eq!(section_of(&color, &plain, true), None, "outside Monocard");
     // One with an override.
     let request = crate::headless::Request {
         paths: vec![grey, color],
@@ -1115,4 +1115,34 @@ fn mono_golden_renders() {
         }
         check(&path.with_extension("dng.json"), &got);
     }
+}
+
+/// A color raw opens as a frame of three channels that develops on the
+/// mono road. Its scene is grey, so every filter gives the same picture.
+#[test]
+fn a_color_raw_develops_as_grey_through_any_filter() {
+    let dir = crate::testing::scratch_dir("mono-color");
+    let path = dir.join("color.dng");
+    crate::testing::linear_dng(&path, 64, 48, "Test", "Color");
+    let f = color_frame(&greycard_core::decode::decode_path(&path).unwrap()).unwrap();
+    assert!(f.dng.from_color && f.channels == 3);
+    let f = Arc::new(f);
+    assert!(Facts::raw(&f, 0).is_mono());
+    let shown = |filter| {
+        let edit = mono(|m| m.basic.filter = filter);
+        let made = develop(f.clone(), &edit, None).unwrap();
+        let settings = preview_settings(None);
+        preview(crate::finish::render(&WorkingImage::new(0, 0), &edit, &made, &settings).unwrap())
+            .unwrap()
+    };
+    let plain = shown(mono_core::edit::Filter::None);
+    assert!(plain.pixels().all(|p| p[0] == p[1] && p[1] == p[2]), "grey");
+    let red = shown(mono_core::edit::Filter::Red);
+    let most = plain
+        .pixels()
+        .zip(red.pixels())
+        .map(|(a, b)| a[0].abs_diff(b[0]))
+        .max();
+    assert!(most <= Some(2), "{most:?}");
+    crate::testing::remove_dir_retry(&dir);
 }

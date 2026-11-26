@@ -261,6 +261,10 @@ fn main() -> std::process::ExitCode {
     // By the program, not the feature: the mono build's tests also run the
     // one named greycard, on color files.
     greycard_library::monochrome::only(env!("CARGO_BIN_NAME").starts_with("monocard"));
+    #[cfg(feature = "mono")]
+    greycard_library::monochrome::colors(
+        !greycard_engine::settings::Shared::load().mono_hide_color,
+    );
     // The off-card record keys on the build, its commit too.
     greycard_ai::runtime::set_build_label(greycard_version::KEY);
     let code = match run() {
