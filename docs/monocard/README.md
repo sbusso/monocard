@@ -85,7 +85,7 @@ the cache folder.
 at a release, with the ones in `site/landing/index.html`, and add its notes to
 `site/landing/changelog.html`. `GREYCARD` beside it is the Greycard that the branch is merged with.
 Move it at a merge, to Greycard's version, the commits since its tag, and its
-commit. The app says both: "0.1.2 (the commit), Greycard 0.12.0+191 (0cf4e83)".
+commit. The app says both: "0.2.0 (the commit), Greycard 0.12.0+191 (0cf4e83)".
 
 ## Rebase
 
