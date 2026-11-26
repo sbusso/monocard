@@ -117,6 +117,7 @@ fn edit(r: &mut Rng) -> MonoEdit {
             contrast: r.slider(-100.0, 100.0),
             blacks: r.slider(-100.0, 100.0),
             midtones: r.slider(-100.0, 100.0),
+            ..Default::default()
         },
         display: Display {
             transform: if r.unit() < 0.5 {

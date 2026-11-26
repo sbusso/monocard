@@ -1058,6 +1058,7 @@ mod tests {
                 contrast: r.slider(-100.0, 100.0),
                 blacks: r.slider(-100.0, 100.0),
                 midtones: r.slider(-100.0, 100.0),
+                ..Default::default()
             };
             e.highlights = Highlights {
                 shoulder: r.slider(-100.0, 100.0),
@@ -1166,6 +1167,7 @@ mod tests {
             contrast,
             blacks,
             midtones,
+            ..Default::default()
         };
         close(basic(grey, &b(80.0, 60.0, 0.0)), grey, 1e-6, "grey");
         close(basic(1.0, &b(0.0, -100.0, 70.0)), 1.0, 1e-6, "white");

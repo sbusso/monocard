@@ -243,9 +243,9 @@ mod tests {
         // headroom, opposed's clip reads as the clips say.
         let ceiling = 2.0;
         let codes = clip_codes(&[0.0; 4], 2, 2, &p, GAINS, headroom);
-        for c in 0..3 {
-            let read = GAINS[c] * headroom * CLIP_MAGIC / (ceiling * headroom);
-            assert!((codes.clips[c] - read).abs() < 1e-6);
+        for (gain, clip) in GAINS.iter().zip(codes.clips) {
+            let read = gain * headroom * CLIP_MAGIC / (ceiling * headroom);
+            assert!((clip - read).abs() < 1e-6);
         }
         assert_eq!(
             codes.clips,

@@ -41,6 +41,7 @@ fn edit(r: &mut Rng, k: usize) -> MonoEdit {
             contrast: r.slider(-100.0, 100.0),
             blacks: r.slider(-100.0, 100.0),
             midtones: r.slider(-100.0, 100.0),
+            ..Default::default()
         },
         highlights: Highlights {
             shoulder: r.slider(-100.0, 100.0),
