@@ -120,7 +120,7 @@ Under **TEST CHART**, **Test chart** fills the screen with 40 grey steps over 10
 
 ### Start from the camera's mode
 
-In **Settings...**, **Editing**, turn on **Start from the camera's mode**. A raw with no edit then starts from the look that you fitted to its mode. The setting is off by default.
+A raw with no edit starts from the look of its camera's mode, so it opens as the camera's JPEG shows it. To start from no look, turn off **Start from the camera's mode** in **Settings...**, **Editing**. The setting is on by default.
 
 The photo's own settings, such as Key and Contrast, then go over the look. A photo shot at the mode's defaults gets nothing more. Each setting moves one tool: Key moves Exposure, and Contrast moves Contrast. The size of each step is a first guess for now. Toning, grain, and HDR Tone level are not put on yet.
 

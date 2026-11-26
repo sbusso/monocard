@@ -66,11 +66,11 @@ On a Mac, Monocard can import from a Ricoh GR IV Monochrome on a USB cable. Othe
 
 ![The camera window with rows of photos by day](images/camera-window.webp "The camera window")
 
-**Import all** leaves out the photos that are marked **Imported** and the ones that the window does not show.
+**Import all** leaves out the photos that are marked **Imported** and the ones that the window does not show. The window closes when the import ends without a fault. After a stop or a fault, it stays open and its marks show what is left.
 
 | In the window | What it does |
 | --- | --- |
-| **Show** | **All** photos, or **Not imported** |
+| **Show** | **All** photos, or **Not imported**. The window keeps your choice for the next time |
 | **Sort**, **Tile size** | The order and the size of the pictures |
 | Click, Cmd+click, Shift+click, Cmd+A | Select one photo, add or remove one, select a range, select all |
 | Arrow keys | Go to another photo |

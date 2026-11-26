@@ -48,7 +48,8 @@ Windows versions are for 64-bit Intel and AMD. They are new and have had little 
   small text file.
 - **The camera's picture modes.** Monocard reads the mode that a Ricoh GR recorded in the
   file, and its settings, such as Key and Contrast. It can fit a mode's look from pairs of
-  DNG and JPEG that you shot.
+  DNG and JPEG that you shot. A raw opens with the look of its mode, as the camera's JPEG
+  shows it.
 - **Recipe book.** Keeps the camera's picture settings. Make a recipe from a photo, compare
   two, import, export, and copy one as text to set on the camera.
   [How well it fits](../docs/monocard/picture-controls.md).

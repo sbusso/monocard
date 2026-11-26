@@ -60,7 +60,8 @@ pub struct Shared {
     pub lens_on_new: bool,
     /// Whether a monochrome raw nothing was done to starts from the look of
     /// the camera's mode it records, where the user has one (`mono::start`).
-    /// Off by default. Written as the switch is flipped.
+    /// On by default, so a raw opens as its camera's JPEG shows it. Written
+    /// as the switch is flipped.
     #[cfg(feature = "mono")]
     pub mono_start_mode: bool,
     /// Whether color photos are left out of the listings. Off by default:
@@ -105,7 +106,7 @@ impl Default for Shared {
             jpegs_apart: false,
             lens_on_new: true,
             #[cfg(feature = "mono")]
-            mono_start_mode: false,
+            mono_start_mode: true,
             #[cfg(feature = "mono")]
             mono_hide_color: false,
             #[cfg(feature = "mono")]

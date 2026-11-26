@@ -492,13 +492,13 @@ pub(crate) fn show(st: &mut State, app: &App) {
     let kept = Settings::load();
     let view = &mut st.import.camera;
     view.forget();
-    view.new_only = false;
+    view.new_only = kept.mono_camera_new_only;
     view.size = kept.mono_camera_tile.unwrap_or(grid::USUAL);
     view.sort = Sort::named(&kept.mono_camera_sort);
     let window = app.global::<CameraView>();
     window.set_tile_least(grid::LEAST);
     window.set_tile_most(grid::MOST);
-    window.set_show_row(0);
+    window.set_show_row(i32::from(view.new_only));
     window.set_sort_row(view.sort.row() as i32);
     window.set_cells(ModelRc::from(view.cells.clone()));
     window.set_days(ModelRc::from(view.days.clone()));
@@ -507,6 +507,13 @@ pub(crate) fn show(st: &mut State, app: &App) {
     sheet::look_at_folders(st, app);
     usb::open(st, app);
     refresh(st, app);
+}
+
+/// Close the window, as Escape does.
+pub(crate) fn close(app: &App) {
+    if is_open(app) {
+        app.global::<CameraView>().set_open(false);
+    }
 }
 
 /// The window closed: what it held goes.
@@ -645,6 +652,7 @@ fn helped(st: &mut State, app: &App) {
     if app.global::<CameraView>().get_empty_button() == SHOW_ALL {
         app.global::<CameraView>().set_show_row(0);
         st.import.camera.new_only = false;
+        Settings::change(|s| s.mono_camera_new_only = false);
     } else {
         again(st, app);
     }
@@ -679,7 +687,9 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>) {
     on!(on_again, |st, app| again(st, app));
     on!(on_helped, |st, app| helped(st, app));
     on!(on_show_picked, |st, app, row| {
-        st.import.camera.new_only = row == 1;
+        let new_only = row == 1;
+        st.import.camera.new_only = new_only;
+        Settings::change(|s| s.mono_camera_new_only = new_only);
         refresh(st, app);
     });
     on!(on_sort_picked, |st, app, row| {

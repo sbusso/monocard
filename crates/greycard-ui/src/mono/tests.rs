@@ -659,10 +659,10 @@ fn the_switch_for_the_mode_is_kept() {
     app.set_settings_open(true);
     settle(&app);
     let kept = || crate::settings::Settings::load().shared.mono_start_mode;
-    assert!(!kept());
+    assert!(kept(), "on by default");
     let (at, size) = labeled(&app, "Start from the camera's mode");
     crate::testing::click(&app, at.x + size.width / 2.0, at.y + size.height / 2.0);
-    assert!(kept());
+    assert!(!kept());
     looks_done(&dir);
     drop(one);
 }

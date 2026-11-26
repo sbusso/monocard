@@ -2631,6 +2631,8 @@ fn merged(
         mono_camera_tile,
         #[cfg(feature = "mono")]
         mono_camera_sort,
+        #[cfg(feature = "mono")]
+        mono_camera_new_only,
         rawtherapee_answered,
         preset_favorites,
         preset_folds,
@@ -2720,6 +2722,7 @@ fn merged(
         settings.mono_camera_popup = mono_camera_popup;
         settings.mono_camera_tile = mono_camera_tile;
         settings.mono_camera_sort = mono_camera_sort;
+        settings.mono_camera_new_only = mono_camera_new_only;
     }
     settings.rawtherapee_answered = rawtherapee_answered;
     settings.preset_favorites = preset_favorites;
@@ -2959,6 +2962,8 @@ pub(crate) fn remember(app: &App) -> settings::Settings {
         mono_camera_tile: None,
         #[cfg(feature = "mono")]
         mono_camera_sort: String::new(),
+        #[cfg(feature = "mono")]
+        mono_camera_new_only: false,
         // Written as the RawTherapee offer is answered.
         rawtherapee_answered: Vec::new(),
         // Written as a star or a fold changes; the caller keeps the file's.

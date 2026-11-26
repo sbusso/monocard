@@ -75,26 +75,30 @@ use crate::worker::ThumbCache;
 /// `DEVELOP_RECIPE`: a change of finish is a change of the global look,
 /// which a mask's print leaves out by design (`mask_base`), though the
 /// models' preview, made through the finish, shows it.
-pub const EDITED_RECIPE: u16 = 0x8005;
+///
+/// 0x8007: a grey picture is turned from Gray Gamma 2.2 to sRGB bytes
+/// ([`make_mono`]); read as sRGB before, its shadows showed too light,
+/// 2026-11-26.
+pub const EDITED_RECIPE: u16 = 0x8007;
 
 /// The recipe the pictures the reduced develop made are kept under
 /// (`reduced`): the edit's too, and looked up after
 /// [`EDITED_RECIPE`]'s, but made from the binned mosaic with no capture
 /// sharpen and no denoise. The open frame's develop makes the edit's
 /// pictures under [`EDITED_RECIPE`] when the frame is opened, and they
-/// take these ones' place. 0x8006 with [`EDITED_RECIPE`]'s 0x8005.
-pub const REDUCED_RECIPE: u16 = 0x8006;
+/// take these ones' place. 0x8008 with [`EDITED_RECIPE`]'s 0x8007.
+pub const REDUCED_RECIPE: u16 = 0x8008;
 
 /// The process the edit's recipes were last raised for, and the recipe:
 /// a new process (`greycard_edit::PROCESS`) that changes the finish
 /// alone raises both recipes and this with it.
 #[cfg(test)]
-const RECIPE_FOR_PROCESS: (u32, u16) = (2, 0x8005);
+const RECIPE_FOR_PROCESS: (u32, u16) = (2, 0x8007);
 
 /// The values the two recipes held before, never used again: a picture
 /// kept under one is never asked for.
 #[cfg(test)]
-const RETIRED_RECIPES: [u16; 4] = [0x8001, 0x8002, 0x8003, 0x8004];
+const RETIRED_RECIPES: [u16; 6] = [0x8001, 0x8002, 0x8003, 0x8004, 0x8005, 0x8006];
 
 /// Both recipes of the edit's pictures, in the order they are looked
 /// up.
@@ -1301,13 +1305,25 @@ pub fn make_mono(
         exact: Some(fitted_size(finish.full, &edit.geometry, None)),
     };
     let mut rendered = greycard_render::mono::render(reduced, edit, &settings, &beside)?;
-    // A thumbnail is three bytes a pixel.
+    // A thumbnail is three bytes a pixel, in sRGB as the loupe shows it.
     if rendered.is_grey()
         && let greycard_render::export::Pixels::Eight(p) = &mut rendered.pixels
     {
-        *p = p.iter().flat_map(|v| [*v; 3]).collect();
+        let table = grey_table();
+        *p = p.iter().flat_map(|v| [table[usize::from(*v)]; 3]).collect();
     }
     Ok(made_of(rendered, edit, finish.turn))
+}
+
+/// A grey finish's byte, in Gray Gamma 2.2, as an sRGB byte: the same
+/// light. Read as sRGB, the Gray Gamma 2.2 byte shows the shadows too
+/// light.
+#[cfg(feature = "mono")]
+pub(crate) fn grey_table() -> [u8; 256] {
+    std::array::from_fn(|b| {
+        let linear = (b as f32 / 255.0).powf(2.2);
+        (greycard_render::finish::encode(linear) * 255.0).round() as u8
+    })
 }
 
 fn made_of(rendered: greycard_render::export::Rendered, edit: &Edit, turn: u8) -> Made {

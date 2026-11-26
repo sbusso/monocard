@@ -890,10 +890,13 @@ fn the_edits_pictures_are_the_exports() {
     let Pixels::Eight(p) = &r.pixels else {
         panic!()
     };
+    // The export is Gray Gamma 2.2; the picture shown is sRGB.
+    let table = crate::edited_pictures::grey_table();
+    assert!(table[40] < 40 && table[0] == 0 && table[255] == 255);
     let off = p
         .iter()
         .zip(made.big.rgb.as_chunks::<3>().0)
-        .map(|(a, b)| (f64::from(*a) - f64::from(b[0])).abs())
+        .map(|(a, b)| (f64::from(table[usize::from(*a)]) - f64::from(b[0])).abs())
         .sum::<f64>()
         / p.len() as f64;
     assert!(off < 1.0, "{off}");

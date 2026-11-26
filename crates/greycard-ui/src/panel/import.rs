@@ -711,6 +711,12 @@ pub(crate) fn finished(state: &Rc<Shared>, app: &App, opts: &Options, report: Re
         let _ = slint::quit_event_loop();
         return;
     }
+    // The camera window has done its work: it closes, unless the run
+    // stopped short and its marks say what is left.
+    #[cfg(mono_usb)]
+    if report.error.is_none() && !report.canceled {
+        crate::mono::camera::close(app);
+    }
     let mut line = report.line(Path::new(&tilde(&opts.destination)));
     // Nothing new is nothing to open; and a user who went to another
     // folder while it ran is not taken away from it.

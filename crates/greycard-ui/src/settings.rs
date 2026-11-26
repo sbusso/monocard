@@ -172,6 +172,10 @@ pub struct Settings {
     #[cfg(feature = "mono")]
     #[serde(deserialize_with = "string_leniently")]
     pub mono_camera_sort: String,
+    /// The camera window shows the photos not imported yet alone.
+    /// Written as the choice is made.
+    #[cfg(feature = "mono")]
+    pub mono_camera_new_only: bool,
     /// The folders whose RawTherapee profiles were offered as they
     /// opened and answered, by Not now, or by a write that brought a
     /// frame in, each by its canonical path: never offered again. Kept
@@ -863,6 +867,8 @@ impl Default for Settings {
             mono_camera_tile: None,
             #[cfg(feature = "mono")]
             mono_camera_sort: String::new(),
+            #[cfg(feature = "mono")]
+            mono_camera_new_only: false,
             rawtherapee_answered: Vec::new(),
             preset_favorites: Vec::new(),
             preset_folds: Vec::new(),
@@ -1475,6 +1481,8 @@ mod tests {
             mono_camera_tile: Some(200.0),
             #[cfg(feature = "mono")]
             mono_camera_sort: "name".into(),
+            #[cfg(feature = "mono")]
+            mono_camera_new_only: true,
             rawtherapee_answered: vec!["/home/x/Pictures/rt".into()],
             preset_favorites: vec!["warm.gcp".into(), "Film/portra.gcp".into()],
             preset_folds: vec!["group:Film".into()],

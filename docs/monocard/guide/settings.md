@@ -43,7 +43,7 @@ The Settings sheet has seven pages. Click **Settings...** at the bottom of the l
 | **Canvas** | The color around the photo: **Black**, **Dark grey**, **Mid grey**, **Light grey**, **White**, or **18% grey**. It is **18% grey** at first |
 | **Monitor** | The color space of your screen: **System**, **sRGB**, **Adobe RGB**, **Display P3**, or a profile **File** |
 | **Lens corrections on new edits** | On at first |
-| **Start from the camera's mode** | A raw with no edit starts from the look that you fitted to its camera's mode. Off at first. See [Looks](looks.md#start-from-the-cameras-mode) |
+| **Start from the camera's mode** | A raw with no edit starts from the look of its camera's mode, so it opens as the camera's JPEG shows it. On at first. See [Looks](looks.md#start-from-the-cameras-mode) |
 | **Hide color photos** | Leaves color photos out of the library. Off at first: Monocard shows them in grey. It takes effect the next time Monocard starts. See [Color photos](develop.md#color-photos) |
 | CROP, **Aspect** | The aspect of a new crop: **Original**, **Last used**, or **Free** |
 | RETOUCH, **Fill** | **Patch**, **Fast**, or **Best**. See [Fill](crop-and-retouch.md#fill) |
