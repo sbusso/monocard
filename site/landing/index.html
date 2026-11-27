@@ -209,6 +209,13 @@
           </div>
           <figcaption><span>The BASIC panel.</span></figcaption>
         </figure>
+        <figure class="shot shot-panel">
+          <div class="frame" style="--ar:648/1176">
+            <img src="assets/panel-film.webp" width="648" height="1176" loading="lazy"
+                 alt="The FILM panel: Kodak Tri-X 400 pushed one stop in HC-110 B at 21 °C with stand agitation, halation and edge effect, and a split-grade print on Ilford Multigrade FB Classic, as silver gelatin.">
+          </div>
+          <figcaption><span>The FILM panel.</span></figcaption>
+        </figure>
       </div>
     </div>
   </div>
@@ -288,7 +295,7 @@
     <div class="head">
       <div class="head-main">
         <h2><span class="num" aria-hidden="true">VII</span>Looks</h2>
-        <p>Ten looks, each a small text file, each editable after it is applied. Grain follows the tones. Toning and solarize are part of a look. Toner baths act on the silver by density: selenium, sepia, gold, iron blue, copper, vanadium. A LUT can become a look.</p>
+        <p>Ten looks, each a small text file, each editable after it is applied. Grain follows the tones. Toning and solarize are part of a look. Toner baths act on the silver by density: selenium, sepia, gold, iron blue, copper, vanadium. A LUT can become a look. Twelve more looks, from LUTs, are black and white films for color photos.</p>
       </div>
       <p class="head-side">The frame below is one picture in eleven bands: no look, then the ten looks, in the order of the LOOK panel.</p>
     </div>
@@ -411,7 +418,7 @@
         <p>A picture that is not toned leaves as a grey file, one channel. The proof shows it within the white and the black of a paper.</p>
       </div>
       <dl class="spec">
-        <div><dt>Files</dt><dd>Grey JPEG, JPEG XL, Ultra HDR, 16-bit grey TIFF.</dd></div>
+        <div><dt>Files</dt><dd>Grey JPEG, PNG, WebP, JPEG XL, Ultra HDR, 16-bit grey TIFF.</dd></div>
         <div><dt>Looks out</dt><dd>A look as a LUT, or as a Lightroom profile and preset.</dd></div>
         <div><dt>Paper proof</dt><dd>Matte, baryta, newsprint.</dd></div>
         <div><dt>Sidecar</dt><dd>The edit is kept beside the photo, in <code>IMG.DNG.mcd</code>.</dd></div>
@@ -456,7 +463,7 @@
         <div>
           <p class="get-file">AppImage, 73 MB</p>
           <p class="note">Make it executable and run it. Or unpack the <a href="https://github.com/sbusso/monocard/releases/latest/download/Monocard-linux-x86_64.tar.gz">archive</a> (80 MB) and run <code>./install.sh</code>.</p>
-          <p class="note" data-needs>glibc 2.39 or later, Vulkan.</p>
+          <p class="note" data-needs>glibc 2.39 or later, Vulkan. For the import from the camera, copy <code>70-monocard-camera.rules</code> to <code>/etc/udev/rules.d/</code>.</p>
         </div>
       </article>
       <article class="get-card" data-os="windows" data-name="Windows">

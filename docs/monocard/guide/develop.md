@@ -106,6 +106,8 @@ The histogram is behind the curve. When the sensor clipped in the photo, a dashe
 
 FILM exposes the photo on a black and white film, develops it, and prints the negative on a darkroom paper. The film's print then takes the place of the display transform.
 
+![The FILM panel, with Kodak Tri-X 400 in HC-110 B, stand agitation, and a split-grade print on Ilford Multigrade FB Classic](images/panel-film.webp "FILM, with a split-grade print")
+
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
 | **Film** | **None** and 18 films | **None** | The film the photo is exposed on. **None** keeps the display transform of BASIC |
