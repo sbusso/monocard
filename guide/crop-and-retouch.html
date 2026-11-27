@@ -9,7 +9,8 @@
 <link rel="canonical" href="https://sbusso.github.io/monocard/guide/crop-and-retouch.html">
 <title>Crop, lens, and retouch: Monocard user guide</title>
 <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="../style.css?v=40ebc9938a">
+<script src="../assets/guide-search.js?v=8476b67114" defer></script>
 </head>
 <body class="page">
 <a class="skip" href="#main">Skip to the content</a>
@@ -34,6 +35,14 @@
 
 <div class="wrap guide">
   <div class="guide-nav">
+    <search class="guide-search">
+      <label class="vh" for="guide-q">Search the guide</label>
+      <input id="guide-q" type="search" placeholder="Search the guide" autocomplete="off" spellcheck="false"
+             enterkeyhint="go" aria-controls="guide-hits" aria-describedby="guide-q-note"
+             data-fuse="../assets/fuse-7.0.0.basic.min.js">
+      <p id="guide-q-note" class="vh" aria-live="polite"></p>
+      <ol id="guide-hits" class="guide-hits" hidden></ol>
+    </search>
     <nav aria-label="User guide">
       <details>
         <summary>User guide</summary>
@@ -105,6 +114,7 @@
 </table></div>
 <figure class="wide"><a href="images/crop.webp"><img src="images/crop.webp" alt="The Crop tab with the golden spiral over a photo of stairs" width="1280" height="820" loading="lazy" decoding="async"></a><figcaption>A crop, with the Golden spiral</figcaption></figure>
 <p>Press <strong>O</strong> for the next guide. Press <strong>Shift+O</strong> to turn the spiral or the triangles. The aspect of a new crop is in <a href="settings.html#editing">Settings</a>.</p>
+<p>A DNG shot in a crop mode, such as the 35 mm or 50 mm crop of a Ricoh GR, keeps the whole sensor. It opens at the camera's crop. To use the whole sensor, choose <strong>Free</strong> in the Crop tab and drag the edges out.</p>
 <figure><a href="images/panel-crop.webp"><img src="images/panel-crop.webp" alt="The Crop tab with CROP, ROTATE, and PERSPECTIVE" width="350" height="572" loading="lazy" decoding="async"></a><figcaption>The Crop tab, enlarged</figcaption></figure>
 <h3 id="angle">Angle</h3>
 <p>Under ROTATE:</p>

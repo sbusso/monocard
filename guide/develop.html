@@ -9,7 +9,8 @@
 <link rel="canonical" href="https://sbusso.github.io/monocard/guide/develop.html">
 <title>Develop: Monocard user guide</title>
 <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="../style.css?v=40ebc9938a">
+<script src="../assets/guide-search.js?v=8476b67114" defer></script>
 </head>
 <body class="page">
 <a class="skip" href="#main">Skip to the content</a>
@@ -34,6 +35,14 @@
 
 <div class="wrap guide">
   <div class="guide-nav">
+    <search class="guide-search">
+      <label class="vh" for="guide-q">Search the guide</label>
+      <input id="guide-q" type="search" placeholder="Search the guide" autocomplete="off" spellcheck="false"
+             enterkeyhint="go" aria-controls="guide-hits" aria-describedby="guide-q-note"
+             data-fuse="../assets/fuse-7.0.0.basic.min.js">
+      <p id="guide-q-note" class="vh" aria-live="polite"></p>
+      <ol id="guide-hits" class="guide-hits" hidden></ol>
+    </search>
     <nav aria-label="User guide">
       <details>
         <summary>User guide</summary>
