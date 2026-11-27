@@ -5,12 +5,17 @@
 # ///
 """The user guide's pages, from docs/monocard/guide/*.md to site/landing/guide/.
 
+Writes search.json beside them: each chapter cut at its headings, which
+assets/guide-search.js searches with Fuse.js.
+
 Fails on a link to a chapter or a heading that is not there, on a picture
 that is not there, and on one that no chapter shows. The pictures are at
 two pixels to a point, so each is shown at half its size.
 """
 
+import hashlib
 import html
+import json
 import re
 import shutil
 import sys
@@ -36,7 +41,8 @@ PAGE = """<!doctype html>
 <link rel="canonical" href="https://sbusso.github.io/monocard/guide/{file}">
 <title>{title}: Monocard user guide</title>
 <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="../style.css">
+<link rel="stylesheet" href="../style.css?v={css}">
+<script src="../assets/guide-search.js?v={js}" defer></script>
 </head>
 <body class="page">
 <a class="skip" href="#main">Skip to the content</a>
@@ -61,6 +67,14 @@ PAGE = """<!doctype html>
 
 <div class="wrap guide">
   <div class="guide-nav">
+    <search class="guide-search">
+      <label class="vh" for="guide-q">Search the guide</label>
+      <input id="guide-q" type="search" placeholder="Search the guide" autocomplete="off" spellcheck="false"
+             enterkeyhint="go" aria-controls="guide-hits" aria-describedby="guide-q-note"
+             data-fuse="../assets/fuse-7.0.0.basic.min.js">
+      <p id="guide-q-note" class="vh" aria-live="polite"></p>
+      <ol id="guide-hits" class="guide-hits" hidden></ol>
+    </search>
     <nav aria-label="User guide">
       <details>
         <summary>User guide</summary>
@@ -97,6 +111,34 @@ def page(name):
     return "./" if name == "index" else f"{name}.html"
 
 
+def plain(fragment):
+    text = " ".join(html.unescape(re.sub(r"<[^>]+>", " ", fragment)).split())
+    # A tag's space before punctuation or inside brackets is not the text's.
+    return re.sub(r"\s+([,.;:!?)])", r"\1", text).replace("( ", "(")
+
+
+def sections(name, title, body):
+    """The chapter cut at each heading, as the search reads it: the
+    chapter, the page, the heading, its anchor and its text."""
+    parts = re.split(r'<h([1-3]) id="([^"]+)">(.*?)</h\1>', body)
+    found = []
+    for level, anchor, heading, text in zip(parts[1::4], parts[2::4], parts[3::4], parts[4::4]):
+        found.append(
+            {
+                "c": title,
+                "p": page(name),
+                "h": plain(heading),
+                "a": "" if level == "1" else anchor,
+                "t": plain(text),
+            }
+        )
+    return found
+
+
+def short_hash(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()[:10]
+
+
 def main():
     found = {p.stem for p in SOURCE.glob("*.md")}
     if found != set(ORDER):
@@ -111,6 +153,9 @@ def main():
     wrong = []
     OUT.mkdir(exist_ok=True)
     shown = set()
+    index = []
+    css = short_hash(OUT.parent / "style.css")
+    js = short_hash(OUT.parent / "assets/guide-search.js")
 
     def figure(m):
         name, alt, caption = m["src"], m["alt"], m["title"] or ""
@@ -160,8 +205,11 @@ def main():
             beside += f'<a href="{page(ORDER[i - 1])}" rel="prev">← {chapters[ORDER[i - 1]][0]["name"]}</a>'
         if i + 1 < len(ORDER):
             beside += f'<a href="{page(ORDER[i + 1])}" rel="next">{chapters[ORDER[i + 1]][0]["name"]} →</a>'
+        index += sections(name, top["name"], body)
         (OUT / f"{name}.html").write_text(
             PAGE.format(
+                css=css,
+                js=js,
                 about=html.escape(about),
                 file="" if name == "index" else f"{name}.html",
                 title=top["name"],
@@ -179,6 +227,9 @@ def main():
         for p in (SOURCE / "images").glob("*")
         if f"images/{p.name}" not in shown
     ]
+    (OUT / "search.json").write_text(
+        json.dumps(index, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
     shutil.rmtree(OUT / "images", ignore_errors=True)
     shutil.copytree(SOURCE / "images", OUT / "images")
     if wrong:
