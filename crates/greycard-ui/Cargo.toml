@@ -106,9 +106,10 @@ sys-locale = "0.3"
 [features]
 # Monocard, the monochrome build (docs/monocard).
 mono = ["dep:mono-core", "dep:mono-look", "dep:mono-tone", "dep:mono-profile", "dep:mono-ui", "greycard-engine/mono", "greycard-version/mono", "greycard-viewport/mono", "greycard-slint/mono"]
-# Monocard's import from a camera on a USB cable (docs/monocard). It is
-# macOS's: on another system the feature adds nothing (build.rs).
-mono-usb = ["mono", "dep:objc2-image-capture-core", "dep:block2"]
+# Monocard's import from a camera on a USB cable (docs/monocard):
+# ImageCaptureCore on macOS, mtp-rs on Linux and Windows. On another
+# system the feature adds nothing (build.rs).
+mono-usb = ["mono", "dep:objc2-image-capture-core", "dep:block2", "dep:mtp-rs", "dep:futures", "dep:futures-timer"]
 # Nikon High Efficiency raws; off by default, see greycard-core.
 nikon-he = ["greycard-core/nikon-he"]
 
@@ -202,3 +203,12 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 # The `mono-usb` feature's.
 objc2-image-capture-core = { version = "0.3.2", default-features = false, optional = true, features = ["std", "ICCameraDevice", "ICCameraFile", "ICCameraFolder", "ICCameraItem", "ICDevice", "ICDeviceBrowser", "ImageCaptureConstants", "block2", "libc", "objc2-core-graphics"] }
 block2 = { version = "0.6", optional = true }
+
+# The `mono-usb` feature's on Linux and Windows: the camera over PTP in
+# pure Rust (nusb on Linux, Windows Portable Devices on Windows), MIT OR
+# Apache-2.0. futures and its timer run its calls on a worker thread;
+# mtp-rs brings both.
+[target.'cfg(any(target_os = "linux", windows))'.dependencies]
+futures = { version = "0.3", optional = true }
+futures-timer = { version = "3", optional = true }
+mtp-rs = { version = "0.38", optional = true }

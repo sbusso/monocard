@@ -1,17 +1,21 @@
 //! Step 12 on display light, one value at a time: the reference
 //! `look.wgsl` is held to. Vignette, solarize and grain work on the paper's
-//! own range, black floor to white ceiling; toning is the only step that
-//! makes color, and never changes the luminance.
+//! own range, black floor to white ceiling. Then the print's own color, a
+//! toner's baths or a lith or cyanotype print (`print.rs`), which may move
+//! the luminance as a toner does; then the tints, which never do.
 //!
 //! The grain's hash is Greycard's (`greycard-edit/src/grain.rs`). The Oklab
 //! matrices are Björn Ottosson's, published to the public domain.
 
+use crate::print;
 use bytemuck::{Pod, Zeroable};
 use mono_core::MonoEdit;
 use mono_core::edit::{
-    Display, Grain, SOLAR_NODES as NODES, Solarize, SolarizeKind, Tint, Toning, Vignette,
+    Display, Grain, Process, SOLAR_NODES as NODES, Solarize, SolarizeKind, Tint, Toning, Vignette,
 };
 use mono_tone::film;
+
+use crate::film_grain;
 
 /// The same functions for a shader, which declares the binding they read:
 ///
@@ -39,11 +43,16 @@ pub struct MonoLookParams {
     pub seed: [u32; 4],
     /// The solarize nodes with one continued off each end.
     pub solar: [[f32; 4]; 5],
-    /// The film's grain: 1 when on, its density's standard deviation in a
-    /// picture pixel at net density 1 (`film::Print::grain_sigma`), 0, 0.
+    /// The film's grain: 1 when on, grain radii to a picture pixel, 0, 0
+    /// (see [`crate::film_grain`]).
     pub film_grain: [f32; 4],
-    /// How a unit of it moves display light, see `film::Print::grain_table`.
-    pub film_grain_table: [[f32; 4]; film::TABLE / 4],
+    /// The negative's density and display light's slope against it, at
+    /// each display light, see `film::Print::grain_table`.
+    pub film_grain_table: [[f32; 4]; film::TABLE / 2],
+    /// 1 when the print has a color of its own, then 0.
+    pub print_head: [f32; 4],
+    /// Its linear Rec.2020 over the paper's light, see `print::table`.
+    pub print_rgb: [[f32; 4]; print::TABLE],
 }
 
 /// Step 12 compiled from an edit.
@@ -53,7 +62,9 @@ pub struct Compiled {
 }
 
 impl Compiled {
-    pub fn new(e: &MonoEdit, iso: Option<f32>) -> Self {
+    /// `long_side`: the full picture's long side in pixels, laid on a
+    /// 35 mm frame for the film's grain; 0 when it is not known.
+    pub fn new(e: &MonoEdit, iso: Option<f32>, long_side: f32) -> Self {
         let mut c = Self::of(
             &e.display,
             &e.vignette,
@@ -64,7 +75,7 @@ impl Compiled {
         );
         // With a film, the grain is the negative's: its size is the data
         // sheet's and an ISO says nothing more of it.
-        if let Some(print) = film::Print::new(&e.film, e.display.grade) {
+        if let Some(print) = film::Print::new(&e.film, &e.paper, e.display.grade) {
             let g = grain_constants(
                 &Grain {
                     link_iso: false,
@@ -72,9 +83,31 @@ impl Compiled {
                 },
                 None,
             );
+            let pixel_um = if long_side > 0.0 {
+                film::FRAME_UM / long_side
+            } else {
+                film::PIXEL_UM
+            };
+            // Size moves the grains' radius about the film's, which is
+            // at the default 30 %: from 0.55 to 2.6 times it.
+            let size = (2.0 * (e.grain.size.clamp(0.0, 1.0) - 0.3)).exp2();
+            let radius = film_grain::radius_um(print.grain_rms()) * size;
             c.p.grain[0] = g[0];
-            c.p.film_grain = [1.0, print.grain_sigma(), 0.0, 0.0];
+            c.p.film_grain = [1.0, pixel_um / radius, 0.0, 0.0];
             c.p.film_grain_table = print.grain_table();
+            // A warm-tone paper's silver; lith and cyanotype have their own.
+            if let Some((hue, amount)) = print::paper_tint(e.paper.stock)
+                && e.paper.process == Process::SilverGelatin
+            {
+                let [a, b] = tint(&Tint { hue, amount });
+                c.p.tone0[0] += a;
+                c.p.tone0[1] += b;
+                c.p.range[3] = 1.0;
+            }
+        }
+        if let Some(t) = print::table(&e.paper, &e.toning) {
+            c.p.print_head[0] = 1.0;
+            c.p.print_rgb = t;
         }
         c
     }
@@ -104,7 +137,7 @@ impl Compiled {
                     floor,
                     white - floor,
                     f32::from(u8::from(on)),
-                    f32::from(u8::from(!t.is_neutral())),
+                    f32::from(u8::from(t.has_tint())),
                 ],
                 vignette,
                 grain: [grain[0], grain[1], grain[2], strength],
@@ -113,7 +146,9 @@ impl Compiled {
                 seed: [g.seed, 0, 0, 0],
                 solar: solar_constants(s),
                 film_grain: [0.0; 4],
-                film_grain_table: [[0.0; 4]; film::TABLE / 4],
+                film_grain_table: [[0.0; 4]; film::TABLE / 2],
+                print_head: [0.0; 4],
+                print_rgb: [[0.0; 4]; print::TABLE],
             },
         }
     }
@@ -137,7 +172,7 @@ pub struct Ctx<'a> {
     pub scale: f32,
 }
 
-/// Vignette, solarize, grain, toning, in that order.
+/// Vignette, solarize, grain, the print's color, toning, in that order.
 pub fn finish(display: f32, ctx: &Ctx) -> [f32; 3] {
     let p = &ctx.look.p;
     let mut v = display;
@@ -148,12 +183,27 @@ pub fn finish(display: f32, ctx: &Ctx) -> [f32; 3] {
         n = grain_at(n, ctx.px, ctx.scale, p);
         v = p.range[0] + p.range[1] * n;
     }
+    if p.print_head[0] != 0.0 {
+        let n = ((v - p.range[0]) / p.range[1]).clamp(0.0, 1.0);
+        let rgb = print::look_up(&p.print_rgb, n).map(|c| p.range[0] + p.range[1] * c);
+        // The tints over the print's color: their color over the grey of
+        // its luminance.
+        let y = LUMA_2020[0] * rgb[0] + LUMA_2020[1] * rgb[1] + LUMA_2020[2] * rgb[2];
+        if p.range[3] == 0.0 || y <= 1e-6 {
+            return rgb;
+        }
+        let t = tone_at(y, p);
+        return std::array::from_fn(|c| rgb[c] * t[c] / y);
+    }
     if p.range[3] == 0.0 {
         [v; 3]
     } else {
         tone_at(v, p)
     }
 }
+
+/// Rec.2020's luminance.
+const LUMA_2020: [f32; 3] = [0.2627, 0.6780, 0.0593];
 
 fn encode(x: f32) -> f32 {
     x.max(0.0).powf(1.0 / 2.2)
@@ -466,6 +516,17 @@ fn grain_at(n: f32, px: [f32; 2], scale: f32, p: &MonoLookParams) -> f32 {
     if amount == 0.0 {
         return n;
     }
+    if p.film_grain[0] == 1.0 {
+        // The negative's grain at the density behind this light, through
+        // the print's slope there.
+        let [d, slope] = film::grain_look_up(&p.film_grain_table, n);
+        if slope == 0.0 {
+            return n;
+        }
+        let tex = film_grain::texture();
+        let dd = film_grain::noise(tex, px, scale, p.film_grain[1], d, p.seed[0]);
+        return (n + amount * slope * dd).clamp(0.0, 1.0);
+    }
     let mut sum = 0.0;
     let mut power = 0.0;
     for (k, (share, base, rough, turn)) in OCTAVES.into_iter().enumerate() {
@@ -476,11 +537,6 @@ fn grain_at(n: f32, px: [f32; 2], scale: f32, p: &MonoLookParams) -> f32 {
         power += w * w;
     }
     let unit = sum / (power.sqrt() * NOISE_DEVIATION);
-    if p.film_grain[0] == 1.0 {
-        // The negative's grain in a cell of `cell` pixels, as display light.
-        let d = amount * p.film_grain[1] / cell * film::grain_look_up(&p.film_grain_table, n);
-        return (n + d * unit).clamp(0.0, 1.0);
-    }
     let g = encode(n);
     let weight = 4.0 * g * (1.0 - g);
     let d = amount * GRAIN_SCALE * weight * unit;
@@ -588,9 +644,9 @@ fn tone_at(v: f32, p: &MonoLookParams) -> [f32; 3] {
     ]
 }
 
-/// Toning alone: display light to linear Rec.2020 of the same luminance.
+/// The tints alone: display light to linear Rec.2020 of the same luminance.
 pub fn tone_rgb(display: f32, t: &Toning) -> [f32; 3] {
-    if t.is_neutral() {
+    if !t.has_tint() {
         return [display; 3];
     }
     let [tone0, tone1] = tone_constants(t);
@@ -628,23 +684,35 @@ impl TonePreset {
         }
     }
 
+    /// A preset that names a toner is its bath (§740); the others are
+    /// tints. An edit from before keeps the tints it has.
     pub fn toning(self) -> Toning {
         let t = |hue, amount| Tint { hue, amount };
         let none = Tint::default();
-        let (overall, highlights, shadows) = match self {
-            // Cool, in the shadows alone.
-            TonePreset::Selenium => (none, none, t(220.0, 0.15)),
-            TonePreset::Sepia => (t(34.0, 0.35), none, t(24.0, 0.1)),
-            TonePreset::Platinum => (t(38.0, 0.06), none, t(30.0, 0.04)),
-            TonePreset::Cyanotype => (t(212.0, 0.45), none, t(222.0, 0.2)),
-            // Blue black shadows under warm paper.
-            TonePreset::Gold => (none, t(44.0, 0.08), t(228.0, 0.12)),
-        };
-        Toning {
-            overall,
-            highlights,
-            shadows,
-            balance: 0.0,
+        match self {
+            TonePreset::Selenium => Toning {
+                selenium: 0.6,
+                ..Default::default()
+            },
+            TonePreset::Sepia => Toning {
+                sepia: 0.8,
+                ..Default::default()
+            },
+            TonePreset::Gold => Toning {
+                gold: 0.7,
+                ..Default::default()
+            },
+            TonePreset::Platinum => Toning {
+                overall: t(38.0, 0.06),
+                shadows: t(30.0, 0.04),
+                ..Default::default()
+            },
+            TonePreset::Cyanotype => Toning {
+                overall: t(212.0, 0.45),
+                highlights: none,
+                shadows: t(222.0, 0.2),
+                ..Default::default()
+            },
         }
     }
 }
@@ -670,6 +738,7 @@ mod tests {
                     highlights: t,
                     shadows: t,
                     balance: 30.0,
+                    ..Default::default()
                 };
                 for i in 0..=200 {
                     let y = i as f32 / 200.0;
@@ -793,7 +862,7 @@ mod tests {
                 solarize: *s,
                 ..Default::default()
             };
-            Compiled::new(&e, None).params()
+            Compiled::new(&e, None, 0.0).params()
         };
         let table = Some(SOLAR[1]);
         for strength in [0.3, 1.0] {
@@ -932,7 +1001,7 @@ mod tests {
                 scale: 1.0,
             }
         }
-        let rest = Compiled::new(&MonoEdit::default(), Some(800.0));
+        let rest = Compiled::new(&MonoEdit::default(), Some(800.0), 6000.0);
         assert_eq!(finish(0.37, &ctx(&rest)), [0.37; 3]);
         let mut e = MonoEdit::default();
         e.display.white_ceiling = 0.9;
@@ -942,11 +1011,54 @@ mod tests {
         e.solarize.kind = SolarizeKind::Ends;
         for amount in [-100.0, 0.0, 100.0] {
             e.vignette.amount = amount;
-            let look = Compiled::new(&e, None);
+            let look = Compiled::new(&e, None, 6000.0);
             for i in 0..=100 {
                 let v = finish(i as f32 / 100.0, &ctx(&look))[0];
                 assert!((0.03 - 1e-5..=0.9 + 1e-5).contains(&v), "{v}");
             }
         }
+    }
+
+    #[test]
+    fn a_toned_print_keeps_its_white_and_the_tints_go_over_it() {
+        fn ctx(look: &Compiled) -> Ctx<'_> {
+            Ctx {
+                look,
+                uv: [0.5, 0.5],
+                aspect: 1.5,
+                px: [0.0, 0.0],
+                scale: 1.0,
+            }
+        }
+        let mut e = MonoEdit {
+            toning: TonePreset::Sepia.toning(),
+            ..Default::default()
+        };
+        let look = Compiled::new(&e, None, 6000.0);
+        let white = finish(1.0, &ctx(&look));
+        assert!(white.iter().all(|c| (c - 1.0).abs() < 1e-4), "{white:?}");
+        let sepia = finish(0.3, &ctx(&look));
+        assert!(sepia[0] > sepia[2] + 0.01, "{sepia:?}");
+        let exact = print::rgb(0.3, &e.paper, &e.toning);
+        assert!(
+            (0..3).all(|c| (sepia[c] - exact[c]).abs() < 2e-3),
+            "{exact:?}"
+        );
+        // A blue tint over it cools it, the luminance near where it was.
+        e.toning.overall = Tint {
+            hue: 220.0,
+            amount: 0.3,
+        };
+        let cooled = finish(0.3, &ctx(&Compiled::new(&e, None, 6000.0)));
+        let y = |c: [f32; 3]| (0..3).map(|i| LUMA_2020[i] * c[i]).sum::<f32>();
+        assert!(cooled[2] - cooled[0] > sepia[2] - sepia[0]);
+        assert!((y(cooled) - y(sepia)).abs() < 0.02 * y(sepia));
+        // A warm-tone paper under a film is warm, and toned.
+        let mut warm = MonoEdit::default();
+        warm.film.stock = mono_core::edit::FilmStock::Fp4Plus;
+        warm.paper.stock = mono_core::edit::PaperStock::Fomatone;
+        assert!(warm.is_toned());
+        let c = finish(0.3, &ctx(&Compiled::new(&warm, None, 6000.0)));
+        assert!(c[0] > c[2], "{c:?}");
     }
 }

@@ -112,7 +112,7 @@ const EDGES: &[(&str, &[&str])] = &[
     ("mono-decode", &["mono-core", "core"]),
     ("mono-denoise", &["mono-core", "core", "ai"]),
     ("mono-tone", &["mono-core"]),
-    ("mono-look", &["mono-core", "mono-tone"]),
+    ("mono-look", &["mono-core", "mono-tone", "core"]),
     ("mono-profile", &["mono-core", "mono-decode", "core"]),
     ("mono-ui", &["mono-core", "mono-look", "mono-tone"]),
 ];

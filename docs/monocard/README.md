@@ -26,8 +26,9 @@ cargo build --release -p greycard-cli --features mono --bin monocard
 scripts/ort-dylib.sh release
 ```
 
-On a Mac, use `--features mono-usb` in the first line to add the import from the
-camera by USB. It includes `mono`. On another system it adds nothing.
+Use `--features mono-usb` in the first line to add the import from the camera by
+USB: ImageCaptureCore on a Mac, mtp-rs on Linux and Windows. It includes `mono`.
+On another system it adds nothing.
 
 `--bin` builds the Monocard program alone. Without it, cargo also builds the same
 program under Greycard's name.

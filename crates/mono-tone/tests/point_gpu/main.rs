@@ -3,7 +3,10 @@
 mod device;
 
 use device::{Gpu, Rng, worst};
-use mono_core::edit::{Basic, Curve, Display, Film, FilmStock, Highlights, ToneEq, Transform};
+use mono_core::edit::{
+    Agitation, Basic, Curve, Developer, Display, Film, FilmStock, Highlights, PaperStock, ToneEq,
+    Transform,
+};
 use mono_core::{MonoEdit, MonoLocal, ZONES};
 use mono_tone::point::{self, Compiled, LocalCompiled, Paper};
 
@@ -53,15 +56,26 @@ fn edit(r: &mut Rng, k: usize) -> MonoEdit {
             mask_exposure: r.slider(-4.0, 4.0),
             ..Default::default()
         },
-        // Every fourth on a film, each film in turn.
+        // Every fourth on a film, each film in turn, in a developer and on
+        // a paper; every eighth a split-grade print.
         film: if k % 4 == 1 {
             Film {
                 stock: FilmStock::ALL[1 + (k / 4) % (FilmStock::ALL.len() - 1)],
-                development: r.slider(-2.0, 2.0),
+                development: r.slider(-3.0, 3.0),
+                developer: Developer::ALL[k % Developer::ALL.len()],
+                temperature: r.slider(18.0, 24.0),
+                agitation: Agitation::ALL[k / 2 % Agitation::ALL.len()],
                 ..Default::default()
             }
         } else {
             Film::default()
+        },
+        paper: mono_core::edit::Paper {
+            stock: PaperStock::ALL[k / 4 % PaperStock::ALL.len()],
+            split: k % 8 == 1,
+            soft: r.slider(-3.0, 3.0),
+            hard: r.slider(-3.0, 3.0),
+            ..Default::default()
         },
         // Every third without the table.
         curve: if k.is_multiple_of(3) {

@@ -77,7 +77,7 @@
         <p>Monocard is a free, open source raw editor for cameras with no color filter on the sensor. It develops one channel, from the sensor data to the print. The first camera is the Ricoh&nbsp;GR&nbsp;IV Monochrome.</p>
         <p class="hero-act">
           <a class="btn btn-main" data-download href="https://github.com/sbusso/monocard/releases/latest/download/Monocard.dmg"><svg class="os" aria-hidden="true"><use href="#os-mac"/></svg><span>Download for macOS</span></a>
-          <span class="note">Version 0.4.0.</span>
+          <span class="note">Version 0.5.0.</span>
           <span class="note" data-note>macOS 13.4 or later, Apple silicon. Notarized.</span>
           <span class="note">Also for <a href="#downloads" data-others>Linux and Windows</a>.</span>
         </p>
@@ -172,6 +172,9 @@
         <div><dt>Profiled</dt><dd>A noise model for each ISO, with non-local means or wavelets.</dd></div>
         <div><dt>Raw wavelets</dt><dd>Wavelet denoise on the raw data.</dd></div>
         <div><dt>Keep grain</dt><dd>Leaves a chosen part of the sensor’s grain in the picture.</dd></div>
+        <div><dt>Learned</dt><dd>Fast and Best: learned models for grey pictures, downloaded the first time you use them.</dd></div>
+        <div><dt>JPEG blocks</dt><dd>Removes the 8 by 8 blocks of a compressed JPEG.</dd></div>
+        <div><dt>Burst merge</dt><dd>Merges 2 to 16 handheld frames at one exposure into one with less noise.</dd></div>
       </dl>
     </div>
   </div>
@@ -187,7 +190,7 @@
         <dl class="spec">
           <div><dt>LIGHT</dt><dd>Nine sliders, one a stop, from <span class="fig">−8&nbsp;EV</span> to <span class="fig">0&nbsp;EV</span>. A zone mask. The zone view switch.</dd></div>
           <div><dt>BASIC</dt><dd>Exposure, contrast, blacks, midtones, whites. Display transform: sigmoid or AgX. On a color photo, a black and white film filter.</dd></div>
-          <div><dt>FILM</dt><dd>18 black and white films from Kodak, Ilford, and Fujifilm, printed on Ilford Multigrade at paper grade 00 to 5. Development, the film’s own grain, halation, and edge effect. A color photo goes to grey through the film’s color sensitivity.</dd></div>
+          <div><dt>FILM</dt><dd>18 black and white films from Kodak, Ilford, and Fujifilm. Developer, time, temperature, and agitation. Six papers, paper grade 00 to 5 or split grade, and silver gelatin, lith, or cyanotype. The film’s own grain, halation, and edge effect. A color photo goes to grey through the film’s color sensitivity.</dd></div>
           <div><dt>Curve</dt><dd>Drawn over the histogram. Presets: linear, soft S, strong S, lifted, faded.</dd></div>
         </dl>
       </div>
@@ -285,7 +288,7 @@
     <div class="head">
       <div class="head-main">
         <h2><span class="num" aria-hidden="true">VII</span>Looks</h2>
-        <p>Ten looks, each a small text file, each editable after it is applied. Grain follows the tones. Toning and solarize are part of a look.</p>
+        <p>Ten looks, each a small text file, each editable after it is applied. Grain follows the tones. Toning and solarize are part of a look. Toner baths act on the silver by density: selenium, sepia, gold, iron blue, copper, vanadium. A LUT can become a look.</p>
       </div>
       <p class="head-side">The frame below is one picture in eleven bands: no look, then the ten looks, in the order of the LOOK panel.</p>
     </div>
@@ -377,7 +380,7 @@
         <div><dt>Opens</dt><dd>When a camera is connected, or from the menu.</dd></div>
         <div><dt>Import</dt><dd>The selected photos only.</dd></div>
         <div><dt>Delete</dt><dd>Nothing is deleted on the camera. There is no delete button.</dd></div>
-        <div><dt>System</dt><dd>macOS.</dd></div>
+        <div><dt>System</dt><dd>macOS, Linux, and Windows.</dd></div>
       </dl>
     </div>
     <div class="pair">
@@ -408,7 +411,8 @@
         <p>A picture that is not toned leaves as a grey file, one channel. The proof shows it within the white and the black of a paper.</p>
       </div>
       <dl class="spec">
-        <div><dt>Files</dt><dd>Grey JPEG, 16-bit grey TIFF.</dd></div>
+        <div><dt>Files</dt><dd>Grey JPEG, JPEG XL, Ultra HDR, 16-bit grey TIFF.</dd></div>
+        <div><dt>Looks out</dt><dd>A look as a LUT, or as a Lightroom profile and preset.</dd></div>
         <div><dt>Paper proof</dt><dd>Matte, baryta, newsprint.</dd></div>
         <div><dt>Sidecar</dt><dd>The edit is kept beside the photo, in <code>IMG.DNG.mcd</code>.</dd></div>
         <div><dt>Command line</dt><dd><code>monocard</code> develops files with no window.</dd></div>
@@ -433,7 +437,7 @@
   <div class="wrap">
     <div class="get-head">
       <h2>Download</h2>
-      <p class="note">Version 0.4.0, <time datetime="2026-11-27">27 November 2026</time>. Free.</p>
+      <p class="note">Version 0.5.0, <time datetime="2026-11-27">27 November 2026</time>. Free.</p>
     </div>
     <!-- script.js takes the first button's address and note from the card of the visitor's system. -->
     <div class="get-cards">

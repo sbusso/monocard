@@ -695,6 +695,23 @@ impl crate::walk::Models for WorkerModels<'_> {
         self.ai.denoise_mono(mode, plane, noise)
     }
 
+    #[cfg(feature = "mono")]
+    fn mono_to_fetch(
+        &mut self,
+        mode: mono_denoise::learned::Mode,
+    ) -> Option<&'static greycard_ai::Model> {
+        self.ai.mono_to_fetch(mode)
+    }
+
+    #[cfg(feature = "mono")]
+    fn deblock_mono(
+        &mut self,
+        plane: &mono_core::Plane,
+        strength: f32,
+    ) -> Result<mono_core::Plane, String> {
+        self.ai.deblock_mono(plane, strength)
+    }
+
     /// The masks are made on a grey copy at about the size the models
     /// read, its rasters the frame's, and let go with it.
     #[cfg(feature = "mono")]

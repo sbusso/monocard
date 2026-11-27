@@ -20,6 +20,8 @@ pub mod halves;
 pub mod lanczos;
 #[cfg(feature = "mono")]
 pub mod mono;
+#[cfg(feature = "mono")]
+pub mod mono_hdr;
 pub mod output_sharpen;
 pub mod profile_tone;
 pub mod reduce;

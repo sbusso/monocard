@@ -1,9 +1,15 @@
 //! Layer 3: the learned mono denoiser, over ONNX Runtime.
 //!
-//! The model's contract: one input `[1, 1, h, w]` and one output of the
-//! same shape, float32, both in the variance-stabilized space of the
-//! frame's noise model ([`Vst`], the same closed forms the training in
-//! `tools/denoise/mono` uses); `h` and `w` free and a multiple of 8.
+//! The model's contract, float32 throughout, `h` and `w` free and a
+//! multiple of 8, in one of two forms:
+//!
+//! - one input `[1, 1, h, w]` and one output of the same shape, both in
+//!   the variance-stabilized space of the frame's noise model ([`Vst`],
+//!   the same closed forms the training in `tools/denoise/mono` uses);
+//! - two inputs, the plane in that space divided by the stabilized value
+//!   of white, so white is 1, and its noise map [`sigma_at`], and one
+//!   output, the plane in the same space as the first input. DRUNet,
+//!   FFDNet and SCUNet are converted to this one (`convert.py`, §739).
 //!
 //! The session, its providers and the memory rules are greycard-ai's
 //! (`runtime`, `denoise::choose_tile`). A frame runs in square tiles with
@@ -13,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use greycard_ai::denoise::choose_tile;
 use greycard_ai::runtime::{self, Loaded, Provider};
-use greycard_ai::{Store, ram};
+use greycard_ai::{Store, ram, registry};
 use greycard_core::develop::denoise::Vst;
 use mono_core::Plane;
 use ort::session::builder::GraphOptimizationLevel;
@@ -24,11 +30,6 @@ use crate::NoiseModel;
 
 /// A model named by hand: a file, or a folder holding [`Mode::file`].
 pub const MODEL_VAR: &str = "MONOCARD_DENOISE_MODEL";
-/// The folder of the model store the models are kept in.
-// No model is published yet. When one is, it becomes a
-// `greycard_ai::registry::Model` with its hash, fetched as the others
-// are, and `find` asks the store for it.
-pub const STORE_DIR: &str = "monocard-denoise";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
@@ -37,12 +38,28 @@ pub enum Mode {
 }
 
 impl Mode {
-    pub fn file(self) -> &'static str {
+    /// The registry's model for the mode, which the store fetches.
+    pub fn model(self) -> &'static registry::Model {
         match self {
-            Mode::Fast => "mono-fast.onnx",
-            Mode::Best => "mono-best.onnx",
+            Mode::Fast => &registry::MONO_DENOISE_FAST,
+            Mode::Best => &registry::MONO_DENOISE_BEST,
         }
     }
+
+    pub fn file(self) -> &'static str {
+        self.model().files[0].name
+    }
+}
+
+/// The noise map of the two-input contract at a pixel of linear value
+/// `x`: the noise's standard deviation in the stabilized space over
+/// `white`, the transform's slope times `sqrt(a x + b)`. Close to
+/// `1 / white`, under it in the deepest shadows. From the noisy value, as
+/// the training (`data.sigma_map`) reads it.
+pub fn sigma_at(x: f32, a: f32, b: f32, white: f32) -> f32 {
+    let x = x.max(0.0);
+    let s2 = 0.375 * a * a + b;
+    ((a * x + b) / (a * x + s2)).sqrt() / white
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -61,16 +78,34 @@ pub type Result<T> = std::result::Result<T, Error>;
 /// Where `mode`'s model is: named by [`MODEL_VAR`], else in the store.
 pub fn find(mode: Mode) -> Result<PathBuf> {
     let named = std::env::var_os(MODEL_VAR).filter(|v| !v.is_empty());
-    let store = Store::user().map(|s| s.root().to_path_buf()).ok();
-    find_in(named.map(PathBuf::from), store.as_deref(), mode)
+    find_in(named.map(PathBuf::from), Store::user().ok().as_ref(), mode)
 }
 
-fn find_in(named: Option<PathBuf>, store: Option<&Path>, mode: Mode) -> Result<PathBuf> {
+/// Whether `mode`'s model is to be fetched: named by no [`MODEL_VAR`] and
+/// not in the user's store, so the window can offer it.
+pub fn to_fetch(mode: Mode) -> bool {
+    std::env::var_os(MODEL_VAR).is_none_or(|v| v.is_empty())
+        && Store::user().is_ok_and(|s| !s.have(mode.model()))
+}
+
+fn find_in(named: Option<PathBuf>, store: Option<&Store>, mode: Mode) -> Result<PathBuf> {
+    named_or_stored(named, store, mode.model())
+}
+
+/// A file named by hand (a folder: the model's file in it), else the
+/// model's file in the store, there at its published size.
+pub(crate) fn named_or_stored(
+    named: Option<PathBuf>,
+    store: Option<&Store>,
+    model: &registry::Model,
+) -> Result<PathBuf> {
+    let file = &model.files[0];
     let path = match (named, store) {
-        (Some(p), _) if p.is_dir() => p.join(mode.file()),
+        (Some(p), _) if p.is_dir() => p.join(file.name),
         (Some(p), _) => p,
-        (None, Some(root)) => root.join(STORE_DIR).join(mode.file()),
-        (None, None) => PathBuf::from(mode.file()),
+        (None, Some(s)) if s.have(model) => s.path(model, file),
+        (None, Some(s)) => return Err(Error::Missing(s.path(model, file))),
+        (None, None) => PathBuf::from(file.name),
     };
     if path.is_file() {
         Ok(path)
@@ -113,6 +148,8 @@ pub struct Model {
     loaded: Loaded,
     path: PathBuf,
     input: String,
+    /// The noise map's input, for a model of the two-input contract.
+    sigma: Option<String>,
     output: String,
     tiling: Tiling,
 }
@@ -125,31 +162,7 @@ impl Model {
     }
 
     pub fn load(path: &Path, providers: &[Provider]) -> Result<Self> {
-        // Greycard's tiles are mosaic samples, two to a pixel of its
-        // network; this network's pixels are the picture's, so the same
-        // memory holds half the side: 512 and, on a 4 GB card, 256.
-        let default = Tiling::of(greycard_ai::denoise::DEFAULT_TILE / 2);
-        let warm = if providers.contains(&Provider::CoreMl) {
-            default.side()
-        } else {
-            64
-        };
-        let side = default.side() as i64;
-        let loaded = runtime::open_fixed(
-            path,
-            None,
-            GraphOptimizationLevel::Level3,
-            providers,
-            None,
-            &[("h", side), ("w", side)],
-            |s| {
-                let name = s.inputs()[0].name().to_string();
-                let zeros =
-                    Tensor::from_array(([1usize, 1, warm, warm], vec![0.0f32; warm * warm]))?;
-                s.run(ort::inputs![name => zeros])?;
-                Ok(())
-            },
-        )?;
+        let (loaded, tiling) = open(path, providers)?;
         let wrong = |why: &str| Error::Contract {
             path: path.to_path_buf(),
             why: why.into(),
@@ -162,28 +175,26 @@ impl Model {
             t.tensor_shape()
                 .is_none_or(|s| s.len() == 4 && (s[1] == 1 || s[1] < 0))
         };
+        let sigma = match s.inputs() {
+            [_] => None,
+            [_, m] if one(m.dtype()) => Some(m.name().to_string()),
+            _ => {
+                return Err(wrong(
+                    "not a model of one input, or of a plane and its noise map",
+                ));
+            }
+        };
         if !one(i.dtype()) || !one(o.dtype()) {
             return Err(wrong(
                 "not a one-channel [1, 1, h, w] model; a color denoiser does not run here",
             ));
         }
-        let provider = loaded.provider;
-        let webgpu = provider == Provider::WebGpu;
-        let unified = webgpu.then(runtime::webgpu_unified).flatten();
-        let env = std::env::var("GREYCARD_DENOISE_TILE").ok();
-        let (tile, why) = choose_tile(
-            provider,
-            unified,
-            webgpu.then(runtime::webgpu_memory).flatten(),
-            (unified == Some(true)).then(ram::physical).flatten(),
-            env.as_deref(),
-        );
-        log::info!("mono denoiser tile {}: {why}", tile / 2);
         Ok(Self {
             path: path.to_path_buf(),
             input: i.name().to_string(),
+            sigma,
             output: o.name().to_string(),
-            tiling: Tiling::of(tile / 2),
+            tiling,
             loaded,
         })
     }
@@ -203,28 +214,99 @@ impl Model {
             loaded,
             path,
             input,
+            sigma,
             output,
             tiling,
         } = self;
-        run_with(plane, model, *tiling, |tile, side| {
-            let t = Tensor::from_array(([1usize, 1, side, side], tile))
-                .map_err(runtime::Error::from)?;
-            let out = loaded
-                .session
-                .run(ort::inputs![input.as_str() => t])
-                .map_err(runtime::Error::from)?;
-            let (shape, v) = out[output.as_str()]
+        let (a, b) = crate::finite(model);
+        let vst = Vst::new(a, b);
+        let white = vst.forward(1.0);
+        run_with(plane, model, *tiling, |mut tile, side| {
+            let shape = [1usize, 1, side, side];
+            let mut feed = Vec::with_capacity(2);
+            let map = sigma.as_ref().map(|name| {
+                // The map from the linear value, then the plane over white.
+                let map: Vec<f32> = tile
+                    .par_iter()
+                    .map(|d| sigma_at(vst.inverse_clean(*d), a, b, white))
+                    .collect();
+                tile.par_iter_mut().for_each(|d| *d /= white);
+                (name.clone(), map)
+            });
+            let t = Tensor::from_array((shape, tile)).map_err(runtime::Error::from)?;
+            feed.push((input.clone(), t));
+            if let Some((name, map)) = map {
+                let m = Tensor::from_array((shape, map)).map_err(runtime::Error::from)?;
+                feed.push((name, m));
+            }
+            let out = loaded.session.run(feed).map_err(runtime::Error::from)?;
+            let (got, v) = out[output.as_str()]
                 .try_extract_tensor::<f32>()
                 .map_err(runtime::Error::from)?;
             if v.len() != side * side {
                 return Err(Error::Contract {
                     path: path.clone(),
-                    why: format!("a {side}x{side} tile came back {shape}"),
+                    why: format!("a {side}x{side} tile came back {got}"),
                 });
             }
-            Ok(v.to_vec())
+            let back = if sigma.is_some() { white } else { 1.0 };
+            Ok(v.iter().map(|v| v * back).collect())
         })
     }
+}
+
+/// A session on one plane's tiles, of the denoiser or the deblock, warmed
+/// with zeros, and the tiling for the provider it settled on. A free
+/// dimension of an input is the tile's side.
+pub(crate) fn open(path: &Path, providers: &[Provider]) -> Result<(Loaded, Tiling)> {
+    // Greycard's tiles are mosaic samples, two to a pixel of its
+    // network; this network's pixels are the picture's, so the same
+    // memory holds half the side: 512 and, on a 4 GB card, 256.
+    let default = Tiling::of(greycard_ai::denoise::DEFAULT_TILE / 2);
+    let warm = if providers.contains(&Provider::CoreMl) {
+        default.side()
+    } else {
+        64
+    };
+    let side = default.side() as i64;
+    let loaded = runtime::open_fixed(
+        path,
+        None,
+        GraphOptimizationLevel::Level3,
+        providers,
+        None,
+        &[("h", side), ("w", side)],
+        |s| {
+            let mut feed = Vec::new();
+            for input in s.inputs() {
+                let dims: Vec<usize> = match input.dtype().tensor_shape() {
+                    Some(shape) => shape
+                        .iter()
+                        .map(|&d| if d < 0 { warm } else { d as usize })
+                        .collect(),
+                    None => vec![1, 1, warm, warm],
+                };
+                let n = dims.iter().product();
+                let zeros = Tensor::from_array((dims, vec![0.0f32; n]))?;
+                feed.push((input.name().to_string(), zeros));
+            }
+            s.run(feed)?;
+            Ok(())
+        },
+    )?;
+    let provider = loaded.provider;
+    let webgpu = provider == Provider::WebGpu;
+    let unified = webgpu.then(runtime::webgpu_unified).flatten();
+    let env = std::env::var("GREYCARD_DENOISE_TILE").ok();
+    let (tile, why) = choose_tile(
+        provider,
+        unified,
+        webgpu.then(runtime::webgpu_memory).flatten(),
+        (unified == Some(true)).then(ram::physical).flatten(),
+        env.as_deref(),
+    );
+    log::info!("{}: tile {}: {why}", path.display(), tile / 2);
+    Ok((loaded, Tiling::of(tile / 2)))
 }
 
 /// The whole run with `net` for the session: a stabilized tile and its
@@ -233,13 +315,36 @@ fn run_with(
     plane: &Plane,
     model: &NoiseModel,
     tiling: Tiling,
-    mut net: impl FnMut(Vec<f32>, usize) -> Result<Vec<f32>>,
+    net: impl FnMut(Vec<f32>, usize) -> Result<Vec<f32>>,
 ) -> Result<Plane> {
-    let (w, h) = (plane.width, plane.height);
     let (a, b) = crate::finite(model);
     let vst = Vst::new(a, b);
+    let (side, margin) = (tiling.side(), tiling.margin);
+    let mut out = tiled(
+        plane,
+        tiling,
+        |v| vst.forward(v.max(0.0)),
+        net,
+        |tile, answer| implausible(tile, answer, side, margin),
+    )?;
+    // The blend was of the network's own values; a clean value's way
+    // back is the algebraic one.
+    out.data
+        .par_iter_mut()
+        .for_each(|v| *v = vst.inverse_clean(*v));
+    Ok(out)
+}
+
+/// The tile whose core starts at `(tx, ty)`, with its margin mirrored
+/// past the picture's edge, each value read through `into`.
+pub(crate) fn tile_at(
+    plane: &Plane,
+    (tx, ty): (usize, usize),
+    tiling: Tiling,
+    into: &(impl Fn(f32) -> f32 + Sync),
+) -> Vec<f32> {
+    let (w, h) = (plane.width, plane.height);
     let side = tiling.side();
-    let mut out = Plane::filled(w, h, 0.0);
     let fold = |i: isize, n: usize| -> usize {
         if n == 1 {
             return 0;
@@ -248,19 +353,37 @@ fn run_with(
         let i = i.rem_euclid(period);
         (if i < n as isize { i } else { period - i }) as usize
     };
+    let (x0, y0) = (
+        tx as isize - tiling.margin as isize,
+        ty as isize - tiling.margin as isize,
+    );
+    let mut tile = vec![0.0f32; side * side];
+    tile.par_chunks_mut(side).enumerate().for_each(|(y, row)| {
+        let src = plane.row(fold(y0 + y as isize, h));
+        for (x, v) in row.iter_mut().enumerate() {
+            *v = into(src[fold(x0 + x as isize, w)]);
+        }
+    });
+    tile
+}
+
+/// The picture through `net` in tiles ([`tile_at`]), each answer blended
+/// across the tiles' edges: the network's own values, for the caller to
+/// bring back. `check` refuses an answer that cannot be right, given the
+/// tile it answers.
+pub(crate) fn tiled(
+    plane: &Plane,
+    tiling: Tiling,
+    into: impl Fn(f32) -> f32 + Sync,
+    mut net: impl FnMut(Vec<f32>, usize) -> Result<Vec<f32>>,
+    check: impl Fn(&[f32], &[f32]) -> Option<String>,
+) -> Result<Plane> {
+    let (w, h) = (plane.width, plane.height);
+    let side = tiling.side();
+    let mut out = Plane::filled(w, h, 0.0);
     for ty in (0..h).step_by(tiling.tile) {
         for tx in (0..w).step_by(tiling.tile) {
-            let (x0, y0) = (
-                tx as isize - tiling.margin as isize,
-                ty as isize - tiling.margin as isize,
-            );
-            let mut tile = vec![0.0f32; side * side];
-            tile.par_chunks_mut(side).enumerate().for_each(|(y, row)| {
-                let src = plane.row(fold(y0 + y as isize, h));
-                for (x, v) in row.iter_mut().enumerate() {
-                    *v = vst.forward(src[fold(x0 + x as isize, w)].max(0.0));
-                }
-            });
+            let tile = tile_at(plane, (tx, ty), tiling, &into);
             let answer = net(tile.clone(), side)?;
             if answer.len() != tile.len() {
                 return Err(runtime::Error::Shape(format!(
@@ -270,9 +393,13 @@ fn run_with(
                 ))
                 .into());
             }
-            if let Some(why) = implausible(&tile, &answer, side, tiling.margin) {
+            if let Some(why) = check(&tile, &answer) {
                 return Err(runtime::Error::Implausible(why).into());
             }
+            let (x0, y0) = (
+                tx as isize - tiling.margin as isize,
+                ty as isize - tiling.margin as isize,
+            );
             let wx = ramp(tx, w, tiling);
             let wy = ramp(ty, h, tiling);
             for (yy, wy) in wy {
@@ -283,11 +410,6 @@ fn run_with(
             }
         }
     }
-    // The blend was of the network's own values; a clean value's way
-    // back is the algebraic one.
-    out.data
-        .par_iter_mut()
-        .for_each(|v| *v = vst.inverse_clean(*v));
     Ok(out)
 }
 
@@ -339,7 +461,7 @@ fn implausible(input: &[f32], answer: &[f32], side: usize, margin: usize) -> Opt
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::model;
+    use crate::testing::{Dim, model, onnx};
 
     fn scene(w: usize, h: usize) -> Plane {
         Plane::from_fn(w, h, |x, y| {
@@ -435,61 +557,49 @@ mod tests {
     #[test]
     fn a_missing_model_says_so() {
         let dir = std::env::temp_dir().join(format!("mono-denoise-find-{}", std::process::id()));
-        let store = dir.join("store");
+        let store = Store::at(dir.join("store"));
         let e = find_in(None, Some(&store), Mode::Best).unwrap_err();
         assert!(matches!(e, Error::Missing(_)), "{e}");
-        std::fs::create_dir_all(store.join(STORE_DIR)).unwrap();
-        let file = store.join(STORE_DIR).join(Mode::Fast.file());
+        let model = Mode::Fast.model();
+        let file = store.path(model, &model.files[0]);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        // Not its published size: not had.
         std::fs::write(&file, "x").unwrap();
+        assert!(find_in(None, Some(&store), Mode::Fast).is_err());
+        // At its size, as a sparse file.
+        let f = std::fs::File::create(&file).unwrap();
+        f.set_len(model.files[0].bytes).unwrap();
+        drop(f);
         assert_eq!(find_in(None, Some(&store), Mode::Fast).unwrap(), file);
         // A named one comes first, a folder by the mode's file in it.
-        let named = Some(store.join(STORE_DIR));
+        let named = Some(file.parent().unwrap().to_path_buf());
         assert_eq!(find_in(named, None, Mode::Fast).unwrap(), file);
         assert!(find_in(Some(dir.join("no")), Some(&store), Mode::Fast).is_err());
         // remove_dir_all allowed: plain files, nothing open under it.
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// A graph of one `Identity`, as ONNX's protobuf has it, `channels`
-    /// wide.
-    fn identity_onnx(channels: u8) -> Vec<u8> {
-        fn field(n: u8, body: &[u8]) -> Vec<u8> {
-            let mut v = vec![n << 3 | 2, body.len() as u8];
-            assert!(body.len() < 128);
-            v.extend_from_slice(body);
-            v
+    /// The map is the slope of the transform times the noise's deviation,
+    /// over white: a numeric derivative agrees.
+    #[test]
+    fn the_noise_map_is_the_noise_through_the_transform() {
+        for (a, b) in [(1e-3f32, 1e-6f32), (1.5e-4, 2e-8), (1.2e-2, 2.5e-5)] {
+            let vst = Vst::new(a, b);
+            let white = vst.forward(1.0);
+            for x in [0.0f32, 1e-4, 0.01, 0.18, 0.9] {
+                let h = 1e-3 * (x + 1e-3);
+                let slope = (vst.forward(x + h) - vst.forward((x - h).max(0.0)))
+                    / (x + h - (x - h).max(0.0));
+                let want = slope * (a * x + b).sqrt() / white;
+                let got = sigma_at(x, a, b, white);
+                assert!(
+                    (got - want).abs() < 2e-3 * want,
+                    "{a} {b} at {x}: {got} {want}"
+                );
+            }
+            // Past the shadows, one stabilized unit.
+            assert!((sigma_at(0.5, a, b, white) * white - 1.0).abs() < 0.01);
         }
-        let cat = |parts: &[Vec<u8>]| parts.concat();
-        let dim = |v: u8| field(1, &[0x08, v]);
-        let free = |name: &str| field(1, &field(2, name.as_bytes()));
-        let value = |name: &str| {
-            let shape = cat(&[dim(1), dim(channels), free("h"), free("w")]);
-            // elem_type 1 is float32.
-            let tensor = cat(&[vec![0x08, 1], field(2, &shape)]);
-            cat(&[field(1, name.as_bytes()), field(2, &field(1, &tensor))])
-        };
-        let node = cat(&[
-            field(1, b"plane"),
-            field(2, b"clean"),
-            field(4, b"Identity"),
-        ]);
-        let graph = cat(&[
-            field(1, &node),
-            field(2, b"g"),
-            field(11, &value("plane")),
-            field(12, &value("clean")),
-        ]);
-        // ir_version 8; the default domain at opset 17.
-        let mut out = vec![0x08, 8];
-        out.extend(field(8, &[0x10, 17]));
-        // The graph is past a one-byte length.
-        out.extend([
-            7 << 3 | 2,
-            graph.len() as u8 & 0x7f | 0x80,
-            (graph.len() >> 7) as u8,
-        ]);
-        out.extend(graph);
-        out
     }
 
     #[test]
@@ -500,18 +610,48 @@ mod tests {
         }
         let dir = std::env::temp_dir().join(format!("mono-denoise-ort-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        let (good, color) = (dir.join("mono.onnx"), dir.join("color.onnx"));
-        std::fs::write(&good, identity_onnx(1)).unwrap();
-        std::fs::write(&color, identity_onnx(4)).unwrap();
-        let mut m = Model::load(&good, &[Provider::Cpu]).expect("the fixture loads");
-        assert_eq!(m.provider(), Provider::Cpu);
+        let (good, color, mapped) = (
+            dir.join("mono.onnx"),
+            dir.join("color.onnx"),
+            dir.join("mapped.onnx"),
+        );
+        let plane = |c| {
+            (
+                "plane",
+                vec![Dim::N(1), Dim::N(c), Dim::Free("h"), Dim::Free("w")],
+            )
+        };
+        let clean = (
+            "clean",
+            vec![Dim::N(1), Dim::N(1), Dim::Free("h"), Dim::Free("w")],
+        );
+        let sigma = ("sigma", clean.1.clone());
+        let pass = [("plane", "clean")];
+        std::fs::write(
+            &good,
+            onnx(&pass, &[plane(1)], std::slice::from_ref(&clean)),
+        )
+        .unwrap();
+        std::fs::write(
+            &color,
+            onnx(&pass, &[plane(4)], std::slice::from_ref(&clean)),
+        )
+        .unwrap();
+        std::fs::write(&mapped, onnx(&pass, &[plane(1), sigma], &[clean])).unwrap();
         let p = scene(600, 90);
-        let out = m.run(&p, &model(1e-3, 1e-6)).unwrap();
-        for (o, i) in out.data.iter().zip(&p.data) {
-            assert!((o - i).abs() < 1e-5);
+        // The plane goes in over white and comes back by it.
+        for file in [&good, &mapped] {
+            let mut m = Model::load(file, &[Provider::Cpu]).expect("the fixture loads");
+            assert_eq!(m.provider(), Provider::Cpu);
+            assert_eq!(m.sigma.is_some(), file == &mapped);
+            let out = m.run(&p, &model(1e-3, 1e-6)).unwrap();
+            for (o, i) in out.data.iter().zip(&p.data) {
+                assert!((o - i).abs() < 1e-5);
+            }
         }
         let e = Model::load(&color, &[Provider::Cpu]).err().unwrap();
         assert!(matches!(e, Error::Contract { .. }), "{e}");
+        let m = Model::load(&good, &[Provider::Cpu]).unwrap();
         // remove_dir_all allowed: plain files, nothing open under it.
         std::fs::remove_dir_all(&dir).unwrap();
         eprintln!("ran the session on {}", m.provider().label());

@@ -35,11 +35,16 @@ parameter_count = _up.parameter_count
 
 
 class MonoUNet(nn.Module):
-    def __init__(self, widths=(32, 64, 128, 256), post=16, head="mosaic"):
+    """``sigma``: the two-input contract of convert.py and §739, the plane
+    over its white and its noise map in, the clean plane out as a residual
+    (the plane less the noise the network finds), as ansel-denoise's
+    network answers."""
+
+    def __init__(self, widths=(32, 64, 128, 256), post=16, head="mosaic", sigma=False):
         super().__init__()
-        self.widths, self.post_width, self.kind = tuple(widths), post, head
+        self.widths, self.post_width, self.kind, self.sigma = tuple(widths), post, head, sigma
         self.enc = nn.ModuleList()
-        c = 1
+        c = 2 if sigma else 1
         for w in widths:
             self.enc.append(Block(c, w))
             c = w
@@ -63,10 +68,10 @@ class MonoUNet(nn.Module):
 
     @property
     def config(self):
-        return {"widths": self.widths, "post": self.post_width, "head": self.kind}
+        return {"widths": self.widths, "post": self.post_width, "head": self.kind, "sigma": self.sigma}
 
-    def forward(self, plane):
-        x = plane
+    def forward(self, plane, sigma=None):
+        x = torch.cat([plane, sigma], dim=1) if self.sigma else plane
         skips = []
         for i, block in enumerate(self.enc):
             x = block(x)
@@ -82,7 +87,7 @@ class MonoUNet(nn.Module):
             if self.pad:
                 parts.append(plane.new_zeros(plane.shape[0], self.pad, *plane.shape[2:]))
             x = torch.cat(parts, dim=1)
-        return self.post(x)
+        return plane - self.post(x) if self.sigma else self.post(x)
 
 
 def load_color(path: str):
@@ -106,9 +111,11 @@ def load_color(path: str):
     return ck["ema"], config
 
 
-def convert(state, config) -> MonoUNet:
-    """A mono network started from a color one's weights."""
-    model = MonoUNet(**config)
+def convert(state, config, sigma=False) -> MonoUNet:
+    """A mono network started from a color one's weights. With ``sigma``,
+    the noise map's weights in the first convolution and the last
+    convolution are zero, so it starts as the identity."""
+    model = MonoUNet(**config, sigma=sigma)
     last = "post.2" if config["head"] == "mosaic" else "post"
     out = {}
     for name, w in state.items():
@@ -121,6 +128,10 @@ def convert(state, config) -> MonoUNet:
         elif name == "post.0.weight" and w.shape[1] < config["post"] + 1 + model.pad:
             # A checkpoint from before upstream's padding.
             w = torch.cat([w, w.new_zeros(w.shape[0], model.pad, *w.shape[2:])], dim=1)
+        if sigma and name == "enc.0.c1.weight":
+            w = torch.cat([w, torch.zeros_like(w)], dim=1)
+        elif sigma and name in (f"{last}.weight", f"{last}.bias"):
+            w = torch.zeros_like(w)
         out[name] = w
     model.load_state_dict(out)
     return model

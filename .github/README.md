@@ -37,18 +37,22 @@ Windows versions are for 64-bit Intel and AMD. They are new and have had little 
   on it. A setting hides color photos.
 - **Light and curve.** Sliders for light, a paper grade from 00 to 5 as darkroom paper, and
   a curve that is always in view. Sigmoid or AgX as the display transform.
-- **Film.** Eighteen black and white films from Kodak, Ilford, and Fujifilm, printed on
-  Ilford Multigrade. Each film has its own curve, grain, halation, and edge effect, and a
-  color photo goes to grey through the film's color sensitivity.
+- **Film.** Eighteen black and white films from Kodak, Ilford, and Fujifilm. Each film has
+  its own curve, grain made of its silver grains, halation, and edge effect, and a color
+  photo goes to grey through the film's color sensitivity. Develop it in D-76, HC-110, or
+  Rodinal at a time, temperature, and agitation.
+- **Darkroom print.** Six papers, split-grade printing, lith and cyanotype, and toner baths:
+  selenium, sepia, gold, iron blue, copper, and vanadium.
 - **Zones.** A view of the picture in zones 0 to X, and a tone equalizer of nine zones that
   keeps to edges.
 - **Highlights.** A raw histogram of the sensor's own values, a map of what the sensor
   clipped, a shoulder into white, and a merge of brackets.
-- **Detail.** Profiled and wavelet denoise that can keep some of the sensor's grain, local
-  contrast, a contrast equalizer, and deblurring.
+- **Detail.** Profiled, wavelet, and learned denoise that can keep some of the sensor's
+  grain, a merge of a handheld burst for less noise, removal of JPEG blocks, local contrast,
+  a contrast equalizer, and deblurring.
 - **Looks.** Ten looks that stay editable: Street, Hard, Soft Print, Night Push, High Key,
   Selenium, Warm Fibre, and Solar 1 to 3. Grain, toning, vignette, and solarize. A look is a
-  small text file.
+  small text file. A look can come from a LUT, and go out as a LUT or a Lightroom profile.
 - **The camera's picture modes.** Monocard reads the mode that a Ricoh GR recorded in the
   file, and its settings, such as Key and Contrast. It can fit a mode's look from pairs of
   DNG and JPEG that you shot. A raw opens with the look of its mode, as the camera's JPEG
@@ -58,11 +62,11 @@ Windows versions are for 64-bit Intel and AMD. They are new and have had little 
   [How well it fits](../docs/monocard/picture-controls.md).
 - **Masks.** Brush, gradient, luminance, subject, and sky. Each one drives the same tone
   tools.
-- **Import from the camera** by USB, on macOS. The window opens when the camera is
-  connected, shows its photos by day, and imports the ones you choose. It deletes nothing on
-  the camera.
-- **Grey output.** Grey JPEG, 16-bit grey TIFF, and a proof on matte, baryta, or newsprint.
-  The file has color only where the print is toned.
+- **Import from the camera** by USB, on macOS, Linux, and Windows. The window opens when
+  the camera is connected, shows its photos by day, and imports the ones you choose. It
+  deletes nothing on the camera.
+- **Grey output.** Grey JPEG, JPEG XL, Ultra HDR, 16-bit grey TIFF, and a proof on matte,
+  baryta, or newsprint. The file has color only where the print is toned.
 - **Your files stay yours.** Edits are in a `.mcd` file beside each photo. Monocard and
   Greycard can be installed together, and Monocard never changes Greycard's edits.
 - **Command line.** `monocard develop` and `monocard export` run with no window.
@@ -71,11 +75,12 @@ Windows versions are for 64-bit Intel and AMD. They are new and have had little 
 
 - I use it on an Apple silicon Mac. The Linux and Windows versions are built and checked by a
   workflow, and no one has used them yet. The Windows programs are not signed.
-- Import from the camera by USB is new and has had little testing.
+- Import from the camera by USB is new and has had little testing. On Linux and Windows it
+  has not been tried with a camera.
 - It is made for the Ricoh GR IV Monochrome. Other cameras' monochrome DNGs open, and they
   have had less testing.
 - The noise profile of the GR IV Monochrome holds no measurements yet.
-- The learned monochrome denoiser is not trained. The profiled and wavelet denoisers work.
+- The learned denoisers are general grey models, not trained on the GR IV Monochrome.
 - Standard, Solid, and Solarized 1 to 3 are measured from the camera's own files. Soft, High
   Contrast, and HDR Tone are drafts. Grainy is not there. The bundled Solar looks are not
   matched against the camera.

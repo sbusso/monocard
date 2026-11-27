@@ -13,8 +13,11 @@
 //!
 //! The command line's `greycard merge hdr` and the window's Merge to
 //! HDR both run [`hdr`]; neither has a merge of its own. The panorama
-//! is [`pano`]'s, and the focus stack [`focus`]'s.
+//! is [`pano`]'s, the focus stack [`focus`]'s, and Monocard's burst
+//! merge `burst`'s.
 
+#[cfg(feature = "mono")]
+pub mod burst;
 pub mod focus;
 #[cfg(feature = "mono")]
 mod mono;

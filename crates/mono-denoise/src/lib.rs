@@ -1,8 +1,10 @@
-//! Monocard: profiled, raw wavelet, and learned denoise on one plane.
+//! Monocard: profiled, raw wavelet, and learned denoise on one plane, and
+//! JPEG block removal.
 //!
 //! The noise model is [`NoiseModel`] everywhere, its first channel the
 //! plane's: variance = a x + b on linear light with 1.0 the sensor white.
 
+pub mod deblock;
 pub mod learned;
 mod profiled;
 mod raw_wavelet;

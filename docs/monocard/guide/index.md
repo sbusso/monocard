@@ -12,7 +12,7 @@ On a Mac, use **Cmd** where this guide says **Ctrl**.
 | Linux | glibc 2.39 or later, and fontconfig | 64-bit Intel or AMD | A Vulkan driver |
 | Windows | Windows 10 or later | 64-bit Intel or AMD | A driver for Vulkan or DirectX 12 |
 
-The Linux and Windows versions have had little testing. [Import from the camera](import.md) by USB is for the Mac only.
+The Linux and Windows versions have had little testing. [Import from the camera](import.md) by USB has not been tried with a camera on Linux or Windows.
 
 Some [masks](masks.md#models) and some [retouch tools](crop-and-retouch.md) need a model. Monocard asks before it downloads one.
 
@@ -135,7 +135,7 @@ A camera's JPEG is already rendered by the camera. You edit it with the same pan
 - Monocard is made for the Ricoh GR IV Monochrome. DNGs of other monochrome cameras open, and they have had less testing.
 - Import from the camera by USB is new and has had little testing.
 - The bundled profile of the GR IV Monochrome holds no measurements. Monocard uses the noise that the DNG names, or estimates it from the photo. You can [measure your sensor](looks.md#measure-the-sensors-noise).
-- The learned denoiser is not trained. **Fast** and **Best** use **Profiled** instead.
+- The learned denoise, **Fast** and **Best**, uses published models trained on photos of other cameras. A model trained on the GR IV Monochrome does not exist yet.
 - The bundled looks **Solar 1**, **Solar 2**, and **Solar 3** are not matched to the camera's Solarized modes.
 - No look of the camera's picture modes comes with Monocard. You [fit them from your own photos](looks.md#fit-a-mode-from-your-photos).
 - Clipped light is lost. A monochrome sensor has no other channel to take it from.

@@ -382,6 +382,8 @@ mod tests {
             width: 2,
             height: 1,
             pixels: greycard_render::export::Pixels::Eight(vec![128; 6]),
+            #[cfg(feature = "mono")]
+            gain: None,
         };
         let settings = greycard_render::export::Settings::default();
         let picked = LensName {

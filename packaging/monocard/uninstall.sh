@@ -41,3 +41,9 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1 &&
 fi
 
 echo "done."
+# Installed by hand, with root (install.sh names it).
+rule=/etc/udev/rules.d/70-monocard-camera.rules
+if [ -f "$rule" ]; then
+    echo "note: the camera's udev rule is still in place. To remove it:"
+    echo "      sudo rm $rule"
+fi

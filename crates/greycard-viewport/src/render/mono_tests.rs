@@ -171,11 +171,17 @@ fn edit(r: &mut Rng) -> MonoEdit {
             strength: r.unit(),
             nodes: Some(std::array::from_fn(|_| r.unit())),
         },
-        toning: Toning {
-            overall: tint(r),
-            highlights: tint(r),
-            shadows: tint(r),
-            balance: r.slider(-100.0, 100.0),
+        toning: {
+            let mut t = Toning {
+                overall: tint(r),
+                highlights: tint(r),
+                shadows: tint(r),
+                balance: r.slider(-100.0, 100.0),
+                ..Default::default()
+            };
+            // A quarter in a sepia bath, by a draw the edit has already.
+            t.sepia = ((t.balance - 50.0) / 50.0).max(0.0);
+            t
         },
         ..Default::default()
     }
@@ -359,6 +365,11 @@ fn the_mono_shader_is_the_cpu_over_random_edits() {
         renderer.set_mono(&shown);
         let mut e = edit(&mut r);
         e.display.grade = (k % 13) as f32 * 0.5 - 1.0;
+        // Every third on a film, whose grain reads the tile.
+        if k % 3 == 1 {
+            let all = mono_core::edit::FilmStock::ALL;
+            e.film.stock = all[1 + k % (all.len() - 1)];
+        }
         let adjustments = if k % 2 == 0 { masks(&mut r) } else { vec![] };
         let (origin, size) = if k % 3 == 2 {
             ((10.0, 6.0), (60.0, 44.0))

@@ -4,7 +4,7 @@
 //! viewport (the geometry, the masks, the overlays, the scopes, the
 //! display table) is the stock shader's, which this one is joined to.
 
-use std::sync::Weak;
+use std::sync::{OnceLock, Weak};
 
 use bytemuck::Zeroable;
 use mono_core::{MonoEdit, MonoFrame, MonoLocal, Plane};
@@ -122,7 +122,8 @@ const FORMATS: [gpu::TextureFormat; 5] = [
 ];
 /// The clip map's place among them.
 const CLIP: usize = 4;
-/// The bindings after the planes: four uniforms.
+/// The bindings after the planes: four uniforms, then the film grain's
+/// tile (`mono_look::film_grain::texture`) as a read only storage buffer.
 const UNIFORMS: u32 = 4;
 
 /// Rows sent at once, so that what is staged stays a few megabytes.
@@ -137,8 +138,14 @@ pub(super) struct Mono {
     /// The frame's clip map, sent while it shows ([`Mono::sync_clip`]).
     clip: Option<Arc<Plane>>,
     iso: Option<f32>,
+    /// The frame's long side in pixels, which sizes a film's grain.
+    long_side: f32,
     white: f32,
     rendered: bool,
+    /// The film grain's tile, sent the first time a film's grain shows,
+    /// and a word in its place until then.
+    grain: OnceLock<gpu::Buffer>,
+    no_grain: gpu::Buffer,
     /// The stock picture's binding, which this shader does not read.
     pub(super) none: gpu::Texture,
     /// A mono frame is the source.
@@ -185,9 +192,20 @@ impl Mono {
                 },
             )
         });
+        let tile = entry(
+            FORMATS.len() as u32 + UNIFORMS,
+            gpu::BindingType::Buffer {
+                ty: gpu::BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
+        );
         let layout = device.create_bind_group_layout(&gpu::BindGroupLayoutDescriptor {
             label: Some("mono viewport"),
-            entries: &planes.chain(uniforms).collect::<Vec<_>>(),
+            entries: &planes
+                .chain(uniforms)
+                .chain(std::iter::once(tile))
+                .collect::<Vec<_>>(),
         });
         let pipeline_layout = device.create_pipeline_layout(&gpu::PipelineLayoutDescriptor {
             label: Some("mono viewport"),
@@ -225,8 +243,16 @@ impl Mono {
             has: [false; 5],
             clip: None,
             iso: None,
+            long_side: 0.0,
             white: 1.0,
             rendered: false,
+            grain: OnceLock::new(),
+            no_grain: device.create_buffer(&gpu::BufferDescriptor {
+                label: Some("mono no grain"),
+                size: 16,
+                usage: gpu::BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            }),
             none: texture(device, gpu::TextureFormat::Rgba16Float, 1, 1),
             on: false,
         }
@@ -258,6 +284,7 @@ impl Mono {
         }
         self.clip = frame.clip.clone();
         self.iso = frame.iso;
+        self.long_side = frame.base.width.max(frame.base.height) as f32;
         self.white = frame.white;
         self.rendered = frame.rendered;
         self.on = true;
@@ -331,7 +358,7 @@ impl Mono {
     ) -> gpu::BindGroup {
         let ev = edit.basic.exposure;
         let tone = Compiled::of(edit, self.white * ev.exp2(), self.rendered).params();
-        let look = mono_look::Compiled::new(edit, self.iso).params();
+        let look = mono_look::Compiled::new(edit, self.iso, self.long_side).params();
         let mut masks = [MonoLocalParams::zeroed(); MAX_LOCALS];
         let mut on = 0u32;
         let (mut zones, mut local_contrast) = (!edit.tone_eq.is_neutral(), false);
@@ -377,6 +404,21 @@ impl Mono {
             uniform(bytemuck::bytes_of(&look)),
             uniform(bytemuck::bytes_of(&view)),
         ];
+        let tile = if look.film_grain[0] == 1.0 {
+            self.grain.get_or_init(|| {
+                let words = mono_look::film_grain::texture();
+                let buffer = device.create_buffer(&gpu::BufferDescriptor {
+                    label: Some("mono grain"),
+                    size: std::mem::size_of_val(words) as u64,
+                    usage: gpu::BufferUsages::STORAGE | gpu::BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+                queue.write_buffer(&buffer, 0, bytemuck::cast_slice(words));
+                buffer
+            })
+        } else {
+            &self.no_grain
+        };
         let views = self
             .planes
             .each_ref()
@@ -385,6 +427,7 @@ impl Mono {
             .iter()
             .map(gpu::BindingResource::TextureView)
             .chain(buffers.iter().map(|b| b.as_entire_binding()))
+            .chain(std::iter::once(tile.as_entire_binding()))
             .enumerate()
             .map(|(i, resource)| gpu::BindGroupEntry {
                 binding: i as u32,

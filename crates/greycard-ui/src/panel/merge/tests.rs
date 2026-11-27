@@ -393,6 +393,96 @@ fn a_focus_stack_is_merged_named_stacked_and_given_its_reference_edit() {
     crate::testing::remove_scratch(state, &dir);
 }
 
+/// Three monochrome frames at one exposure: Merge burst, Monocard's
+/// alone, writes `<first>-burst.dng` beside them, on top of a stack of
+/// them, with the middle frame's edit, its exposure kept.
+#[cfg(feature = "mono")]
+#[test]
+fn a_burst_is_merged_named_stacked_and_given_its_reference_edit() {
+    let menu =
+        std::fs::read_to_string(Path::new(greycard_slint::PANEL_DIR).join("frame-menu.slint"))
+            .unwrap();
+    let item = menu
+        .split("MenuItem {")
+        .zip(menu.split("MenuItem {").skip(1))
+        .find(|(_, body)| body.contains("root.merge-burst()"))
+        .map(|(guard, _)| guard.rsplit('\n').next().unwrap().to_string())
+        .expect("the item");
+    assert!(
+        item.contains("!root.queue && root.count > 1 && Mono.only"),
+        "{item}"
+    );
+
+    let dir = crate::testing::scratch_dir("merge-burst");
+    let root = dir.join("photos");
+    let shoot = root.join("shoot");
+    std::fs::create_dir_all(&shoot).unwrap();
+    let files: Vec<PathBuf> = (0..3)
+        .map(|k| {
+            let p = shoot.join(format!("IMG_{k}.dng"));
+            crate::testing::monochrome_dng(&p, 160, 120);
+            p
+        })
+        .collect();
+    let mut edited = Edit::default();
+    edited.light.exposure = 0.5;
+    Sidecar {
+        line: Line::of(edited, 0).unwrap(),
+        ..Sidecar::default()
+    }
+    .save(&files[1])
+    .unwrap();
+    let db = dir.join("index").join("library.sqlite");
+    let mut writer = greycard_library::Library::open(&db).unwrap();
+    writer.index_tree(&root, &mut |_| {}).unwrap();
+    let app = window(0);
+    app.window()
+        .set_size(slint::LogicalSize::new(1400.0, 900.0));
+    app.set_grid_open(true);
+    let (state, worker) = state_for(&app, Vec::new());
+    {
+        let mut st = state.borrow_mut();
+        st.window.write_sidecars = true;
+        st.views.index_reader = Some(greycard_library::Library::open_read_only(&db).unwrap());
+        st.views.sort = crate::sort::Kept::by_name();
+        st.views.library.roots.add(&root).unwrap();
+        let collections = dir.join(crate::collections::DIR);
+        st.views.collections.dir = Some(collections.clone());
+        st.views.stacks =
+            crate::stacks::Store::load(greycard_library::stacks::dir_in(&collections));
+    }
+    open_view(&state, &app, &worker, View::Roots(None));
+    land_sent(&state, &app, &worker);
+    assert_eq!(app.get_thumbs().row_count(), 3);
+    let cells: Vec<usize> = {
+        let st = state.borrow();
+        files
+            .iter()
+            .map(|p| st.own_cell(st.file_by_path(p).unwrap()).unwrap())
+            .collect()
+    };
+    let row = crate::panel::browser::row_of(&state.borrow(), cells[0]).unwrap() as i32;
+    app.invoke_select(row);
+    state.borrow_mut().views.picked = cells;
+    app.invoke_merge_burst();
+    let out = shoot.join("IMG_0-burst.dng");
+    assert_eq!(app.get_status(), "merged 3 frames into IMG_0-burst.dng");
+    assert!(out.is_file());
+    let sidecar = Sidecar::load_as_file(&out)
+        .unwrap()
+        .expect("a sidecar beside it");
+    assert_eq!(sidecar.current().light.exposure, 0.5);
+    let stacks = state.borrow().views.stacks.list.clone();
+    assert_eq!(stacks.len(), 1);
+    assert_eq!(stacks[0].refs.len(), 4);
+    assert!(stacks[0].refs[0].hint.ends_with("IMG_0-burst.dng"));
+
+    drop(writer);
+    drop(app);
+    drop(worker);
+    crate::testing::remove_scratch(state, &dir);
+}
+
 /// Two frames of a camera turned about its lens, the second chosen
 /// first and the reference edited: Merge to Panorama names the file
 /// after the first in the list, stacks it on top of its sources,

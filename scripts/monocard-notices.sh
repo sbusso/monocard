@@ -5,7 +5,8 @@
 #
 # docs/monocard/THIRD-PARTY-NOTICES.md, then Greycard's own notices
 # (scripts/notices.sh, with the crates of the `mono-usb` feature, which are
-# `mono`'s and the Mac's USB import's). Those need cargo-about.
+# `mono`'s and the USB import's: ImageCaptureCore's bindings on a Mac,
+# mtp-rs on Linux and Windows). Those need cargo-about.
 # --no-crate-texts does without it and lists the crates by name and license
 # instead of giving their texts: for a test build, not for a release.
 

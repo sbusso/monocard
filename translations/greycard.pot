@@ -1719,6 +1719,10 @@ msgstr ""
 msgid "Merge to HDR"
 msgstr ""
 
+#: crates/greycard-slint/ui/panel/frame-menu.slint:231
+msgid "Merge burst"
+msgstr ""
+
 #: crates/greycard-slint/ui/panel/frame-menu.slint:228
 msgid "Merge to Panorama"
 msgstr ""

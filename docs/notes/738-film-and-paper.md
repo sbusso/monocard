@@ -46,18 +46,16 @@ pinned commit (`scripts/film/fetch.sh`). The generated file says so
 and is CC BY-SA 4.0 itself. Fomapan, Kentmere and Rollei have no open
 data; they would be traced from their sheets.
 
-**Grain.** With a film, the grain is the negative's. Its size is the
-data sheet's RMS granularity (Selwyn's law: the density's deviation
-in an aperture goes as one over its root), seen through a 48 µm
-aperture, in a picture pixel of 6 µm. The 6 µm is a fixed frame of
-36 mm over 6000 pixels; a ceiling, until the frame's size is known
-from the file. The deviation grows with the root of the density and
-is none at the paper's white, as for a real negative (uniformity
-0.6). A table of 256 entries over display light gives how a unit of
-it moves the print, and the CPU and the shader read it the same way.
-The Grain sliders still work: Amount scales it, Size and Roughness
-shape the noise. Link to ISO is off with a film; the film's speed is
-in its data.
+**Grain.** With a film, the grain is the negative's: a Boolean model
+of opaque discs whose radius gives the data sheet's RMS granularity
+through a 48 µm aperture, on a 36 mm frame across the picture's own
+long side. §741 has the model; it replaced a noise sized by Selwyn's
+law in a fixed 6 µm pixel, which made a small file's grain about five
+times too strong. A table of 256 entries over display light gives the
+negative's density there and how display light moves with it, and the
+CPU and the shader read it the same way. Amount scales the grain and
+Size the grains' radius; Roughness is hidden with a film. Link to ISO
+is off with a film; the film's speed is in its data.
 
 Seven films have measured RMS (Negs, CC BY-SA 4.0): Tri-X 400, T-Max
 100, HP5 Plus, FP4 Plus, Delta 3200, Acros II, Double-X. The other
@@ -105,5 +103,5 @@ change and the exception ends.
 
 **Next.** Fotufilm's push and pull curves for seven films, in place of
 the development's contrast factor. The frame's size from the file,
-for the grain and the halation. Fomapan, Kentmere and Rollei traced
+for the halation and the edge effect (the grain has it, §741). Fomapan, Kentmere and Rollei traced
 from their sheets.

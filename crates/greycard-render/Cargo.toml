@@ -41,10 +41,25 @@ unicode-script = "0.5"
 # crate's encoder takes no XMP; its `webp` feature, the decoder too,
 # stays off, so no WebP is read as a picture.
 image-webp = "0.2"
+jixel = { version = "=0.5.14", default-features = false, optional = true }
+zune-jpegxl = { version = "0.5.2", default-features = false, features = ["std"], optional = true }
+zune-core = { version = "0.5", default-features = false, features = ["std"], optional = true }
+roxmltree = { workspace = true, optional = true }
 
 [features]
 # Monocard, the monochrome build (docs/monocard).
-mono = ["dep:mono-core", "dep:mono-tone", "dep:mono-look", "greycard-edit/mono"]
+mono = [
+    "dep:mono-core",
+    "dep:mono-tone",
+    "dep:mono-look",
+    "greycard-edit/mono",
+    # Grey JPEG XL export (docs/notes/742).
+    "dep:jixel",
+    "dep:zune-jpegxl",
+    "dep:zune-core",
+    # The Ultra HDR base's XMP, read to add the gain map's directory.
+    "dep:roxmltree",
+]
 # The test helpers the editor's own tests share with these (a camera
 # profile, a scratch folder's removal, a watermark picture), and the
 # references the viewport's tests hold it to. Turned on by the
@@ -57,3 +72,4 @@ testing = ["greycard-core/testing"]
 greycard-core = { path = "../greycard-core", features = ["testing"] }
 # The WebP export read back: its pixels, profile, EXIF, and XMP.
 image = { workspace = true, features = ["webp"] }
+jxl-oxide = { version = "0.12.6", default-features = false }

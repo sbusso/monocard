@@ -5,7 +5,9 @@
 The contract of crates/mono-denoise/src/learned.rs: input ``plane``
 [1, 1, h, w] float32, the linear plane in the variance-stabilized space
 of its noise model; output ``clean``, the same shape and space; ``h`` and
-``w`` free, multiples of 8. The sha256 printed is what the app's registry
+``w`` free, multiples of 8. A network of ``--no-pairs`` (``sigma`` in its
+config) takes the two-input form: ``plane`` over its white and ``sigma``,
+its noise map (convert.py). The sha256 printed is what the app's registry
 pins when the file is published.
 """
 
@@ -24,13 +26,14 @@ OPSET = 17
 
 def export(model, path, version):
     model.eval()
+    names = ["plane", "sigma"] if model.sigma else ["plane"]
     torch.onnx.export(
         model,
-        (torch.zeros(1, 1, 64, 96),),
+        tuple(torch.zeros(1, 1, 64, 96) for _ in names),
         path,
-        input_names=["plane"],
+        input_names=names,
         output_names=["clean"],
-        dynamic_axes={"plane": {2: "h", 3: "w"}, "clean": {2: "h", 3: "w"}},
+        dynamic_axes={n: {2: "h", 3: "w"} for n in [*names, "clean"]},
         opset_version=OPSET,
         dynamo=False,
     )
@@ -42,10 +45,10 @@ def export(model, path, version):
     onnx.save(m, path)
 
     session = ort.InferenceSession(path, providers=["CPUExecutionProvider"])
-    x = torch.randn(1, 1, 80, 136)
+    feed = [torch.randn(1, 1, 80, 136) for _ in names]
     with torch.no_grad():
-        want = model(x).numpy()
-    got = session.run(["clean"], {"plane": x.numpy()})[0]
+        want = model(*feed).numpy()
+    got = session.run(["clean"], {n: v.numpy() for n, v in zip(names, feed)})[0]
     err = float(np.abs(got - want).max()) if got.shape == want.shape else float("inf")
     if err > 1e-3:
         raise SystemExit(f"{path}: the ONNX answers {got.shape}, off by {err:.2e}")

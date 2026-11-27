@@ -57,7 +57,7 @@ To add a folder to your library without a copy, choose **Add in place** at the t
 
 ## The camera window
 
-On a Mac, Monocard can import from a Ricoh GR IV Monochrome on a USB cable. Other cameras are not offered. This import has had little testing.
+Monocard can import from a Ricoh GR IV Monochrome on a USB cable, on a Mac, on Linux, and on Windows. Other cameras are not offered. This import has had little testing, and none with a camera on Linux or Windows.
 
 1. Connect the camera with a USB cable and turn it on. The camera window opens.
 2. Wait for the list. It can grow for some seconds. If photos are missing, click **Read again**.
@@ -88,6 +88,30 @@ The window opens by itself one time for each connection, but not over a sheet or
 The photos are copied to a temporary folder first, so the disk needs room for them twice. Each temporary copy must have the size that the camera gives. The import is checked against that copy and not against the camera.
 
 If you click **Stop** during the copy from the camera, or disconnect the camera, nothing is imported.
+
+On Linux and Windows the pictures in the window are the camera's own small thumbnails, so they look soft at a large **Tile size**.
+
+### Camera access on Linux
+
+Linux lets only the system open a USB device unless a udev rule allows you. If the window says that Monocard may not open the camera, install the rule that comes with Monocard, then disconnect the camera and connect it again:
+
+```sh
+sudo install -m 0644 70-monocard-camera.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger --subsystem-match=usb
+```
+
+The file `70-monocard-camera.rules` is in the unpacked tarball, beside `install.sh`. In the AppImage it is in `usr/share/doc/monocard`: run the AppImage with `--appimage-extract` to get it. Or make the file yourself, with this one line:
+
+```text
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="25fb", ATTR{idProduct}=="2127", TAG+="uaccess"
+```
+
+If the window says that another program has the camera open, the file manager may have opened it. Unmount the camera there, then click **Read again**.
+
+### Camera access on Windows
+
+There is nothing to install. Windows installs its own driver for the camera when you connect it the first time, and Monocard uses that driver. If you replaced the driver with WinUSB (for example with Zadig), Monocard uses WinUSB. If the window says that another program has the camera open, close the Photos app or the other import program, then click **Read again**.
 
 Monocard does not take pictures with the camera, change its settings, delete its photos, or connect to it by Wi-Fi.
 

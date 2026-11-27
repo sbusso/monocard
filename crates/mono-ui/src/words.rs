@@ -25,9 +25,11 @@ shadows here. To keep more range, merge brackets.";
 pub const FILTER_HELP: &str = "The sensor recorded no color, so a software color filter is not \
 offered. Use a yellow, orange, or red filter on the lens.";
 
-pub const FILM_HELP: &str = "With a film, the photo is exposed on the film and the negative \
-printed on Ilford Multigrade at the paper grade. The display transform is not used. The film \
-curves are from the makers' data sheets, digitized by SpektraLab (Hanze Qiu), CC BY-SA 4.0.";
+pub const FILM_HELP: &str = "With a film, the photo is exposed on the film, the film is \
+developed, and the negative is printed on the paper at the paper grade. The display transform \
+is not used. The film curves are from the makers' data sheets, digitized by SpektraLab (Hanze \
+Qiu), CC BY-SA 4.0; for eight films, fitted to their development times by film-darkroom \
+(James Huckle).";
 
 /// Which keys the mono views take, and what else has them.
 pub const KEYS_HELP: &str = "On this tab, A shows before, B after, S the split, Z the zones, and \
@@ -59,6 +61,22 @@ Elsewhere C culls."
             "Like darkroom paper. Low: soft, more greys. High: hard, more \
 black and white. 2 is normal."
         }
+        "film.development" => {
+            "Push or pull. One step is about a fifth more time in the \
+developer, and a stop of push."
+        }
+        "film.agitation" => {
+            "Less agitation develops slower, holds back the highlights, \
+and makes stronger edges."
+        }
+        "paper.split" => {
+            "Two exposures, through filter 00 and filter 5, in place of the \
+grade. Soft sets the light tones, Hard the shadows."
+        }
+        "paper.snatch" => {
+            "Lith: how early the shadows go black. More: earlier, a wider \
+black band."
+        }
         _ => "",
     }
 }
@@ -83,6 +101,10 @@ pub const FIGURES: &str = if cfg!(target_os = "macos") {
 /// For a Merge brackets with the wrong frames chosen.
 pub const MERGE_WANTS: &str =
     "Merge brackets: select 2 to 5 frames of one scene in the filmstrip first";
+
+/// For a Merge burst with the wrong frames chosen.
+pub const BURST_WANTS: &str =
+    "Merge burst: select 2 to 16 frames of one scene, at one exposure, in the filmstrip first";
 
 /// Over a picture with color in it, in place of the edit.
 pub const COLOR_PHOTO: &str = "This photo has color in it. Monocard edits black and white \

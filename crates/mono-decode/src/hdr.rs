@@ -1,4 +1,5 @@
-//! The HDR merge of 2 to 5 brackets, on planes.
+//! The HDR merge of 2 to 5 brackets, on planes, and the DNG a merge is
+//! written as.
 //!
 //! The base is the middle exposure. Each other frame is put on its scale
 //! by the exposure its EXIF says, corrected by what the pixels both hold
@@ -41,6 +42,8 @@ impl Bracket {
 /// where the base clips, and the plane goes up to `headroom`.
 #[derive(Debug, Clone)]
 pub struct Merged {
+    /// The merge's kind in the file's tag: `hdr`, or `burst`.
+    pub kind: &'static str,
     pub plane: Plane,
     /// 1.0 where every frame clipped.
     pub clip: Plane,
@@ -231,6 +234,7 @@ pub fn merge(brackets: &[Bracket]) -> Result<Merged> {
     let frames: Vec<(f64, Noise)> = layers.iter().map(|l| (l.e, l.noise)).collect();
     let [s, o] = merge::noise_profile(&frames, 1.0);
     Ok(Merged {
+        kind: "hdr",
         plane: Plane::new(w, h, out),
         clip: Plane::new(w, h, clip),
         noise: NoiseModel {
@@ -405,7 +409,7 @@ fn box_blur(src: &[f32], w: usize, h: usize, r: usize) -> Vec<f32> {
         .collect()
 }
 
-/// Write a merge as a one-channel LinearRaw DNG, half floats on
+/// Write a merge (this one, or a burst's) as a one-channel LinearRaw DNG, half floats on
 /// `merged.headroom`'s scale with the stops in `BaselineExposure`: the form
 /// of greycard's own merges, so either program opens it. `base` is the base
 /// frame, whose `OpcodeList3` is run here, since the file carries no
@@ -419,7 +423,8 @@ pub fn write_dng<W: Write + Seek>(
 ) -> Result<()> {
     if names.len() != merged.exposures.len() {
         return Err(Error::Unsupported(format!(
-            "HDR merge: {} names for {} frames",
+            "{} merge: {} names for {} frames",
+            merged.kind,
             names.len(),
             merged.exposures.len()
         )));
@@ -440,7 +445,7 @@ pub fn write_dng<W: Write + Seek>(
         }
     }
     let tag = Tag {
-        kind: "hdr".into(),
+        kind: merged.kind.into(),
         frames: names.to_vec(),
         reference: merged.base,
         headroom_stops: headroom.log2(),

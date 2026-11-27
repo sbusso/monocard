@@ -1,6 +1,6 @@
 # Camera connection
 
-Research and plan, 2026-11-24. Stage 1 (USB import) and its camera window are built. The rest of this page is not.
+Research and plan, 2026-11-24. Stage 1 (USB import) and its camera window are built: on macOS on 2026-11-24, on Linux and Windows on 2026-11-27. The rest of this page is not.
 The USB tests that only read were run on the camera on 2026-11-24. See [USB test results](#usb-test-results). No Wi-Fi or
 Bluetooth command was sent.
 
@@ -50,7 +50,16 @@ USB is an import cable only. It cannot shoot, show live view, change settings, o
 On macOS, use Apple's ImageCaptureCore framework. It lists cameras (`ICDeviceBrowser`),
 lists files (`ICCameraDevice`), and gives a thumbnail, a part of a file, and a download
 (`ICCameraFile`). (confirmed) [A1] The system's own camera process holds a PTP camera, so a
-direct USB library does not work well on a Mac. (reported) [P1]
+direct USB library does not work well on a Mac. (reported) [P1] [M]
+
+On Linux and Windows, use mtp-rs, a PTP and MTP library in Rust. It talks to the camera over
+`nusb` on Linux, and through the system's Windows Portable Devices (WPD) driver on Windows,
+or WinUSB where the camera was bound to it. It lists stores and folders, and gives a
+thumbnail, a part of a file, and a download. (reported) [M]
+
+The GR IV reports `0xFFFFFFFF` as the parent of `DCIM`, where PTP says 0. libgphoto2 rewrites
+it to 0. (reported, libgphoto2's code) [G] libgphoto2 lists the GR IV as 25fb:2123, and not
+this camera's 25fb:2127. (confirmed in its device table) [G]
 
 Not known:
 
@@ -194,11 +203,55 @@ Rules:
 Limit of this stage: each photo is written twice, so it needs free disk space for the
 photos in one run. Later, download straight into the import's own temporary file.
 
+### Stage 1 on Linux and Windows
+
+Built on 2026-11-27, with the `mono-usb` feature, which now adds the import on the three
+systems. The window, the list, the check against the library, and the copy are the same
+code as on macOS (`mono/usb.rs`). Only the camera under the `Camera` trait is new. See
+[§744](../notes/744-usb-import-on-linux-and-windows.md).
+
+| Part | Where |
+| --- | --- |
+| A PTP camera as the window asks for it: folders from parent handles, the GR IV's `DCIM`, ids, thumbnail and its turn, a copy that lands whole or not at all | `crates/greycard-ui/src/mono/usb/ptp.rs` |
+| mtp-rs: the device watch, the session, the walk of the folders, the calls with their time limits | `mono/usb/mtp.rs`, only on Linux and Windows |
+| udev rule for Linux | `packaging/monocard/70-monocard-camera.rules`, in the tarball and in the AppImage's `usr/share/doc/monocard` |
+
+What differs from macOS:
+
+- A file's folders come from the parent handle of each object. A parent of 0, of
+  `0xFFFFFFFF`, or of the store's own id is the top of the store. A file whose folders do
+  not reach the top is left out, with a line in the log.
+- PTP has one small picture of each file, the camera's own. The window shows it at the size
+  the camera gives. Its turn is read from the EXIF in the first 64 KiB of the file.
+- A download goes to a hidden `.NAME.part` file beside the photo's name, and gets the name
+  only when all of it came. A stop or a disconnect removes the part file.
+- Each call has a time limit, as on macOS. A stop gives a download one second to send the
+  camera its cancel, and then drops it.
+- Linux: the user needs access to the device. The rule tags the camera for
+  systemd-logind's `uaccess`, which gives access to the user at the computer. `install.sh`
+  runs as the user and does not install the rule: it prints the commands. If the desktop
+  opened the camera (a file manager through gvfs), mtp-rs reports that another program holds
+  it, and the window says so.
+- Windows: no driver to install. Windows binds the camera to its own MTP and PTP driver,
+  which is WPD, and mtp-rs uses it. A camera bound to WinUSB (with Zadig) also works, through
+  mtp-rs's USB path. (reported) [M]
+
+Not tested:
+
+- Any run with a camera on Linux or Windows. The tests use a made-up device: the GR IV's
+  tree, thumbnails, a copy, and a copy cut by a disconnect or a stop.
+- Whether the GR IV answers the root listing that mtp-rs sends first (`GetObjectHandles`
+  with parent `0xFFFFFFFF`). If it refuses, mtp-rs lists with parent 0 and keeps only
+  objects whose parent is 0, and the GR IV's `DCIM` is not one of them.
+- Whether Windows's driver lists both stores, and what it gives as a thumbnail.
+- The whole editor's build on Linux and Windows. The two new files were checked with
+  `cargo check` and clippy for both targets from a Mac; CI builds and packages the rest.
+
 ### Camera window
 
 Asked for by the user on 2026-11-24: an import as in Apple's Image Capture, with its own menu
-entry, that opens when a camera is connected. Built on 2026-11-24, for macOS and the
-`mono-usb` feature. Without the feature, the window is not offered. The card import sheet has
+entry, that opens when a camera is connected. Built on 2026-11-24 for macOS, and on 2026-11-27
+for Linux and Windows, with the `mono-usb` feature. Without the feature, the window is not offered. The card import sheet has
 no camera row now.
 
 | Part | Where |
@@ -217,7 +270,8 @@ no camera row now.
 - The list is shown as it grows. After it ends, each photo is checked against the library. At
   the end of a run, the photos that were imported are marked.
 - A picture is asked of macOS at 512 pixels (of the JPEG, for a DNG with a JPEG). If macOS does
-  not give it at that size, it is asked at the camera's own size.
+  not give it at that size, it is asked at the camera's own size. On Linux and Windows it is
+  the camera's own thumbnail, at the size the camera gives.
 - There is no delete button and no "delete after import". The camera refuses a delete.
 
 Not tested: the window with the real camera. This includes the size and the turn of the
@@ -338,6 +392,8 @@ This section is not legal advice.
 | GR Photo notes | MIT. Use facts with the source named. Copy no code |
 | RICOH-GR-Live-View-Shooting | GPL-3.0, the same family as Monocard [V]. The plan copies no code |
 | `objc2-image-capture-core` 0.3.2 | Zlib, Apache-2.0, or MIT, for `objc2` 0.6.2 or later [O] |
+| `mtp-rs` 0.38 | MIT or Apache-2.0 [M] |
+| libgphoto2 | LGPL-2.1. One fact taken (the GR IV's parent of `DCIM`). No code copied [G] |
 | Names | Plain text only, with the note that Monocard is not affiliated with Ricoh |
 
 Facts on this page that come only from a study of firmware or apps (†):
@@ -398,6 +454,8 @@ that commit.
 - [A2] Apple, USB entitlement: https://developer.apple.com/documentation/bundleresources/entitlements/com.apple.security.device.usb
 - [A3] Apple, local network privacy: https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy
 - [O] objc2-image-capture-core: https://crates.io/crates/objc2-image-capture-core
+- [M] mtp-rs, read on 2026-11-27 at commit `72b1476ddca85bb4c0a4c8c807338a93c08a39a3`: https://github.com/vdavid/mtp-rs (its README's platform notes, and `crates/mtp-rs/src/mtp/backend/usb.rs` for the root listing)
+- [G] libgphoto2, read on 2026-11-27 at commit `6d5c61ef7687b74fe792e4aeae7fc40f2ad42d88`: `camlibs/ptp2/ptp.c` (the GR IV's parent of `DCIM`, from pull request 1305) and `camlibs/ptp2/library.c` (the device table): https://github.com/gphoto/libgphoto2
 
 Not read: the camera's manual (the file is too large for the reader that was used), and the
 terms of Ricoh's apps.

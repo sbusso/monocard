@@ -18,7 +18,7 @@ A raw with no edit starts from its camera's profile. The one for the Ricoh GR IV
 
 ### Develop a JPEG
 
-The camera already rendered a JPEG, so Monocard applies no display transform to it, and it starts as the camera made it. **Display transform**, and **Contrast**, **Shoulder**, and **Toe** under **Transform**, do not show. The camera profile and the hot pixel repair do not apply.
+The camera already rendered a JPEG, so Monocard applies no display transform to it, and it starts as the camera made it. **Display transform**, and **Contrast**, **Shoulder**, and **Toe** under **Transform**, do not show. The camera profile and the hot pixel repair do not apply. If strong edits make the JPEG's 8 by 8 blocks show, use [Remove JPEG blocks](#remove-jpeg-blocks).
 
 ## Keys
 
@@ -104,33 +104,53 @@ The histogram is behind the curve. When the sensor clipped in the photo, a dashe
 
 ## FILM
 
-FILM exposes the photo on a black and white film and prints the negative on Ilford Multigrade paper. The film's print then takes the place of the display transform.
+FILM exposes the photo on a black and white film, develops it, and prints the negative on a darkroom paper. The film's print then takes the place of the display transform.
 
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
 | **Film** | **None** and 18 films | **None** | The film the photo is exposed on. **None** keeps the display transform of BASIC |
-| **Development** | -2 to +2 | 0 | Push (+) or pull (-): makes the negative harder or softer. Middle grey stays where it is |
+| **Development** | -3 to +3 | 0 | Push (+) or pull (-). One step is about 19% more time in the developer, a push of one stop. Middle grey stays where it is |
+| **Developer** | **D-76**, **D-76 1+1**, **HC-110 B**, **Rodinal 1+50** | **D-76** | Each at its own normal time. It changes the grain, the edge effect, and how the temperature and the agitation act. With a film only |
+| **Bath temperature** | 18 to 24 °C | 20 °C | A warmer developer works faster: the same time gives a harder negative. With a film only |
+| **Agitation** | **Continuous**, **Every 30 s**, **Every minute**, **Semi-stand**, **Stand** | **Every 30 s** | Less agitation develops slower, holds back the highlights, and makes a stronger edge effect. With a film only |
 | **Halation** | 0 to 200% | 100% | A soft glow around bright points, from light that bounces off the back of the film. With a film only |
 | **Edge effect** | 0 to 200% | 100% | A dark and a light rim along an edge, from the developer. It makes the negative look sharper. With a film only |
-| **Paper grade** | 00 to 5 | 2 | Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. With a film, it sets the Multigrade filter. Without one, middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG |
+| **Paper** | Six papers | **Ilford Multigrade IV RC** | The paper the negative is printed on. With a film only |
+| **Split grade** | On, off | Off | Prints with two exposures, through filter 00 and filter 5, in place of **Paper grade**. On an Ilford Multigrade paper, with a film |
+| **Paper grade** | 00 to 5 | 2 | Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. With a film, it sets the paper's filter. Without one, middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG |
+| **Soft (00)**, **Hard (5)** | -3 to +3 EV | 0 | The two exposures of a split-grade print, in stops of time (EV). Shown in place of **Paper grade** |
+| **Process** | **Silver gelatin**, **Lith**, **Cyanotype** | **Silver gelatin** | How the print is made. Lith and cyanotype work with or without a film |
+| **Overexposure** | 0 to 4 EV | 0 | Lith and cyanotype: exposure over the normal print. Lith printers often give 2 to 3 stops |
+| **Snatch**, **Abruptness** | 0 to 100% | 55%, 60% | Lith: how early the shadows go black, and how suddenly |
+| **Sensitizer** | **Classic**, **New** | **Classic** | Cyanotype: Herschel's formula, or Mike Ware's, which holds a deeper blue |
+| **Range** | 0.5 to 3 | 1.4 | Cyanotype: the density range the sensitizer holds. Lower is harder |
+| **Bleach**, **Tannin** | 0 to 100% | 0% | Cyanotype: washing soda clears the blue from the highlights; tannin turns what is left brown |
 
 The films are Kodak Tri-X 400, T-Max 100, T-Max 400, T-Max P3200, Plus-X 125 and Double-X 5222; Ilford HP5 Plus, FP4 Plus, Pan F Plus 50, Delta 100, Delta 400, Delta 3200, SFX 200, XP2 Super and Ortho Plus 80; and Fujifilm Acros II, Neopan 400 and Neopan 1600.
 
 Each film is its characteristic curve, from the maker's data sheet: how dark the negative gets for each amount of light. A film with a long toe, such as Tri-X, keeps more shadow detail. A film with a short one, such as Pan F Plus, makes deeper blacks.
 
+Eight films develop as their data sheets show: Kodak Tri-X 400, T-Max 100 and T-Max 400, from Kodak's curves at several times in D-76, and Ilford HP5 Plus, FP4 Plus, Delta 100, Delta 400 and Delta 3200, from Ilford's curve. On these, a longer time raises the highlights much more than the shadows and gains some speed, as a real push does. On the other ten films, **Development** makes the negative's contrast higher or lower by a fixed step.
+
+The papers are Ilford Multigrade IV RC, Multigrade FB Classic and Multigrade Warmtone, Kodak Polymax II RC and Polycontrast IV RC, and Foma Fomatone. Each grade is timed so that middle grey prints the same. FB Classic has a deeper black than the RC paper. Polycontrast IV has grades 1 to 5 only; a lower grade prints as 1. On Multigrade Warmtone and Fomatone the silver is warm, so the photo is toned and [exports in color](export.md#grey-or-color).
+
+In a split-grade print, the soft exposure prints the light tones and the hard exposure fills the shadows. At 0 and 0 the print matches grade 2 at middle grey and two stops under it. Give more **Soft (00)** to darken the light tones, and more **Hard (5)** to darken the shadows.
+
+A lith print has creamy, low-contrast highlights set by the exposure, and shadows that turn black past a point set by **Snatch**. Its color follows the paper: warm on Fomatone, nearly neutral on the others. A cyanotype is Prussian blue and never goes black. Paper white stays white in both. Both are toned photos.
+
 A color photo goes to grey through the film's own color sensitivity, and through the **Filter** of BASIC. So Ortho Plus 80, which does not see red, makes red lips and red bricks dark. A monochrome photo has no color, so this does not change it.
 
-The film also sets the grain. A fast film, such as Delta 3200, has large grain. A slow one, such as Pan F Plus, has fine grain. The grain is strongest in the midtones and none in the paper's white. **Amount** in [Grain](#grain) scales it, and **Link to ISO** is off.
+The film also sets the grain. A fast film, such as Delta 3200, has large grain. A slow one, such as Pan F Plus, has fine grain. Monocard renders the negative's silver grains at the size that matches each film's published granularity, on a 35 mm frame across the photo, so the grain has the same size in the print whether the file is small or large. A crop enlarges the grain with the picture, as it would on film. The grain is weak in the print's shadows, strongest in the midtones and light tones, and none in the paper's white. In [Grain](#grain), **Amount** scales it and **Size** makes the grains smaller or larger than the film's (30% is the film's own). **Roughness** and **Link to ISO** are hidden with a film.
 
-The film's print, grain, halation and edge effect are the same on the screen and in an export. The curves were digitized from the makers' data sheets by SpektraLab (Hanze Qiu), under CC BY-SA 4.0. The film model is ported from spektrafilm (Andrea Volpato).
+The film's print, grain, halation and edge effect are the same on the screen and in an export. The curves were digitized from the makers' data sheets by SpektraLab (Hanze Qiu), under CC BY-SA 4.0. The film model is ported from spektrafilm (Andrea Volpato). The development, the fitted curves, and the Kodak papers are from film-darkroom (James Huckle); Multigrade Warmtone from film_tests (Rafal Lukawiecki); FB Classic, Fomatone, lith, cyanotype, and the toners from NegPy; the split-grade print from mimizan (Dragan Bojovic).
 
 ### Grain
 
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
 | **Amount** | 0 to 100% | 0% | The strength, most in the midtones |
-| **Size** | 0 to 100% | 30% | The size of the grain |
-| **Roughness** | 0 to 100% | 50% | How rough the grain is |
+| **Size** | 0 to 100% | 30% | The size of the grain. With a film, 30% is the film's grain size |
+| **Roughness** | 0 to 100% | 50% | How rough the grain is. Not shown with a film |
 | **Link to ISO** | On, off | Off | Makes the grain stronger at a high ISO. Not shown with a film, whose grain is set by its speed |
 
 ![The Grain controls](images/panel-grain.webp "Grain")
@@ -172,17 +192,45 @@ The zone mask is a smoothed copy of the photo. It decides which slider acts wher
 
 | Control | Range | Default | What it does |
 | --- | --- | --- | --- |
-| **Denoise** | **Off**, **Profiled**, **Wavelet**, **Fast**, **Best** | **Off** | Chooses the method. **Fast** and **Best** need a learned model that does not come with Monocard, and use **Profiled** without it |
+| **Denoise** | **Off**, **Profiled**, **Wavelet**, **Fast**, **Best** | **Off** | Chooses the method. **Fast** and **Best** are learned models. See [Learned denoise](#learned-denoise) |
 | **Strength** | 0 to 100 | 50 | How much noise goes |
 | **Detail** | 0 to 100 | 50 | How much detail comes back. **Profiled** and **Wavelet** only |
 | **Shadows** | 0 to 100 | 0 | More smoothing in the deepest tones. **Profiled** and **Wavelet** only |
 | **Keep sensor grain** | 0 to 100 | 0 | Puts back a part of the noise |
 | **Raw threshold from the profile** | On, off | On | Takes the raw threshold from the camera profile |
 | **Raw threshold** | 0 to 100 | 0 | A light denoise of the raw data, also with **Denoise** off. Dimmed while the switch above is on |
+| **Merge burst** | | | Merges 2 to 16 frames at one exposure that you selected in the filmstrip into one with less noise. See [Merge](merge.md#merge-burst) |
+| **Remove JPEG blocks** | 0 to 100 | 0 | On a JPEG only. Removes the 8 by 8 pixel blocks of the JPEG compression. See [Remove JPEG blocks](#remove-jpeg-blocks) |
 
 ![The Denoise controls](images/panel-denoise.webp "Denoise")
 
 ![A wall at ISO 3200 without denoise, with it, and with a part of the grain kept](images/denoise-effect.webp "A photo at ISO 3200, at 200%")
+
+#### Learned denoise
+
+**Fast** and **Best** are networks trained on many photos to tell noise from detail. Monocard downloads each one the first time you choose it, after it shows you the model's license. You can also download them on the [Models](settings.md#models) page of Settings.
+
+| Choice | Model | Download | Time for a 24 MP photo on an M5 Max |
+| --- | --- | --- | --- |
+| **Fast** | FFDNet | 2 MB | about 1.5 s |
+| **Best** | DRUNet | 131 MB | about 10 s |
+
+**Best** keeps more fine detail than **Fast**. Both read the noise of the photo from the camera profile, so one model works at every ISO. **Strength** mixes the result with the photo: at 50, the mix is the one that the camera profile gives for the ISO, and lower values keep more of the noise. **Detail** and **Shadows** do nothing to them.
+
+Monocard runs the learned denoise only for the full develop of the photo and for an export. While you move a slider, the photo shows without it for a moment. Until the model is downloaded, or where it cannot run, **Profiled** stands in, and the status line says so.
+
+#### Remove JPEG blocks
+
+A JPEG is saved in blocks of 8 by 8 pixels. Curves, local contrast, and sharpening can make the edges of these blocks show, mostly in the sky and other smooth areas. **Remove JPEG blocks** finds how strongly the photo was compressed and removes the blocks to match. It runs at the start of the develop, before the other tools. The control shows on a JPEG only.
+
+| Value | What it does |
+| --- | --- |
+| 0 | Off |
+| 50 | Removes the blocks as strongly as the compression that the model reads from the photo |
+| 75, 100 | Removes more: two and four times as much, which also smooths fine detail |
+| 25, 1 | Removes less |
+
+The model is FBCNN, a 288 MB download. Download it on the [Models](settings.md#models) page of Settings before you use the control; without it, the photo is left as it is. It takes about the same time as **Best**, and it also runs only for the full develop and for an export.
 
 ### Sharpen
 
@@ -241,7 +289,7 @@ To keep highlights, use the camera's highlight-weighted metering and negative ex
 
 ### Toning
 
-Toning is the only tool that makes color. A toned photo is [exported in color](export.md#grey-or-color). **Toning** sets the sliders below it to **None**, **Selenium**, **Sepia**, **Platinum**, **Cyanotype**, or **Gold**.
+Toning makes color, as do a lith or cyanotype print and a warm-tone paper in [FILM](#film). A toned photo is [exported in color](export.md#grey-or-color). **Toning** sets the sliders below it to **None**, **Selenium**, **Sepia**, **Platinum**, **Cyanotype**, or **Gold**. **Selenium**, **Sepia**, and **Gold** put the print in that toner's bath; **Platinum** and **Cyanotype** set tints.
 
 | Control | Range | What it does |
 | --- | --- | --- |
@@ -249,6 +297,14 @@ Toning is the only tool that makes color. A toned photo is [exported in color](e
 | **Highlights hue**, **Highlights** | 0 to 360°, 0 to 100% | Hue and amount for the highlights |
 | **Shadows hue**, **Shadows** | 0 to 360°, 0 to 100% | Hue and amount for the shadows |
 | **Balance** | -100 to +100 | Negative values spread the tint of the shadows, positive values that of the highlights |
+| **Selenium** | 0 to 100% | Converts the densest silver first: deeper blacks with a purple-brown cast, light tones as they were |
+| **Sepia** | 0 to 100% | Converts the thinnest silver first: brown highlights and midtones, the deepest black stays |
+| **Gold** | 0 to 100% | Blue-black, from the highlights in. After **Sepia** it turns the brown to red |
+| **Iron blue** | 0 to 100% | Prussian blue, strongest in the shadows |
+| **Copper** | 0 to 100% | Red to pink, and a little lighter |
+| **Vanadium** | 0 to 100% | Green, from the highlights in |
+
+A bath acts on the print's density, so paper white stays white. The tints go over the bath's color and keep its lightness. The baths do not act on a cyanotype, which has no silver. On a lith print, selenium reaches further into the midtones and gold acts on every density alike. An edit made before the baths existed keeps its tints and looks as it did; choosing a preset again uses the bath.
 
 ![The Toning controls](images/panel-toning.webp "Toning")
 

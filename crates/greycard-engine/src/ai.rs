@@ -673,6 +673,9 @@ pub struct Ai {
     stands_for: Option<(usize, usize)>,
     #[cfg(feature = "mono")]
     mono_denoiser: Option<(mono_denoise::learned::Mode, mono_denoise::learned::Model)>,
+    /// The JPEG deblock's session, loaded the first time (§739).
+    #[cfg(feature = "mono")]
+    mono_deblocker: Option<mono_denoise::deblock::Model>,
     /// The learned modes whose model failed here, and why: not asked again
     /// before the model or the runtime is another.
     #[cfg(feature = "mono")]
@@ -2556,6 +2559,8 @@ impl Ai {
             #[cfg(feature = "mono")]
             mono_denoiser: None,
             #[cfg(feature = "mono")]
+            mono_deblocker: None,
+            #[cfg(feature = "mono")]
             mono_failed: Vec::new(),
             #[cfg(all(test, feature = "mono"))]
             mono_by_test: None,
@@ -4101,6 +4106,8 @@ impl Ai {
             #[cfg(feature = "mono")]
             mono_denoiser,
             #[cfg(feature = "mono")]
+            mono_deblocker,
+            #[cfg(feature = "mono")]
             mono_failed,
             #[cfg(all(test, feature = "mono"))]
                 mono_by_test: _,
@@ -4150,6 +4157,7 @@ impl Ai {
         #[cfg(feature = "mono")]
         {
             *mono_denoiser = None;
+            *mono_deblocker = None;
             // What failed for the card's memory may not now.
             mono_failed.clear();
         }
@@ -4210,6 +4218,8 @@ impl Ai {
             #[cfg(feature = "mono")]
             mono_denoiser,
             #[cfg(feature = "mono")]
+            mono_deblocker,
+            #[cfg(feature = "mono")]
                 mono_failed: _,
             #[cfg(all(test, feature = "mono"))]
                 mono_by_test: _,
@@ -4257,7 +4267,7 @@ impl Ai {
             || denoiser.is_some()
             || sam3.is_some();
         #[cfg(feature = "mono")]
-        let held = held || mono_denoiser.is_some();
+        let held = held || mono_denoiser.is_some() || mono_deblocker.is_some();
         // A test's sessions are what it says they hold back.
         #[cfg(any(test, feature = "testing"))]
         let held = held || *freed_by_test > 0;
@@ -5003,6 +5013,48 @@ impl Ai {
             .run(plane, noise)
             .map(|p| (p, provider))
             .map_err(|e| e.to_string())
+    }
+
+    /// The model the learned denoise of `mode` waits on, where it is not
+    /// in the user's store and no file is named for it; none in a test,
+    /// whose store is not the user's.
+    #[cfg(feature = "mono")]
+    pub(crate) fn mono_to_fetch(
+        &self,
+        mode: mono_denoise::learned::Mode,
+    ) -> Option<&'static greycard_ai::Model> {
+        (!cfg!(test) && mono_denoise::learned::to_fetch(mode)).then(|| mode.model())
+    }
+
+    /// A JPEG's plane with its blocks removed, its model loaded the
+    /// first time; why not.
+    #[cfg(feature = "mono")]
+    pub(crate) fn deblock_mono(
+        &mut self,
+        plane: &mono_core::Plane,
+        strength: f32,
+    ) -> Result<mono_core::Plane, String> {
+        greycard_ai::runtime::status().map_err(|e| e.to_string())?;
+        if self.mono_deblocker.is_none() {
+            if self.providers.is_empty() {
+                self.providers = Provider::available();
+            }
+            let model =
+                mono_denoise::deblock::Model::open(&self.providers).map_err(|e| e.to_string())?;
+            self.mono_deblocker = Some(model);
+        }
+        let Some(model) = &mut self.mono_deblocker else {
+            unreachable!("just loaded")
+        };
+        let started = std::time::Instant::now();
+        let (plane, read) = model.run(plane, strength).map_err(|e| e.to_string())?;
+        tracing::info!(
+            "JPEG deblock on {}: JPEG quality read as {:.0}, {:.1} s",
+            model.provider().label(),
+            (1.0 - read) * 100.0,
+            started.elapsed().as_secs_f64()
+        );
+        Ok(plane)
     }
 
     /// Whether a learned mode has a model that has not failed as it is.

@@ -24,6 +24,7 @@ struct MonoView {
 @group(1) @binding(6) var<uniform> mono_locals: array<MonoLocalParams, 16>;
 @group(1) @binding(7) var<uniform> mono_look: MonoLookParams;
 @group(1) @binding(8) var<uniform> mono_view: MonoView;
+@group(1) @binding(9) var<storage, read> mono_grain_tex: array<u32>;
 
 // A plane under a target pixel.
 fn mono_plane_at(tex: texture_2d<f32>, pt: vec2<f32>, tex_at: vec2<f32>, taps: u32) -> f32 {
@@ -58,9 +59,9 @@ fn mono_look_light(display: f32, uv: vec2<f32>, aspect: f32, px: vec2<f32>, scal
     return range.x + range.y * n;
 }
 
+// The print's color and the tints (look.wgsl's `mono_color`).
 fn mono_toned(v: f32) -> vec3<f32> {
-    if (mono_look.range.w == 0.0) { return vec3<f32>(v); }
-    return mono_tone_rgb(v);
+    return mono_color(v);
 }
 
 // The flat grey the zone view paints a zone in: its L* as light.

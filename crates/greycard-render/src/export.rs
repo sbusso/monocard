@@ -33,10 +33,22 @@ pub enum Format {
     /// 8-bit, lossless; WebP's lossy mode is libwebp's, a C library,
     /// and not here.
     WebP,
+    /// JPEG XL, 8-bit, lossy, with a quality (docs/notes/742).
+    #[cfg(feature = "mono")]
+    JpegXl,
+    /// JPEG XL, 16-bit, lossless.
+    #[cfg(feature = "mono")]
+    JpegXl16,
+    /// An SDR JPEG with an ISO 21496-1 gain map to the HDR print.
+    #[cfg(feature = "mono")]
+    UltraHdr,
 }
 
 impl Format {
     pub const ALL: [Format; 4] = [Format::Jpeg, Format::Png, Format::Tiff, Format::WebP];
+    /// The formats a monochrome picture has besides.
+    #[cfg(feature = "mono")]
+    pub const MONO: [Format; 3] = [Format::JpegXl, Format::JpegXl16, Format::UltraHdr];
 
     /// The name the panel shows.
     pub fn name(self) -> &'static str {
@@ -45,10 +57,20 @@ impl Format {
             Format::Png => "PNG",
             Format::Tiff => "TIFF 16-bit",
             Format::WebP => "WebP",
+            #[cfg(feature = "mono")]
+            Format::JpegXl => "JPEG XL",
+            #[cfg(feature = "mono")]
+            Format::JpegXl16 => "JPEG XL 16-bit",
+            #[cfg(feature = "mono")]
+            Format::UltraHdr => "Ultra HDR",
         }
     }
 
     pub fn from_name(name: &str) -> Option<Self> {
+        #[cfg(feature = "mono")]
+        if let Some(f) = Self::MONO.into_iter().find(|f| f.name() == name) {
+            return Some(f);
+        }
         Self::ALL.into_iter().find(|f| f.name() == name)
     }
 
@@ -58,6 +80,10 @@ impl Format {
             Format::Png => "png",
             Format::Tiff => "tif",
             Format::WebP => "webp",
+            #[cfg(feature = "mono")]
+            Format::JpegXl | Format::JpegXl16 => "jxl",
+            #[cfg(feature = "mono")]
+            Format::UltraHdr => "jpg",
         }
     }
 
@@ -69,6 +95,8 @@ impl Format {
             "png" => Some(Format::Png),
             "tif" | "tiff" => Some(Format::Tiff),
             "webp" => Some(Format::WebP),
+            #[cfg(feature = "mono")]
+            "jxl" => Some(Format::JpegXl),
             _ => None,
         }
     }
@@ -81,6 +109,10 @@ impl Format {
             Format::Png => &["*.png"],
             Format::Tiff => &["*.tif", "*.tiff"],
             Format::WebP => &["*.webp"],
+            #[cfg(feature = "mono")]
+            Format::JpegXl | Format::JpegXl16 => &["*.jxl"],
+            #[cfg(feature = "mono")]
+            Format::UltraHdr => &["*.jpg", "*.jpeg"],
         }
     }
 }
@@ -533,6 +565,10 @@ pub struct Rendered {
     pub width: u32,
     pub height: u32,
     pub pixels: Pixels,
+    /// Of an Ultra HDR export, each pixel's gain to the HDR print, log2
+    /// (`mono_hdr::gain`).
+    #[cfg(feature = "mono")]
+    pub gain: Option<Vec<f32>>,
 }
 
 /// The working image, already through the edit's geometry, finished
@@ -765,6 +801,21 @@ pub fn render_framed(
         .map(|g| (g, sw));
     let detail = detail.map(|(d, meta)| (detail_fitted.as_ref().unwrap_or(d), meta));
     let pixels = match settings.format {
+        #[cfg(feature = "mono")]
+        Format::JpegXl16 => Pixels::Sixteen(finish::finish_reaching(
+            image,
+            reach,
+            sampled,
+            &global,
+            &locals,
+            position,
+            frame_at,
+            guide,
+            detail,
+            look.as_ref(),
+            &m,
+            |v| (settings.space.recode(v) * 65535.0).round() as u16,
+        )),
         Format::Tiff => Pixels::Sixteen(finish::finish_reaching(
             image,
             reach,
@@ -779,7 +830,7 @@ pub fn render_framed(
             &m,
             |v| (settings.space.recode(v) * 65535.0).round() as u16,
         )),
-        Format::Jpeg | Format::Png | Format::WebP => Pixels::Eight(finish::finish_reaching(
+        _ => Pixels::Eight(finish::finish_reaching(
             image,
             reach,
             sampled,
@@ -798,6 +849,8 @@ pub fn render_framed(
         width: image.width as u32,
         height: image.height as u32,
         pixels,
+        #[cfg(feature = "mono")]
+        gain: None,
     }
 }
 
@@ -907,6 +960,8 @@ pub fn border(rendered: &mut Rendered, settings: &Settings) {
             (ow, oh)
         }
     };
+    #[cfg(feature = "mono")]
+    crate::mono::pad_gain(rendered, (width - w) / 2);
     rendered.width = width;
     rendered.height = height;
 }
@@ -1249,6 +1304,31 @@ pub fn write(
             }
             let color = if grey { ColorType::L8 } else { ColorType::Rgb8 };
             enc.encode(p, w, h, color)?;
+        }
+        #[cfg(feature = "mono")]
+        (Pixels::Eight(p), Format::JpegXl) => {
+            bytes =
+                crate::mono::jpeg_xl(p, w, h, grey, settings.quality, icc, payload, packet(None))?;
+        }
+        #[cfg(feature = "mono")]
+        (Pixels::Sixteen(p), Format::JpegXl16) => {
+            bytes = crate::mono::jpeg_xl_16(p, w, h, grey)?;
+        }
+        #[cfg(feature = "mono")]
+        (Pixels::Eight(p), Format::UltraHdr) => {
+            let gain = rendered
+                .gain
+                .as_deref()
+                .context("an Ultra HDR export without its gains")?;
+            let mut enc = JpegEncoder::new_with_quality(&mut bytes, settings.quality.clamp(1, 100));
+            if let Some(icc) = icc {
+                enc.set_icc_profile(icc).context("a profile in a JPEG")?;
+            }
+            if let Some(exif) = payload {
+                enc.set_exif_metadata(exif).context("EXIF in a JPEG")?;
+            }
+            enc.write_image(p, w, h, eight)?;
+            bytes = crate::mono_hdr::file(bytes, gain, (w, h), packet)?;
         }
         _ => bail!("the pixels' depth is not the format's"),
     }
@@ -3089,6 +3169,8 @@ mod tests {
             width: w,
             height: h,
             pixels: Pixels::Eight(pixels.clone()),
+            #[cfg(feature = "mono")]
+            gain: None,
         };
         let metadata = RawMetadata {
             exif: Default::default(),
@@ -3171,6 +3253,8 @@ mod tests {
             width: w,
             height: h,
             pixels: Pixels::Eight(vec![128; (w * h * 3) as usize]),
+            #[cfg(feature = "mono")]
+            gain: None,
         };
         for (w, h) in [(WEBP_MAX_SIDE + 1, 1), (1, WEBP_MAX_SIDE + 1)] {
             let path = dir.join(format!("{w}x{h}.webp"));

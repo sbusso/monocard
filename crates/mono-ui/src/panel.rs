@@ -9,7 +9,8 @@ use crate::looks;
 use crate::state::{MonoUiState, Proof, Split, Surround, ZONE_COUNT};
 use crate::words;
 use mono_core::edit::{
-    DenoiseMode, DiffusePreset, FilmStock, Filter, SolarizeKind, Toning, Transform,
+    Agitation, DenoiseMode, Developer, DiffusePreset, FilmStock, Filter, PaperStock, Process,
+    Sensitizer, SolarizeKind, Toning, Transform,
 };
 use mono_core::{MonoEdit, MonoLocal};
 use mono_look::TonePreset;
@@ -85,6 +86,8 @@ pub const MASK: &str = "mono-mask";
 const GRADE: &str = "display.grade";
 /// The color filter, on show for a color photo alone.
 const FILTER: &str = "basic.filter";
+/// JPEG block removal, on show for a JPEG alone.
+const DEBLOCK: &str = "denoise.deblock";
 
 /// The panels' names in pipeline order.
 pub const NAMES: [&str; 7] = [
@@ -107,6 +110,32 @@ fn no_film(e: &MonoEdit) -> bool {
 
 fn has_film(e: &MonoEdit) -> bool {
     !e.film.is_none()
+}
+
+fn split_paper(e: &MonoEdit) -> bool {
+    has_film(e) && e.paper.stock.is_multigrade()
+}
+
+fn silver(e: &MonoEdit) -> bool {
+    e.paper.process != Process::Cyanotype
+}
+
+/// Rows a choice elsewhere takes off the panel: the grade under a
+/// split-grade print and its two exposures otherwise, and each process's
+/// own controls.
+fn hidden(id: &str, e: &MonoEdit) -> bool {
+    let split = has_film(e) && e.paper.is_split();
+    let process = e.paper.process;
+    match id {
+        GRADE => split,
+        "paper.soft" | "paper.hard" => !split,
+        "paper.over" => process == Process::SilverGelatin,
+        "paper.snatch" | "paper.abruptness" => process != Process::Lith,
+        "paper.sensitizer" | "paper.range" | "paper.bleach" | "paper.tannin" => {
+            process != Process::Cyanotype
+        }
+        _ => false,
+    }
 }
 
 fn control<T>(id: &'static str, label: &'static str, kind: Kind<T>) -> Control<T> {
@@ -282,16 +311,29 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
         // A look that is gone left its values, and nothing to move them by.
         .when(|e| looks::known(&e.look.name))),
         E(button("look.save", "Save as look")),
-        E(button("look.import", "Import look or preset")),
+        E(button("look.import", "Import look, preset, or LUT")),
     ];
     let mut basic = vec![
         E(control(
             FILTER,
             "Filter",
             Kind::Choice {
-                options: &["None", "Yellow", "Orange", "Red", "Green", "Blue"],
-                get: |e: &MonoEdit| index(&Filter::ALL, &e.basic.filter),
-                set: |e, i| e.basic.filter = Filter::ALL[i.min(Filter::ALL.len() - 1)],
+                // The last is a LUT's mix, which a look puts on; picking a
+                // filter takes it off.
+                options: &[
+                    "None", "Yellow", "Orange", "Red", "Green", "Blue", "From LUT",
+                ],
+                get: |e: &MonoEdit| match e.basic.from_lut() {
+                    true => Filter::ALL.len(),
+                    false => index(&Filter::ALL, &e.basic.filter),
+                },
+                set: |e, i| {
+                    if let Some(f) = Filter::ALL.get(i) {
+                        e.basic.filter = *f;
+                        e.basic.mix = None;
+                        e.basic.lut.clear();
+                    }
+                },
             },
         )),
         E(slider!(
@@ -506,6 +548,12 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
             }),
         )
         .when(|e| e.denoise.raw_threshold.is_some())),
+        V(button("burst", "Merge burst")),
+        E(hundred!(
+            "denoise.deblock",
+            "Remove JPEG blocks",
+            denoise.deblock
+        )),
         E(control(
             "diffuse.preset",
             "Sharpen",
@@ -593,12 +641,43 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
         E(slider!(
             "film.development",
             "Development",
-            -2.0..=2.0,
+            -3.0..=3.0,
             0.5,
             1,
             "",
             MonoEdit,
             film.development
+        )
+        .when(has_film)),
+        E(control(
+            "film.developer",
+            "Developer",
+            Kind::Choice {
+                options: &Developer::LABELS,
+                get: |e: &MonoEdit| index(&Developer::ALL, &e.film.developer),
+                set: |e, i| e.film.developer = Developer::ALL[i.min(Developer::ALL.len() - 1)],
+            },
+        )
+        .when(has_film)),
+        E(slider!(
+            "film.temperature",
+            "Bath temperature",
+            18.0..=24.0,
+            0.5,
+            1,
+            " \u{b0}C",
+            MonoEdit,
+            film.temperature
+        )
+        .when(has_film)),
+        E(control(
+            "film.agitation",
+            "Agitation",
+            Kind::Choice {
+                options: &Agitation::LABELS,
+                get: |e: &MonoEdit| index(&Agitation::ALL, &e.film.agitation),
+                set: |e, i| e.film.agitation = Agitation::ALL[i.min(Agitation::ALL.len() - 1)],
+            },
         )
         .when(has_film)),
         E(share!(
@@ -610,6 +689,25 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
         )
         .when(has_film)),
         E(share!("film.edges", "Edge effect", 0.0..=2.0, MonoEdit, film.edges).when(has_film)),
+        E(control(
+            "paper.stock",
+            "Paper",
+            Kind::Choice {
+                options: &PaperStock::LABELS,
+                get: |e: &MonoEdit| index(&PaperStock::ALL, &e.paper.stock),
+                set: |e, i| e.paper.stock = PaperStock::ALL[i.min(PaperStock::ALL.len() - 1)],
+            },
+        )
+        .when(has_film)),
+        E(control(
+            "paper.split",
+            "Split grade",
+            Kind::Toggle {
+                get: |e: &MonoEdit| e.paper.split,
+                set: |e, on| e.paper.split = on,
+            },
+        )
+        .when(split_paper)),
         E(control(
             GRADE,
             "Paper grade",
@@ -625,6 +723,94 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
                 set: |e, v| e.display.grade = (2.0 * v).round() / 2.0,
             }),
         )),
+        E(slider!(
+            "paper.soft",
+            "Soft (00)",
+            -3.0..=3.0,
+            0.1,
+            1,
+            " EV",
+            MonoEdit,
+            paper.soft
+        )
+        .when(split_paper)),
+        E(slider!(
+            "paper.hard",
+            "Hard (5)",
+            -3.0..=3.0,
+            0.1,
+            1,
+            " EV",
+            MonoEdit,
+            paper.hard
+        )
+        .when(split_paper)),
+        E(control(
+            "paper.process",
+            "Process",
+            Kind::Choice {
+                options: &Process::LABELS,
+                get: |e: &MonoEdit| index(&Process::ALL, &e.paper.process),
+                set: |e, i| e.paper.process = Process::ALL[i.min(Process::ALL.len() - 1)],
+            },
+        )),
+        E(slider!(
+            "paper.over",
+            "Overexposure",
+            0.0..=4.0,
+            0.1,
+            1,
+            " EV",
+            MonoEdit,
+            paper.over
+        )),
+        E(share!(
+            "paper.snatch",
+            "Snatch",
+            0.0..=1.0,
+            MonoEdit,
+            paper.snatch
+        )),
+        E(share!(
+            "paper.abruptness",
+            "Abruptness",
+            0.0..=1.0,
+            MonoEdit,
+            paper.abruptness
+        )),
+        E(control(
+            "paper.sensitizer",
+            "Sensitizer",
+            Kind::Choice {
+                options: &Sensitizer::LABELS,
+                get: |e: &MonoEdit| index(&Sensitizer::ALL, &e.paper.sensitizer),
+                set: |e, i| e.paper.sensitizer = Sensitizer::ALL[i.min(Sensitizer::ALL.len() - 1)],
+            },
+        )),
+        E(slider!(
+            "paper.range",
+            "Range",
+            0.5..=3.0,
+            0.05,
+            2,
+            "",
+            MonoEdit,
+            paper.range
+        )),
+        E(share!(
+            "paper.bleach",
+            "Bleach",
+            0.0..=1.0,
+            MonoEdit,
+            paper.bleach
+        )),
+        E(share!(
+            "paper.tannin",
+            "Tannin",
+            0.0..=1.0,
+            MonoEdit,
+            paper.tannin
+        )),
         V(note("film-help", words::FILM_HELP)),
     ];
     film.extend(vec![
@@ -638,7 +824,8 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
             MonoEdit,
             grain.roughness
         )
-        .under("grain")),
+        .under("grain")
+        .when(no_film)),
         E(control(
             "grain.iso",
             "Link to ISO",
@@ -720,6 +907,48 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
         )
         .under("toning")),
         E(signed!("toning.balance", "Balance", toning.balance).under("toning")),
+        E(share!(
+            "toning.selenium",
+            "Selenium",
+            0.0..=1.0,
+            MonoEdit,
+            toning.selenium
+        )
+        .under("toning")
+        .when(silver)),
+        E(
+            share!("toning.sepia", "Sepia", 0.0..=1.0, MonoEdit, toning.sepia)
+                .under("toning")
+                .when(silver),
+        ),
+        E(
+            share!("toning.gold", "Gold", 0.0..=1.0, MonoEdit, toning.gold)
+                .under("toning")
+                .when(silver),
+        ),
+        E(
+            share!("toning.blue", "Iron blue", 0.0..=1.0, MonoEdit, toning.blue)
+                .under("toning")
+                .when(silver),
+        ),
+        E(share!(
+            "toning.copper",
+            "Copper",
+            0.0..=1.0,
+            MonoEdit,
+            toning.copper
+        )
+        .under("toning")
+        .when(silver)),
+        E(share!(
+            "toning.vanadium",
+            "Vanadium",
+            0.0..=1.0,
+            MonoEdit,
+            toning.vanadium
+        )
+        .under("toning")
+        .when(silver)),
         E(fold("vignette", "Vignette")),
         E(signed!("vignette.amount", "Amount", vignette.amount).under("vignette")),
         E(hundred!("vignette.midpoint", "Midpoint", vignette.midpoint).under("vignette")),
@@ -942,6 +1171,8 @@ pub fn rows(name: &str, e: &MonoEdit, s: &MonoUiState, open: &BTreeSet<String>) 
             Row::View(c) => view(c, s, &ds, open),
         })
         .filter(|r| r.id != FILTER || s.color)
+        .filter(|r| !hidden(r.id, e))
+        .filter(|r| r.id != DEBLOCK || s.jpeg)
         .map(|mut r| {
             if r.id == "solarize.kind" && e.solarize.nodes.is_none() {
                 r.options = &r.options[..4];
@@ -1137,6 +1368,8 @@ pub fn run(b: &MonoEdit, a: &MonoEdit, masks: MaskWants) -> Run {
         || (zoned(a) && zoned(b) && guide(b) != guide(a))
         // A color photo is mixed to grey through the filter and the film.
         || b.basic.filter != a.basic.filter
+        || b.basic.mix != a.basic.mix
+        || b.basic.lut != a.basic.lut
         || b.film.stock != a.film.stock
         || film(b) != film(a)
     {
@@ -1384,6 +1617,39 @@ mod tests {
                 .any(|r| r.id == FILTER)
         };
         assert!(shown(true) && !shown(false));
+        // A LUT's mix shows as such, and a filter picked takes it off.
+        let (mut e, mut s) = (MonoEdit::default(), MonoUiState::default());
+        e.basic.mix = Some([0.2, 0.5, 0.3]);
+        let filter = |e: &MonoEdit| {
+            let mut rows = PANELS.iter().flat_map(|p| &p.rows);
+            rows.find_map(|r| match r {
+                Row::Edit(c) if c.id == FILTER => match &c.kind {
+                    Kind::Choice { get, .. } => Some(get(e)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .unwrap()
+        };
+        assert_eq!(filter(&e), Filter::ALL.len());
+        assert!(set(FILTER, &mut e, &mut s, Value::Choice("Red")));
+        assert_eq!((e.basic.filter, e.basic.mix), (Filter::Red, None));
+    }
+
+    /// JPEG block removal is on show for a JPEG alone.
+    #[test]
+    fn the_deblock_is_a_jpegs() {
+        let e = MonoEdit::default();
+        let shown = |jpeg| {
+            let s = MonoUiState {
+                jpeg,
+                ..MonoUiState::default()
+            };
+            rows("mono-detail", &e, &s, &BTreeSet::new())
+                .iter()
+                .any(|r| r.id == DEBLOCK)
+        };
+        assert!(shown(true) && !shown(false));
     }
 
     #[test]
@@ -1395,6 +1661,10 @@ mod tests {
                     Row::Edit(c) => match &c.kind {
                         Kind::Choice { options, get, .. } => {
                             for (i, o) in options.iter().enumerate() {
+                                // A look puts that one on, not the panel.
+                                if c.id == FILTER && *o == "From LUT" {
+                                    continue;
+                                }
                                 assert!(set(c.id, &mut e, &mut s, Value::Choice(o)));
                                 assert_eq!(get(&e), i, "{} {o}", c.id);
                             }
@@ -1462,6 +1732,15 @@ mod tests {
         assert_eq!(less(&|e| e.film.halation = 0.5), Run::Develop);
         assert_eq!(less(&|e| e.basic.exposure = 1.0), Run::ViewThenDevelop);
         assert_eq!(less(&|e| e.display.grade = 4.0), Run::View);
+        // The paper and the process are drawn; the developer moves the
+        // edge effect's plane.
+        assert_eq!(less(&|e| e.paper.split = true), Run::View);
+        assert_eq!(less(&|e| e.paper.process = Process::Lith), Run::View);
+        assert_eq!(less(&|e| e.toning.selenium = 0.5), Run::View);
+        assert_eq!(
+            less(&|e| e.film.developer = Developer::Rodinal50),
+            Run::Develop
+        );
         assert_eq!(less(&|e| e.grain.amount = 1.0), Run::View);
         // What undo, paste, and sync go by.
         assert!(same_develop(
@@ -1500,6 +1779,7 @@ mod tests {
             run(&b, &with(&|e| e.denoise.keep_grain = 1.0)),
             Run::Develop
         );
+        assert_eq!(run(&b, &with(&|e| e.denoise.deblock = 50.0)), Run::Develop);
         let detailed = with(&|e| e.contrast_eq.fine = 10.0);
         assert_eq!(run(&b, &detailed), Run::Develop);
         let mut moved = detailed.clone();
@@ -1520,6 +1800,30 @@ mod tests {
         let mut a = e.clone();
         a.toning = toning(1);
         assert_eq!(describe(&e, &a).as_deref(), Some("Toning: Selenium"));
+    }
+
+    /// A split-grade print takes the grade's place, on a Multigrade paper
+    /// with a film; a process shows its own controls only.
+    #[test]
+    fn the_split_and_the_processes_show_their_own_rows() {
+        let s = MonoUiState::default();
+        let shown = |e: &MonoEdit, id: &str| {
+            rows("mono-film", e, &s, &BTreeSet::new())
+                .iter()
+                .any(|r| r.id == id && r.enabled)
+        };
+        let mut e = MonoEdit::default();
+        e.film.stock = FilmStock::Hp5Plus;
+        assert!(shown(&e, GRADE) && shown(&e, "paper.split") && !shown(&e, "paper.soft"));
+        e.paper.split = true;
+        assert!(!shown(&e, GRADE) && shown(&e, "paper.soft") && shown(&e, "paper.hard"));
+        e.paper.stock = PaperStock::PolymaxIiRc;
+        assert!(shown(&e, GRADE) && !shown(&e, "paper.split") && !shown(&e, "paper.soft"));
+        assert!(!shown(&e, "paper.over") && !shown(&e, "paper.snatch"));
+        e.paper.process = Process::Lith;
+        assert!(shown(&e, "paper.over") && shown(&e, "paper.snatch") && !shown(&e, "paper.tannin"));
+        e.paper.process = Process::Cyanotype;
+        assert!(shown(&e, "paper.tannin") && !shown(&e, "paper.abruptness"));
     }
 
     #[test]

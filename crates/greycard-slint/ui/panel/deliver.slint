@@ -361,11 +361,18 @@ export component ExportSheet inherits Rectangle {
                             format-words := Text { accessible-role: none; text: @tr("Format"); width: root.label-column; overflow: elide; color: Theme.text; font-size: Theme.font-sm; vertical-alignment: center; }
                             format-row := Segmented { name: format-words.text; options: ["JPEG", "PNG", "TIFF 16-bit", "WebP"]; labels: ["JPEG", "PNG", @tr("TIFF 16-bit"), "WebP"]; current <=> root.export-format; }
                         }
+                        // The mono build's grey JPEG XL and Ultra HDR, on a
+                        // second line: seven names do not fit one (docs/notes/742).
+                        if Mono.only: HorizontalLayout {
+                            spacing: Theme.space-2;
+                            Rectangle { width: root.label-column; }
+                            format-row-more := Segmented { name: format-words.text; options: ["JPEG XL", "JPEG XL 16-bit", "Ultra HDR"]; labels: ["JPEG XL", "JPEG XL 16-bit", "Ultra HDR"]; current <=> root.export-format; }
+                        }
                         quality-slider := EditSlider {
                             label: @tr("Quality");
                             // The sheet's own column, not the panel's.
                             label-width: root.label-column;
-                            enabled: root.export-format == "JPEG";
+                            enabled: root.export-format == "JPEG" || root.export-format == "JPEG XL" || root.export-format == "Ultra HDR";
                             minimum: 50;
                             maximum: 100;
                             default: 92;

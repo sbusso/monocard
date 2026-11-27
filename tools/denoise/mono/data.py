@@ -18,6 +18,13 @@ Two kinds of pair come out of ``Scenes.batch``:
 Both sides are handed over in the variance-stabilized space of the pair's
 noise model, samples under black read as black, as the Rust runner does
 (crates/mono-denoise/src/learned.rs).
+
+A third kind needs no pairs: ``NoPairs``, after ansel-denoise by Aurélien
+Pierre (https://github.com/aurelienpierreeng/ansel-denoise,
+``src/ansel_denoise/noise.py`` and ``dataset.py`` at
+c2b4034f8df17a1af171fa5dee5ef9d17a3afccf, GPL-3.0-or-later), from which
+``synthesize``, ``sigma_map`` and the patch drawing follow, for one channel
+and the stabilized space.
 """
 
 import json
@@ -70,6 +77,42 @@ def add_noise(x, a, b, rng):
     """Poisson-Gaussian noise, clipped at white as a sensor clips."""
     shot = a * rng.poisson(np.maximum(x, 0.0) / a) if a > 0 else x
     return np.minimum(shot + math.sqrt(b) * rng.standard_normal(x.shape), 1.0).astype(np.float32)
+
+
+def white(a, b):
+    """The stabilized value of the sensor's white, 1.0."""
+    return float(forward(1.0, a, b))
+
+
+def sigma_map(noisy, a, b, strength=1.0):
+    """The noise map of the two-input contract (convert.py): the noise's
+    standard deviation at each pixel in the stabilized space divided by
+    white, from the noisy value, which is all the runner has. The
+    transform's slope times sqrt(a x + b): close to 1 / white, under it in
+    the deepest shadows. ``strength`` scales it. The Rust is
+    ``learned::sigma_at``."""
+    x = np.maximum(np.asarray(noisy, np.float64), 0.0)
+    s2 = 0.375 * a * a + b
+    v = np.sqrt((a * x + b) / (a * x + s2)) * strength / white(a, b)
+    return v.astype(np.float32)
+
+
+def synthesize(clean, read, gain, step, rng, black=0.0):
+    """A sensor's noise on a clean plane (linear, 1.0 at white), drawn as
+    ansel-denoise's ``noise.synthesize`` draws it: Poisson shot noise of
+    ``gain`` (the plane per electron), Gaussian read noise of variance
+    ``read``, rounding to the ADC's ``step``, clipping at white, and
+    excursions under black kept down to ``-black``. Its profile, what a
+    fit of ``var = a x + b`` measures on it, is ``(gain, read + step^2 / 12)``."""
+    x = np.maximum(np.asarray(clean, np.float64), 0.0)
+    lam = x / gain
+    # Past a thousand electrons the Poisson is a Gaussian.
+    many = lam >= 1000.0
+    shot = np.where(many, x + np.sqrt(gain * x) * rng.standard_normal(x.shape), gain * rng.poisson(np.where(many, 0.0, lam)))
+    noisy = shot + math.sqrt(read) * rng.standard_normal(x.shape)
+    if step > 0:
+        noisy = np.round(noisy / step) * step
+    return np.clip(noisy, -black, 1.0).astype(np.float32)
 
 
 def tile_means(x, size=32):
@@ -170,6 +213,93 @@ class Scenes:
         stack = lambda v: np.stack(v)[:, None].astype(np.float32)
         ab = np.array(models, np.float32)
         return stack(xs), stack(ys), ab[:, 0].reshape(-1, 1, 1, 1), ab[:, 1].reshape(-1, 1, 1, 1)
+
+
+class NoPairs:
+    """Training with no pairs, after ansel-denoise (§739): clean base-ISO
+    planes only, and the noise drawn at training time from the profile.
+
+    ``root`` holds planes as ``export_planes`` writes them, each shot at
+    the body's base ISO; ``synthetic`` instead makes that many planes of
+    edges, lines and textures, for a smoke run. Each patch is darkened by
+    0 to ``stops`` stops, as an underexposed frame pushed later is, and
+    given a sensor's noise at an ISO drawn across the profile's range: the
+    profile's ``var = a x + b`` read as Poisson shot noise of gain ``a``,
+    Gaussian read noise, rounding to the ADC's step of ``bits`` bits
+    (whose variance is part of ``b``), and the clip at white
+    (``synthesize``). ``jitter`` widens ``a`` and ``b`` each by a factor
+    up to that, log-uniform, for the ISOs between the table's rows and
+    for a profile a little off.
+
+    A batch is the network's two inputs and its target, in the space of
+    the two-input contract: the plane stabilized and over white, its
+    noise map from the noisy values (``sigma_map``), and the clean plane
+    the same way. The network answers a residual; its strength at run
+    time scales the map.
+    """
+
+    def __init__(self, profile, root=None, synthetic=0, stops=4.0, bits=14, jitter=1.25, size=512):
+        self.profile, self.stops, self.jitter = profile, stops, jitter
+        self.step = 1.0 / (2**bits - 1)
+        if synthetic:
+            self.planes = synthetic_planes(synthetic, size)
+        else:
+            stems = sorted(pathlib.Path(root).rglob("*.json"))
+            self.planes = [np.load(s.with_suffix(".npy"), mmap_mode="r") for s in stems]
+        if not self.planes:
+            raise SystemExit(f"no planes in {root}")
+
+    def noise(self, rng):
+        """``a``, ``b`` and the read noise's variance at an ISO drawn
+        log-uniform across the profile's range."""
+        lo, hi = self.profile.iso[0], self.profile.iso[-1]
+        iso = math.exp(rng.uniform(math.log(lo), math.log(hi)))
+        a, b = self.profile.noise(iso)
+        j = math.log(self.jitter)
+        a, b = a * math.exp(rng.uniform(-j, j)), b * math.exp(rng.uniform(-j, j))
+        quantization = self.step * self.step / 12
+        return a, max(b, quantization), max(b - quantization, 0.0)
+
+    def sample(self, size, rng):
+        """One patch: the plane over white, its noise map, the clean
+        plane over white, each [size, size]."""
+        p = self.planes[rng.integers(len(self.planes))]
+        clean = np.maximum(crop(p, size, rng), 0.0) * 2.0 ** -rng.uniform(0.0, self.stops)
+        a, b, read = self.noise(rng)
+        noisy = synthesize(clean, read, a, self.step, rng)
+        w = white(a, b)
+        x = forward(np.maximum(noisy, 0.0), a, b) / w
+        return x, sigma_map(noisy, a, b), forward(clean, a, b) / w
+
+    def batch(self, count, size, rng):
+        """The plane, the map and the target, [B, 1, S, S] each."""
+        parts = [self.sample(size, rng) for _ in range(count)]
+        return tuple(np.stack([p[i] for p in parts])[:, None].astype(np.float32) for i in range(3))
+
+
+def synthetic_planes(n, size=512):
+    """``n`` clean linear planes of edges, gradients, lines, dots and
+    textures of several sizes, for tests and smoke runs: no photographs."""
+    out = []
+    for seed in range(n):
+        rng = np.random.default_rng(seed)
+        y, x = np.mgrid[:size, :size] / size
+        img = 0.15 + 0.6 * x * (seed % 2) + 0.6 * y * (1 - seed % 2)
+        for _ in range(12):
+            cx, cy, r = rng.uniform(0, 1, 3)
+            img = np.where((x - cx) ** 2 + (y - cy) ** 2 < (0.2 * r) ** 2, rng.uniform(0, 1), img)
+        f = rng.uniform(20, 120)
+        band = (y > 0.7) & (y < 0.85)
+        img = np.where(band, 0.5 + 0.35 * np.sin(2 * np.pi * f * x) * np.sin(2 * np.pi * f * 0.7 * y), img)
+        lines = (x > 0.05) & (x < 0.3) & ((np.arange(size)[:, None] % (2 + seed)) == 0)
+        img = np.where(lines, 0.9, img)
+        rough = np.cumsum(np.cumsum(rng.standard_normal((size, size)), 0), 1)
+        rough = (rough - rough.mean()) / rough.std()
+        img = np.clip(img + 0.03 * rough * (x > 0.6), 0, 1)
+        # Display-encoded 8-bit steps, taken to linear light.
+        v = np.round(img * 255) / 255
+        out.append(np.where(v <= 0.04045, v / 12.92, ((v + 0.055) / 1.055) ** 2.4).astype(np.float32))
+    return out
 
 
 def crop(data, size, rng):

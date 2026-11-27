@@ -300,10 +300,11 @@ fn paper_range(d: &Display) -> (f32, f32) {
 
 /// `t0` for the side above middle grey and `t1` for the one below, each
 /// (log2 of the paper's odds at grey, film power, paper power, scale).
-fn sigmoid_constants(d: &Display) -> [[f32; 4]; 3] {
+/// Above grey the paper's white is `headroom` times its own.
+fn sigmoid_constants(d: &Display, headroom: f32) -> [[f32; 4]; 3] {
     let (white, floor) = paper_range(d);
     let (white, floor, grey) = (f64::from(white), f64::from(floor), f64::from(MIDDLE_GREY));
-    let side = |skew: f32, slope: f64, scale: f64| {
+    let side = |skew: f32, slope: f64, scale: f64, white: f64| {
         let paper_power = 5f64.powf(-f64::from(skew));
         let odds = (white / grey).powf(1.0 / paper_power) - 1.0;
         let film_power = slope / (paper_power * odds / (1.0 + odds));
@@ -318,9 +319,10 @@ fn sigmoid_constants(d: &Display) -> [[f32; 4]; 3] {
     // Softness 0 to 1 is the skew from hard to soft on either side.
     let shoulder = 1.0 - 2.0 * d.shoulder.clamp(0.0, 1.0);
     let toe = 2.0 * d.toe.clamp(0.0, 1.0) - 1.0;
-    let above = side(shoulder, slope, white);
+    let top = white * f64::from(headroom);
+    let above = side(shoulder, slope, top, top);
     let under = (grey - floor) / grey;
-    let below = side(toe, slope / under, white * under);
+    let below = side(toe, slope / under, white * under, white);
     [above, below, [0.0; 4]]
 }
 
@@ -541,12 +543,27 @@ impl Compiled {
     /// one the display transform is none, and at rest the tone changes
     /// nothing. The paper's white and black still hold.
     pub fn of(e: &MonoEdit, clip: f32, rendered: bool) -> Self {
+        Self::with_headroom(e, clip, rendered, 1.0)
+    }
+
+    /// [`Compiled::of`] for a display with `headroom` times paper white
+    /// (docs/notes/742): above middle grey the sigmoid goes to that white,
+    /// with the same slope at grey, and the rolloff reaches it at the clip
+    /// point; below grey it is the same. AgX, a film's print and a picture
+    /// rendered already have no headroom here.
+    // Draft: the HDR rendition of an Ultra HDR export. The paper's grade
+    // works between the black and the new white.
+    pub fn with_headroom(e: &MonoEdit, clip: f32, rendered: bool, headroom: f32) -> Self {
+        let headroom = match (e.display.transform, e.film.is_none(), rendered) {
+            (Transform::Sigmoid, true, false) => headroom.clamp(1.0, 16.0),
+            _ => 1.0,
+        };
         let b = &e.basic;
         let curve_on = !(b.contrast == 0.0 && b.blacks == 0.0 && b.midtones == 0.0)
             || !curve_is_neutral(&e.curve);
         let points = MonotoneCurve::new(&e.curve.points);
         let [t0, t1, t2] = match e.display.transform {
-            Transform::Sigmoid => sigmoid_constants(&e.display),
+            Transform::Sigmoid => sigmoid_constants(&e.display, headroom),
             Transform::Agx => agx_constants(&e.display),
         };
         let (white, floor) = paper_range(&e.display);
@@ -561,7 +578,7 @@ impl Compiled {
             t0,
             t1,
             t2,
-            range: [white, floor, 0.0, 0.0],
+            range: [white * headroom, floor, 0.0, 0.0],
             roll: [0.0; 4],
             grade: grade_constants(&e.display),
             zone: zones.zone,
@@ -571,7 +588,7 @@ impl Compiled {
             film: [[0.0; 4]; film::TABLE / 4],
         };
         // A film's print is the transform, the rolloff and the grade.
-        if let Some(print) = film::Print::new(&e.film, e.display.grade) {
+        if let Some(print) = film::Print::new(&e.film, &e.paper, e.display.grade) {
             p.film_head[0] = 1.0;
             p.film = print.table();
             p.grade[0] = 1.0;
@@ -1286,5 +1303,35 @@ mod tests {
         assert!(proof(0.0, Paper::Baryta) < proof(0.0, Paper::Matte));
         assert!(proof(0.0, Paper::Matte) < proof(0.0, Paper::Newsprint));
         assert!(proof(1.0, Paper::Newsprint) < proof(1.0, Paper::Matte));
+    }
+
+    /// With headroom, the shadows and grey print as they do, the lights
+    /// higher, rising, up to the new white at the clip point.
+    #[test]
+    fn headroom_lifts_the_lights_alone() {
+        let e = MonoEdit::default();
+        let (sdr, hdr) = (
+            Compiled::of(&e, 1.0, false),
+            Compiled::with_headroom(&e, 1.0, false, 4.0),
+        );
+        for x in [0.001, 0.01, 0.05, MIDDLE_GREY] {
+            assert!(
+                (hdr.tone(x) - sdr.tone(x)).abs() < 1e-4 * x.max(0.01),
+                "{x}: {} {}",
+                hdr.tone(x),
+                sdr.tone(x)
+            );
+        }
+        let mut last = hdr.tone(MIDDLE_GREY);
+        for i in 1..=60 {
+            let x = MIDDLE_GREY * (i as f32 * 0.05 * 2.44).exp2();
+            let (h, s) = (hdr.tone(x), sdr.tone(x));
+            assert!(h >= last - 1e-5 && h >= s - 1e-5, "{x}: {h} {s}");
+            last = h;
+        }
+        assert!((hdr.tone(1.0) - 4.0).abs() < 1e-3 && (sdr.tone(1.0) - 1.0).abs() < 1e-3);
+        // None for a picture rendered already.
+        let r = Compiled::with_headroom(&e, 1.0, true, 4.0);
+        assert_eq!(r.tone(0.9), Compiled::of(&e, 1.0, true).tone(0.9));
     }
 }

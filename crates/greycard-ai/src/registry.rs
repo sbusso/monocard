@@ -580,6 +580,114 @@ pub const DENOISE_BEST: Model = Model {
     }],
 };
 
+/// KAIR's license, as its repository gives it
+/// (https://github.com/cszn/KAIR/blob/master/LICENSE), for the note
+/// beside the files Monocard converts from its weights.
+#[cfg(feature = "mono")]
+const KAIR_LICENSE: &str = "MIT License
+
+Copyright (c) 2019 Kai Zhang
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the \"Software\"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+";
+
+/// Where Monocard's converted files are published: a release of its
+/// own repository, not Hugging Face (§739).
+#[cfg(feature = "mono")]
+macro_rules! monocard_url {
+    ($name:literal) => {
+        concat!(
+            "https://github.com/sbusso/monocard/releases/download/models-v1/",
+            $name
+        )
+    };
+}
+
+#[cfg(feature = "mono")]
+const KAIR_MODIFIED: Modified = Modified {
+    what: "converted to ONNX (opset 17) by tools/denoise/mono/convert.py, with Monocard's input around the network: the variance-stabilized plane over its white and its noise map; the weights are untouched.",
+    notice: KAIR_LICENSE,
+};
+
+/// Monocard's learned denoise, Fast: FFDNet (Zhang et al.), KAIR's grey
+/// weights. 0.5 M parameters at half resolution (§739).
+#[cfg(feature = "mono")]
+pub const MONO_DENOISE_FAST: Model = Model {
+    id: "monocard-denoise-ffdnet-gray-1",
+    name: "FFDNet (Zhang et al.), grey, from KAIR, ONNX export by Monocard",
+    purpose: "the learned denoise of a monochrome photo, Fast",
+    source: "https://github.com/cszn/KAIR (release v1.0, ffdnet_gray.pth), converted by https://github.com/sbusso/monocard (tools/denoise/mono/convert.py)",
+    license: License {
+        name: "MIT",
+        url: "https://github.com/cszn/KAIR/blob/master/LICENSE",
+    },
+    modified: Some(KAIR_MODIFIED),
+    beside: None,
+    files: &[File {
+        name: "mono-ffdnet.onnx",
+        url: monocard_url!("mono-ffdnet.onnx"),
+        bytes: 1_949_072,
+        sha256: "4e138e243233853633b296fdb41dee10d8bc425b37eec828e2b2f7f8a58d97ea",
+    }],
+};
+
+/// Monocard's learned denoise, Best: DRUNet (Zhang et al.), KAIR's grey
+/// weights. 32.6 M parameters (§739).
+#[cfg(feature = "mono")]
+pub const MONO_DENOISE_BEST: Model = Model {
+    id: "monocard-denoise-drunet-gray-1",
+    name: "DRUNet (Zhang et al.), grey, from KAIR, ONNX export by Monocard",
+    purpose: "the learned denoise of a monochrome photo, Best",
+    source: "https://github.com/cszn/KAIR (release v1.0, drunet_gray.pth), converted by https://github.com/sbusso/monocard (tools/denoise/mono/convert.py)",
+    license: License {
+        name: "MIT",
+        url: "https://github.com/cszn/KAIR/blob/master/LICENSE",
+    },
+    modified: Some(KAIR_MODIFIED),
+    beside: None,
+    files: &[File {
+        name: "mono-drunet.onnx",
+        url: monocard_url!("mono-drunet.onnx"),
+        bytes: 130_582_387,
+        sha256: "edd4bb904cc180974a954fedc8364f16a2a478af16d828d10e18c08f0ea728ed",
+    }],
+};
+
+/// FBCNN's license, as its repository gives it
+/// (https://github.com/jiaxi-jiang/FBCNN/blob/main/LICENSE), which
+/// Apache-2.0 wants with every copy of what is made from it.
+#[cfg(feature = "mono")]
+const FBCNN_LICENSE: &str = include_str!("fbcnn_license.txt");
+
+/// JPEG block removal for a monochrome JPEG: FBCNN (Jiang, Zhang and
+/// Timofte), its grey weights (§739).
+#[cfg(feature = "mono")]
+pub const MONO_DEBLOCK: Model = Model {
+    id: "monocard-deblock-fbcnn-gray-1",
+    name: "FBCNN (Jiang, Zhang and Timofte), grey, ONNX export by Monocard",
+    purpose: "JPEG block removal on a monochrome JPEG",
+    source: "https://github.com/jiaxi-jiang/FBCNN (release v1.0, fbcnn_gray.pth), converted by https://github.com/sbusso/monocard (tools/denoise/mono/convert.py)",
+    license: License {
+        name: "Apache-2.0",
+        url: "https://github.com/jiaxi-jiang/FBCNN/blob/main/LICENSE",
+    },
+    modified: Some(Modified {
+        what: "converted to ONNX (opset 17) by tools/denoise/mono/convert.py, with the quality factor always an input; the weights are untouched.",
+        notice: FBCNN_LICENSE,
+    }),
+    beside: None,
+    files: &[File {
+        name: "mono-fbcnn.onnx",
+        url: monocard_url!("mono-fbcnn.onnx"),
+        bytes: 287_690_437,
+        sha256: "586006d95d796eaaf07f8abd9f95b35ef776d89ef0599618dbf0b78f82a9a38d",
+    }],
+};
+
 /// The URL of an X-Trans tier's file `name`, published beside the
 /// Bayer tiers', at the commit of their upload.
 macro_rules! xtrans_url {
@@ -708,6 +816,12 @@ pub const MODELS: &[Model] = &[
     DENOISE_XTRANS_FAST,
     DENOISE_XTRANS_BALANCED,
     DENOISE_XTRANS_BEST,
+    #[cfg(feature = "mono")]
+    MONO_DENOISE_FAST,
+    #[cfg(feature = "mono")]
+    MONO_DENOISE_BEST,
+    #[cfg(feature = "mono")]
+    MONO_DEBLOCK,
 ];
 
 /// The denoiser's tiers by the names an edit and the CLI use: the
@@ -1060,7 +1174,15 @@ mod tests {
             assert!(ids.insert(m.id), "duplicate id {}", m.id);
             assert!(!m.files.is_empty());
             for f in m.files {
-                assert!(f.url.starts_with(HF), "{} is not on the model host", f.url);
+                // Monocard's own exports are on its repository's release.
+                let monocard = cfg!(feature = "mono")
+                    && f.url
+                        .starts_with("https://github.com/sbusso/monocard/releases/download/");
+                assert!(
+                    f.url.starts_with(HF) || monocard,
+                    "{} is not on the model host",
+                    f.url
+                );
                 assert!(
                     f.url.ends_with(f.name),
                     "{} must keep its name {}",

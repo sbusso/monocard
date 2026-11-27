@@ -10,8 +10,8 @@
 #     scripts/monocard-package.sh [--build DIR] [--out DIR] [--debug-bin]
 #         [--dmg] [--appimage]
 #
-# That is a Mac's build. On Linux and Windows monocard-ui is built with
-# --features mono: the import by USB is macOS only.
+# The same on the three systems: mono-usb is the import from the camera,
+# through ImageCaptureCore on a Mac and mtp-rs on Linux and Windows.
 #
 # --build is the folder that holds the binaries (target/release), --out
 # the folder the package goes to (dist under the target folder).
@@ -23,9 +23,11 @@
 #
 # Linux: Monocard-<version>-x86_64-linux.tar.gz, with bin/ (the programs,
 # and the libraries beside them, where they look), share/ (the menu entry,
-# the icon, the file type), and packaging/monocard's install.sh and
-# uninstall.sh. --appimage also makes the AppImage, from the same files,
-# with scripts/appimage.sh.
+# the icon, the file type), and packaging/monocard's install.sh,
+# uninstall.sh, and the camera's udev rule, 70-monocard-camera.rules,
+# which install.sh does not install: it needs root. --appimage also makes
+# the AppImage, from the same files, with scripts/appimage.sh; the rule is
+# in its usr/share/doc/monocard.
 #
 # Windows: Monocard-<version>-x86_64-windows.zip, with bin/ (the programs,
 # the libraries, and the Visual C++ runtime, as scripts/package.sh ships
@@ -178,8 +180,10 @@ if [ "$os" != macos ]; then
     cp packaging/monocard/monocard.desktop "$share/applications/"
     cp assets/monocard/icon.svg "$share/icons/hicolor/scalable/apps/monocard.svg"
     cp packaging/monocard/monocard.xml "$share/mime/packages/"
-    cp packaging/monocard/install.sh packaging/monocard/uninstall.sh "$stage/"
+    cp packaging/monocard/install.sh packaging/monocard/uninstall.sh \
+        packaging/monocard/70-monocard-camera.rules "$stage/"
     chmod 0755 "$stage/install.sh" "$stage/uninstall.sh"
+    chmod 0644 "$stage/70-monocard-camera.rules"
     tar --format=ustar --sort=name --mtime="@$when" --owner=0 --group=0 --numeric-owner \
         -cf "$stage.tar" -C "$out" "$name"
     gzip -9nf "$stage.tar"

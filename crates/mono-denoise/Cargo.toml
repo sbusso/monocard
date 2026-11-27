@@ -14,7 +14,7 @@ workspace = true
 [dependencies]
 mono-core = { path = "../mono-core" }
 greycard-core = { path = "../greycard-core" }
-greycard-ai = { path = "../greycard-ai" }
+greycard-ai = { path = "../greycard-ai", features = ["mono"] }
 rayon.workspace = true
 thiserror.workspace = true
 log.workspace = true
@@ -24,3 +24,6 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "api-27",
     "load-dynamic",
 ] }
+
+[dev-dependencies]
+image.workspace = true

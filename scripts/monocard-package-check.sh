@@ -127,6 +127,7 @@ case "$package" in
 *.AppImage) docs=$root/share/doc/monocard ;;
 *) docs=$root ;;
 esac
+[ -n "$exe" ] || set -- "$@" "$docs/70-monocard-camera.rules"
 for f in "$@" "$docs/LICENSE" "$docs/README.md" "$docs/THIRD-PARTY-NOTICES"; do
     case "$f" in /*) ;; *) f="$bin/$f" ;; esac
     [ -s "$f" ] || fail "$f is missing"

@@ -4,6 +4,8 @@
 //! (the one `greycard merge hdr`, `greycard merge pano`, or `greycard
 //! stack` runs) into a linear DNG beside the first of them,
 //! `<first>-HDR.dng`, `<first>-pano.dng`, or `<first> stack.dng`.
+//! Monocard adds Merge burst, frames at one exposure merged into
+//! `<first>-burst.dng` (the engine's `merge::burst`).
 //!
 //! The merge reads every frame whole, seconds a frame, so it runs on a
 //! thread of its own, saying each frame as it comes in the status line;
@@ -71,6 +73,10 @@ pub(crate) enum Kind {
     Pano,
     /// A focus stack: the CLI's defaults, as `focus::Options` has them.
     Focus,
+    /// Monocard's burst merge: frames at one exposure merged into one
+    /// with less noise (§743).
+    #[cfg(feature = "mono")]
+    Burst,
 }
 
 /// One merge asked: of frames chosen, or a merged file made again.
@@ -430,6 +436,20 @@ impl Merge {
                             left_out,
                             focus::edit_for_stack(&edit_of(r.stack.reference)?),
                             // A stack asks for no learned tier.
+                            None,
+                        )
+                    }
+                    #[cfg(feature = "mono")]
+                    Kind::Burst => {
+                        // At the reference's exposure, as a stack is.
+                        let edit = &edit_of(merge::burst::reference_of(self.files.len())?)?;
+                        let r = merge::burst::burst(&self.files, &progress)?;
+                        (
+                            r.out,
+                            r.headroom_stops,
+                            r.seconds,
+                            r.warnings,
+                            focus::edit_for_stack(edit),
                             None,
                         )
                     }
@@ -923,7 +943,10 @@ pub(crate) fn indexed(state: &Rc<Shared>, app: &App) {
 
 pub(crate) fn install(app: &App, state: &Rc<Shared>, worker: &Rc<Worker>) {
     let (state, worker, app_weak) = (state.clone(), worker.clone(), app.as_weak());
-    for kind in [Kind::Hdr, Kind::Pano, Kind::Focus] {
+    let kinds = [Kind::Hdr, Kind::Pano, Kind::Focus];
+    #[cfg(feature = "mono")]
+    let kinds = [kinds.as_slice(), &[Kind::Burst]].concat();
+    for kind in kinds {
         let (state, worker, app_weak) = (state.clone(), worker.clone(), app_weak.clone());
         let asked = move || {
             let Some(app) = app_weak.upgrade() else {
@@ -939,6 +962,8 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, worker: &Rc<Worker>) {
             Kind::Hdr => app.on_merge_hdr(asked),
             Kind::Pano => app.on_merge_pano(asked),
             Kind::Focus => app.on_merge_focus(asked),
+            #[cfg(feature = "mono")]
+            Kind::Burst => app.on_merge_burst(asked),
         }
     }
     app.on_merge_again(move || {

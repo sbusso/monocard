@@ -26,7 +26,7 @@ The Settings sheet has seven pages. Click **Settings...** at the bottom of the l
 | **Show the filter bar** | Shows the [filter bar](library.md#the-filter-bar) |
 | **Cell size** | The size of the pictures in the grid, from 96 to 512 |
 | **Resize with the wheel** | Lets the wheel change the size of the pictures |
-| **Open the camera window when a camera is connected** | macOS only. See [The camera window](import.md#the-camera-window) |
+| **Open the camera window when a camera is connected** | See [The camera window](import.md#the-camera-window) |
 | **Edits go** | **Beside the raw**, or to a **Hidden folder** named `.monocard` |
 | **Move the open frames' sidecars** | Moves the edits of the photos on screen to that place now. Other edits move when you save them next |
 | **Write XMP sidecars** | Also writes `.xmp` files for other programs. Flags are not in them |
@@ -65,7 +65,7 @@ This page has the looks that you fitted to your camera's picture modes. See [Loo
 
 ### Models
 
-This page lists the models that Monocard can download, such as those for [masks](masks.md#models) and [Fill](crop-and-retouch.md#fill). Each row shows the use, the license, the size, and the status. **Download all** shows the size of all of them. You do not need them all: the develop of a monochrome photo does not use the denoise models.
+This page lists the models that Monocard can download, such as those for [masks](masks.md#models) and [Fill](crop-and-retouch.md#fill). Each row shows the use, the license, the size, and the status. **Download all** shows the size of all of them. You do not need them all: the develop of a monochrome photo uses only Monocard's own denoise models, for **Fast** and **Best**, and the JPEG block model, for **Remove JPEG blocks**. See [Denoise](develop.md#denoise).
 
 ### Keys
 

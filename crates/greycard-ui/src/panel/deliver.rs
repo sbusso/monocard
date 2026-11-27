@@ -1652,6 +1652,9 @@ fn develop_for(st: &mut State, app: &App, arrived: impl Fn(&greycard_ai::Model) 
         .tier()
         .and_then(|t| greycard_ai::denoiser_for(t, xtrans))
         .is_some_and(&arrived);
+    // A monochrome photo's learned denoise or JPEG deblock (§739).
+    #[cfg(feature = "mono")]
+    let denoiser = denoiser || greycard_engine::mono::waits_on(&st.develop.edit, &arrived);
     // Either fill model: a patch drawn for the remove is LaMa's where
     // its window is past the remove's.
     let fill = (arrived(&greycard_ai::FILL)

@@ -12,11 +12,12 @@ opened and developed by hand, and one DNG from it.
 | Mono core | Profiled, wavelet and raw wavelet denoise, profile kit, sigmoid and AgX, clip map, raw histogram, shoulder, edge inpaint |
 | Darkroom tools | Tone equalizer, Zone view, contrast equalizer, local contrast, diffuse or sharpen, curve, paper grade, masks |
 | Looks and brand | Ten looks, grain, toning, vignette, solarize, TOML looks, XMP import, icon, theme, About, landing page |
-| Learned and AI | Learned runner and training tools (no weights), subject and sky masks, HDR merge |
+| Learned and AI | Learned denoise: Fast (FFDNet) and Best (DRUNet) grey weights from KAIR, downloaded on first use; JPEG block removal (FBCNN); training with no photo pairs, smoke run only ([§739](../notes/739-learned-denoise-weights-jpeg-deblock.md)). Subject and sky masks, HDR merge, burst merge of 2 to 16 DNGs at one exposure, HDR+ align and merge ([§743](../notes/743-the-burst-merge.md)) |
 | Camera modes | Mode read from the MakerNote, `monocard mode`, `monocard profile modes`, look import, export, rename and delete, Camera modes group, start from the camera's mode (on by default). Settings page Camera profiles (table, fit from folders, sensor noise, test chart), `monocard profile list`. Standard, Solid and Solarized 1 to 3 pass on three real DNGs. Soft, High Contrast and HDR Tone are drafts, Grainy has no photos. The photo's settings go over the mode's look as draft steps (no toning, grain, or HDR level). See [picture-controls.md](picture-controls.md) |
-| Film | FILM panel: 18 black and white films and Ilford Multigrade from SpektraLab's data (CC BY-SA 4.0), the print ported from spektrafilm, development as a draft contrast step, paper grade and grain moved in. The film's grain from its RMS granularity (7 measured, 11 estimated), halation and the developer's edge effect as a plane in exposure, a color photo seen through the film's spectral sensitivity. A look can hold a film. The frame is taken as 36 mm wide for the grain and halation. See [§738](../notes/738-film-and-paper.md) |
+| Film | FILM panel: 18 black and white films and Ilford Multigrade from SpektraLab's data (CC BY-SA 4.0), the print ported from spektrafilm, development as a draft contrast step, paper grade and grain moved in. The film's grain from its RMS granularity (7 measured, 11 estimated), halation and the developer's edge effect as a plane in exposure, a color photo seen through the film's spectral sensitivity. A look can hold a film. The frame is taken as 36 mm wide; the grain is sized by the picture's long side, halation and the edge effect by a 6000 pixel frame. See [§738](../notes/738-film-and-paper.md). Development by developer, time, temperature and agitation, eight films fitted to data sheets; six papers; split grade; lith and cyanotype; toner baths ([§740](../notes/740-development-papers-and-print-processes.md)). A film's grain as a Boolean model sized by the picture's long side on a 35 mm frame ([§741](../notes/741-film-grain-as-a-boolean-model.md)) |
 | Recipes | The recipe book: a recipe from the open photo, edit, compare, import, export, delete. Files in `recipes` in the settings folder. Not applied to photos or sent to the camera. See [the guide](guide/looks.md#recipes) |
-| USB import | The camera window: menu entry, opens when a camera is connected, grid of the camera's photos, import of the selected ones. macOS only, with the `mono-usb` feature. Tested with a made-up camera, not with the real one. See [camera-connection.md](camera-connection.md) |
+| LUTs and export | LUT import into a look (curve and toning on grey; a fitted mix or the LUT's own conversion on color), LUT and Lightroom profile and preset export, twelve t3mujinpack film looks, JPEG XL and Ultra HDR export. Not checked in Lightroom or on an HDR screen ([§742](../notes/742-luts-lightroom-hdr-and-jpeg-xl.md)) |
+| USB import | The camera window: menu entry, opens when a camera is connected, grid of the camera's photos, import of the selected ones. macOS (ImageCaptureCore), Linux and Windows (mtp-rs, [§744](../notes/744-usb-import-on-linux-and-windows.md)), with the `mono-usb` feature. Tested with a made-up camera, not with the real one; never run with a camera on Linux or Windows. See [camera-connection.md](camera-connection.md) |
 
 ## Measured (M5 Max)
 
@@ -32,7 +33,7 @@ A 4 GB PC GPU was not tried.
 
 - Calibration shots, for the GR IV Monochrome noise table, hot
   pixels, and Solar 1 to 3. The bundled profile says `calibrated = false`.
-- Training pairs and a trained learned model. Fast and Best use Profiled until then.
+- Clean base-ISO frames and a calibrated noise profile, for a learned model trained on the GR IV Monochrome (§739). Fast and Best run general grey models until then.
 - Reference DNGs for the golden renders (`MONOCARD_GOLDEN`), the blind A/B, the beta.
 - The upstream author, the name's trademark and domain, photos with written permission,
   the bundle id.
@@ -70,5 +71,6 @@ A 4 GB PC GPU was not tried.
 - A monochrome camera's JPEG with a color tone in it (sepia, for example) counts as color.
 - The color labels of culling, and the plus and minus dots of the Object mask, keep their colors.
 - The `monocard develop` command keeps Greycard's color options for color files.
+- The burst merge takes DNGs only; camera JPEGs are left out.
 - The mono panel's text is English only.
 - Monocard writes `.mcd` sidecars. It reads a Greycard `.gcd` as a start and never writes one.

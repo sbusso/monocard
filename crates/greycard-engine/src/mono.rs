@@ -47,7 +47,9 @@ use crate::worker::LearnedReport;
 pub enum Op {
     /// Samples to the plane and its clip map; a color photo's mixed
     /// through the filter, and seen by the film where there is one.
-    Prepare(Filter, FilmStock),
+    Prepare(Box<Conversion>),
+    /// A JPEG's blocks removed at a strength of 1 to 100 (§739).
+    Deblock(f32),
     /// Both reduced by a whole factor, for the edit's pictures.
     Reduce(usize),
     /// The threshold; none is the profile's for the ISO.
@@ -79,6 +81,7 @@ impl Op {
     pub fn name(&self) -> &'static str {
         match self {
             Op::Prepare(..) => "prepare",
+            Op::Deblock(_) => "JPEG deblock",
             Op::Reduce(_) => "reduce",
             Op::RawWavelet(_) => "raw denoise",
             Op::Denoise(_) => "denoise",
@@ -177,8 +180,13 @@ pub enum Learned {
         /// Its answer from an earlier walk.
         again: bool,
     },
-    /// The profiled denoise stood in, and why.
-    StoodIn { mode: Mode, why: String },
+    /// The profiled denoise stood in, and why; the model to fetch, where
+    /// it waits on one.
+    StoodIn {
+        mode: Mode,
+        why: String,
+        fetch: Option<&'static greycard_ai::Model>,
+    },
 }
 
 impl Mono {
@@ -254,16 +262,34 @@ pub(crate) fn stages(
     let mut s = Steps::default();
     let op = |s: &mut Steps, op: Op| s.steps.push(Step::Op(Stage::Mono(op)));
     let keep = |s: &mut Steps, k: Keep| s.steps.push(Step::Keep(k));
-    op(&mut s, Op::Prepare(mono.basic.filter, mono.film.stock));
+    op(
+        &mut s,
+        Op::Prepare(Box::new(Conversion {
+            filter: mono.basic.filter,
+            stock: mono.film.stock,
+            mix: mono.basic.weights(),
+            lut: mono_look::lut::grey_lut(&mono.basic),
+        })),
+    );
     let denoise = mono.denoise;
+    // A camera's picture only: a raw has no blocks.
+    let deblock = (denoise.deblock > 0.0
+        && matches!(facts.input, InputKind::Raw { rendered: true, .. }))
+    .then_some(denoise.deblock.min(100.0));
     if reduced {
         if bin > 1 {
             op(&mut s, Op::Reduce(bin));
+        }
+        if deblock.is_some() {
+            s.skipped.push(("the JPEG deblock", Skip::Reduced));
         }
         if denoise.mode != DenoiseMode::Off {
             s.skipped.push(("the denoise", Skip::Reduced));
         }
     } else {
+        if let Some(strength) = deblock {
+            op(&mut s, Op::Deblock(strength));
+        }
         if denoise.raw_threshold != Some(0.0) {
             op(&mut s, Op::RawWavelet(denoise.raw_threshold));
         }
@@ -277,6 +303,7 @@ pub(crate) fn stages(
                 Op::Denoise(Denoise {
                     keep_grain: 0.0,
                     raw_threshold: None,
+                    deblock: 0.0,
                     ..denoise
                 }),
             );
@@ -426,6 +453,17 @@ fn lens(
         corrections,
         fallback,
     })
+}
+
+/// Whether `edit`'s develop waits on a model that `arrived` says has
+/// come: its learned denoise's, or the JPEG deblock's. For the window to
+/// develop again when it lands.
+pub fn waits_on(edit: &Edit, arrived: impl Fn(&greycard_ai::Model) -> bool) -> bool {
+    let Some(m) = edit.mono.as_ref() else {
+        return false;
+    };
+    learned_mode(m.denoise.mode).is_some_and(|mode| arrived(mode.model()))
+        || (m.denoise.deblock > 0.0 && arrived(mono_denoise::deblock::model()))
 }
 
 fn learned_mode(mode: DenoiseMode) -> Option<Mode> {
@@ -946,13 +984,35 @@ pub(crate) fn corrections(
     corrections
 }
 
-/// The plane of `frame`, from nothing.
-pub(crate) fn prepare(frame: &RawFrame) -> Result<Mono, String> {
-    prepare_with(frame, Filter::None, FilmStock::None)
+/// How a color photo goes to grey: the LUT's own mix where there is one,
+/// else the film's sensitivity through the filter, else the mix of the
+/// filter or of a LUT fitted to one (docs/notes/742).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Conversion {
+    pub filter: Filter,
+    pub stock: FilmStock,
+    pub mix: [f32; 3],
+    pub lut: Option<mono_core::color::GreyLut>,
 }
 
-/// [`prepare`], a color photo mixed through `filter`, as `stock` sees it.
-fn prepare_with(frame: &RawFrame, filter: Filter, stock: FilmStock) -> Result<Mono, String> {
+impl Default for Conversion {
+    fn default() -> Self {
+        Self {
+            filter: Filter::None,
+            stock: FilmStock::None,
+            mix: Filter::None.weights(),
+            lut: None,
+        }
+    }
+}
+
+/// The plane of `frame`, from nothing.
+pub(crate) fn prepare(frame: &RawFrame) -> Result<Mono, String> {
+    prepare_with(frame, &Conversion::default())
+}
+
+/// [`prepare`], a color photo through `to_grey`.
+fn prepare_with(frame: &RawFrame, to_grey: &Conversion) -> Result<Mono, String> {
     let profiles = profiles();
     let camera = mono_decode::camera(frame);
     // A profile is of a sensor's samples: nothing in it is a rendered
@@ -965,8 +1025,9 @@ fn prepare_with(frame: &RawFrame, filter: Filter, stock: FilmStock) -> Result<Mo
         &mono_decode::PrepareOptions {
             defects,
             hot_pixels: (!rendered).then(Default::default),
-            mix: filter.weights(),
-            response: mono_tone::film::color_response(stock, filter),
+            mix: to_grey.mix,
+            response: mono_tone::film::color_response(to_grey.stock, to_grey.filter),
+            lut: to_grey.lut.clone(),
         },
     )
     .map_err(|e| e.to_string())?;
@@ -1013,7 +1074,13 @@ fn baseline(frame: &RawFrame) -> f32 {
 /// `op` on the plane.
 pub(crate) fn run(op: &Op, m: &mut Mono, on: On<'_>) -> Result<(), String> {
     match op {
-        Op::Prepare(filter, stock) => *m = prepare_with(on.frame, *filter, *stock)?,
+        Op::Prepare(to_grey) => *m = prepare_with(on.frame, to_grey)?,
+        // Without its model the picture goes on as it is: the model is
+        // fetched from Settings, Models.
+        Op::Deblock(strength) => match on.models.deblock_mono(&m.plane, *strength) {
+            Ok(plane) => m.set(plane),
+            Err(why) => tracing::info!("the JPEG deblock: {why}"),
+        },
         Op::Reduce(bin) => {
             m.set(greycard_render::mono::reduced(&m.plane, *bin));
             m.clip = Arc::new(greycard_render::mono::reduced(&m.clip, *bin));
@@ -1240,7 +1307,8 @@ fn denoise(m: &mut Mono, d: &Denoise, models: &mut dyn Models, cache: &mut Cache
         }
         Err(why) => {
             tracing::info!("the learned denoise: {why}");
-            m.learned = Some(Learned::StoodIn { mode, why });
+            let fetch = models.mono_to_fetch(mode);
+            m.learned = Some(Learned::StoodIn { mode, why, fetch });
             Arc::new(mono_denoise::profiled(&m.plane, &m.noise, d))
         }
     }
@@ -1274,6 +1342,9 @@ fn lens_run(m: &mut Mono, l: &LensOp, frame: &RawFrame) {
 pub(crate) fn learned_report(m: &Mono, kept: bool) -> LearnedReport {
     match &m.learned {
         None => LearnedReport::Off,
+        Some(Learned::StoodIn {
+            fetch: Some(model), ..
+        }) => LearnedReport::Missing(model),
         Some(Learned::StoodIn { why, .. }) => LearnedReport::Failed(why.clone()),
         Some(Learned::Ran { again, .. }) if kept || *again => LearnedReport::Kept,
         Some(Learned::Ran {

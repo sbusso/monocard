@@ -17,15 +17,15 @@ After an export from the sheet, **Ctrl+E** exports again with the same choices, 
 | Not toned | One grey channel | **Grey Gamma 2.2** or **Dot Gain 20%**. With another choice, Grey Gamma 2.2 |
 | Toned | RGB | **sRGB** or **Display P3**. With another choice, sRGB |
 
-A photo is toned when an amount in [Toning](develop.md#toning) is over 0. The line under **Profile** says which file you get. Use Grey Gamma 2.2 for screens, and Dot Gain 20% when a printer asks for it.
+A photo is toned when an amount in [Toning](develop.md#toning) is over 0, when it is a lith or cyanotype print, or when it is printed on a warm-tone paper in [FILM](develop.md#film). The line under **Profile** says which file you get. Use Grey Gamma 2.2 for screens, and Dot Gain 20% when a printer asks for it.
 
 ## The rows of the sheet
 
 | Row | Choices | Default | What it does |
 | --- | --- | --- | --- |
 | **Preset** | Your presets | **None** | Sets all the rows |
-| **Format** | **JPEG**, **PNG**, **TIFF 16-bit**, **WebP** | JPEG | JPEG is the smallest. TIFF 16-bit keeps the most tones. The others are 8 bits |
-| **Quality** | 50 to 100 | 92 | For JPEG only |
+| **Format** | **JPEG**, **PNG**, **TIFF 16-bit**, **WebP**, **JPEG XL**, **JPEG XL 16-bit**, **Ultra HDR** | JPEG | JPEG is the smallest. TIFF 16-bit and JPEG XL 16-bit keep the most tones. The others are 8 bits. See [JPEG XL and Ultra HDR](#jpeg-xl-and-ultra-hdr) |
+| **Quality** | 50 to 100 | 92 | For JPEG, JPEG XL, and Ultra HDR |
 | **Long edge** | **Full**, **4096**, **2048**, **1024**, **Custom** | Full | The longer side in pixels. A photo is never made larger |
 | **Sharpen** | **Off**, **Low**, **Standard**, **High** | Standard | Sharpens after the picture is made smaller. At the full size it does nothing |
 | **Profile** | **sRGB**, **Display P3**, **Grey Gamma 2.2**, **Dot Gain 20%** | sRGB | See [Grey or color](#grey-or-color) |
@@ -37,6 +37,16 @@ A photo is toned when an amount in [Toning](develop.md#toning) is over 0. The li
 | **Watermark** | **Off**, **Text**, **Image** | Off | A mark over the picture |
 | **Border** | **Off**, four greys, **Match** | Off | A band around the picture |
 | **Folder** | **Choose...** | The last one chosen | Where **Export** writes |
+
+### JPEG XL and Ultra HDR
+
+**JPEG XL** is lossy, and smaller than a JPEG of the same quality. An untoned photo is one grey channel in the file, with its profile and metadata.
+
+**JPEG XL 16-bit** is lossless. It holds the picture on sRGB's curve, with no profile and no metadata: the **Profile**, **Embed profile**, and **Metadata** rows do nothing. An untoned photo is one grey channel.
+
+**Ultra HDR** is a JPEG with a gain map. A viewer without HDR shows the JPEG, which is the same as a JPEG export. A viewer with HDR, such as Chrome or an Android phone on an HDR screen, uses the gain map to show the lights brighter, up to 2 stops over the JPEG's white. The shadows and the mid greys stay the same. The gain map is one grey channel, so a toned photo keeps its tint in the lights. With **AgX**, a film in [FILM](develop.md#film), or a camera JPEG, the HDR picture is the same as the JPEG. A watermark is not in the gain map.
+
+Not every app opens JPEG XL. Check before you send one.
 
 ### Watermark
 

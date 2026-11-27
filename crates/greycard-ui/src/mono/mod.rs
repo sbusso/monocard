@@ -16,6 +16,7 @@ use greycard_edit::preset::Section;
 use greycard_edit::{Edit, Line};
 use mono_core::{MonoEdit, MonoLocal};
 use mono_look::Look;
+use mono_ui::looks::Form;
 use mono_ui::panel::{self, Run, Value};
 use mono_ui::{MonoUiState, Split, Surround, curve, looks, words};
 use slint::{ComponentHandle, Model, ModelRc, SharedString, VecModel};
@@ -164,11 +165,16 @@ pub(crate) fn opened(st: &mut State, app: &App, monochrome: bool) {
         .frame
         .as_ref()
         .is_some_and(|(f, _)| f.dng.from_color);
-    HELD.with_borrow_mut(|h| h.ui.color = color);
+    let path = st.current.and_then(|c| st.path_at(c)).cloned();
+    let jpeg = path.as_ref().is_some_and(|p| {
+        p.extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg"))
+    });
+    HELD.with_borrow_mut(|h| (h.ui.color, h.ui.jpeg) = (color, jpeg));
     // The modes, the start, and the welcome are of a sensor's own data.
     let frame = st.develop.frame.as_ref().map(|(f, _)| f.clone());
     let frame = frame.filter(|f| monochrome && f.dng.rendered.is_none());
-    let path = st.current.and_then(|c| st.path_at(c)).cloned();
     if let (Some(f), Some(p)) = (&frame, &path) {
         let camera = greycard_engine::mono::camera(f);
         HELD.with_borrow_mut(|h| h.cameras.insert(p.clone(), camera));
@@ -510,17 +516,31 @@ pub(crate) fn curve_shown_on(app: &App) -> bool {
 
 /// More options than this are a list, not buttons.
 const LIST: usize = 9;
+/// More letters than this on one line of buttons do not fit the panel's
+/// width: the choice is a list.
+const LINE_LETTERS: usize = 34;
+
+/// Options on a line of buttons: up to five short ones, else three.
+fn per_line(n: usize) -> usize {
+    if n > 5 { 3 } else { 5 }
+}
+
+/// Whether a choice of `options` is a list: too many, or too long to read
+/// on a line of buttons, such as the papers' names.
+fn is_list(options: &[&str]) -> bool {
+    options.len() > LIST
+        || options
+            .chunks(per_line(options.len()))
+            .any(|l| l.iter().map(|o| o.chars().count()).sum::<usize>() > LINE_LETTERS)
+}
 
 fn row(v: &panel::RowView) -> MonoRow {
-    let list = v.kind == "choice" && v.options.len() > LIST;
-    // Up to five short options on a line; more, three to a line; a list,
-    // one line.
+    let list = v.kind == "choice" && is_list(v.options);
+    // A list is one line.
     let per = if list {
-        LIST.max(v.options.len())
-    } else if v.options.len() > 5 {
-        3
+        v.options.len().max(1)
     } else {
-        5
+        per_line(v.options.len())
     };
     let lines: Vec<ModelRc<SharedString>> = v
         .options
@@ -871,11 +891,18 @@ fn pressed(app: &App, id: &str) {
         "look.save" => ask(app, "save"),
         "look.rename" => ask(app, "rename"),
         "look.delete" => ask(app, "delete"),
-        "look.export" => export(app, mono.get_look_chosen().into()),
+        "look.export" => ask(app, "export"),
+        "look.export-toml" => export(app, mono.get_look_chosen().into(), None),
+        "look.export-cube1d" => export(app, mono.get_look_chosen().into(), Some(Form::Cube1d)),
+        "look.export-cube3d" => export(app, mono.get_look_chosen().into(), Some(Form::Cube3d)),
+        "look.export-lightroom" => {
+            export(app, mono.get_look_chosen().into(), Some(Form::Lightroom))
+        }
         "look.import" => import(app),
         "masks" => tab(app, "Masks"),
         "crop" => tab(app, "Crop"),
         "merge" => merge(app),
+        "burst" => burst(app),
         "lens" => {
             let mut names: Vec<SharedString> = mono.get_sections().iter().collect();
             match names.iter().position(|n| n == "lens") {
@@ -890,22 +917,37 @@ fn pressed(app: &App, id: &str) {
     }
 }
 
-/// The bracket chosen in the strip merged: the engine takes 2 to 5
-/// monochrome frames on their planes, in the frame menu's Merge to HDR,
-/// which says how it goes in the status line.
-fn merge(app: &App) {
-    let chosen = crate::STATE.with(|s| s.borrow().clone()).map_or(0, |s| {
+/// How many files are chosen in the strip.
+fn chosen_files() -> usize {
+    crate::STATE.with(|s| s.borrow().clone()).map_or(0, |s| {
         let st = s.borrow();
         let files: BTreeSet<usize> = crate::panel::browser::chosen_frames(&st)
             .into_iter()
             .map(|c| st.file_of(c))
             .collect();
         files.len()
-    });
-    if (2..=5).contains(&chosen) {
+    })
+}
+
+/// The bracket chosen in the strip merged: the engine takes 2 to 5
+/// monochrome frames on their planes, in the frame menu's Merge to HDR,
+/// which says how it goes in the status line.
+fn merge(app: &App) {
+    if (2..=5).contains(&chosen_files()) {
         app.invoke_merge_hdr();
     } else {
         app.set_status(words::MERGE_WANTS.into());
+    }
+}
+
+/// The burst chosen in the strip merged, by the frame menu's Merge
+/// burst, which says how it goes in the status line.
+fn burst(app: &App) {
+    let max = greycard_engine::merge::burst::MAX_FRAMES;
+    if (2..=max).contains(&chosen_files()) {
+        app.invoke_merge_burst();
+    } else {
+        app.set_status(words::BURST_WANTS.into());
     }
 }
 
@@ -926,13 +968,15 @@ fn import(app: &App) {
     let start = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     let weak = app.as_weak();
     crate::chooser::choose_open(
-        "Look or Lightroom preset",
+        "Look, Lightroom preset, or LUT",
         start,
         (
-            "TOML, XMP".into(),
-            ["*.toml", "*.TOML", "*.xmp", "*.XMP"]
-                .map(String::from)
-                .to_vec(),
+            "TOML, XMP, CUBE, HaldCLUT PNG".into(),
+            [
+                "*.toml", "*.TOML", "*.xmp", "*.XMP", "*.cube", "*.CUBE", "*.png", "*.PNG",
+            ]
+            .map(String::from)
+            .to_vec(),
         ),
         move |chosen| {
             let _ = weak.upgrade_in_event_loop(move |app| {
@@ -949,12 +993,15 @@ fn import(app: &App) {
 
 /// `file` kept with the looks in `dir`, and what there is to say.
 fn imported(dir: &Path, file: &Path) -> String {
-    let toml = file
+    let ext = file
         .extension()
-        .is_some_and(|x| x.eq_ignore_ascii_case("toml"));
-    let got = match toml {
-        true => looks::import_toml(dir, file).map(|name| (name, Vec::new())),
-        false => looks::import_xmp(dir, file),
+        .map(|x| x.to_string_lossy().to_ascii_lowercase());
+    let got = match ext.as_deref() {
+        Some("toml") => looks::import_toml(dir, file).map(|name| (name, Vec::new())),
+        Some("cube" | "png") => {
+            return looks::import_lut(dir, file).unwrap_or_else(|e| format!("Not imported: {e}"));
+        }
+        _ => looks::import_xmp(dir, file),
     };
     match got {
         Ok((name, skipped)) if skipped.is_empty() => format!("{name} imported"),
@@ -963,20 +1010,53 @@ fn imported(dir: &Path, file: &Path) -> String {
     }
 }
 
-/// Look `name` as a file in a folder.
-fn export(app: &App, name: String) {
+/// Look `name` as a file in a folder: its own, or in `form`.
+fn export(app: &App, name: String, form: Option<Form>) {
     let start = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/"));
     let weak = app.as_weak();
     crate::chooser::choose_folder("Folder for the look", start, move |chosen| {
         let Ok(Some(folder)) = chosen else { return };
         let _ = weak.upgrade_in_event_loop(move |app| {
-            let note = exported(&folder, &name);
-            app.global::<Mono>().set_look_note(note.into());
+            let note = exported(&folder, &name, form);
+            let mono = app.global::<Mono>();
+            mono.set_look_ask("".into());
+            mono.set_look_note(note.into());
         });
     });
 }
 
-fn exported(folder: &Path, name: &str) -> String {
+fn exported(folder: &Path, name: &str, form: Option<Form>) -> String {
+    let named = |files: &[PathBuf]| {
+        let names: Vec<String> = files
+            .iter()
+            .map(|f| {
+                f.file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned()
+            })
+            .collect();
+        names.join(" and ")
+    };
+    match form {
+        Some(Form::Lightroom) => {
+            return match looks::export_as(folder, name, Form::Lightroom) {
+                Ok(files) => format!(
+                    "{name} exported as {}. Put the profile in Camera Raw's Settings folder; \
+                     import the preset in Lightroom's Presets panel.",
+                    named(&files)
+                ),
+                Err(e) => format!("Not exported: {e}"),
+            };
+        }
+        Some(form) => {
+            return match looks::export_as(folder, name, form) {
+                Ok(files) => format!("{name} exported as {}", named(&files)),
+                Err(e) => format!("Not exported: {e}"),
+            };
+        }
+        None => {}
+    }
     match looks::export(folder, name) {
         Ok(file) => format!(
             "{name} exported as {}",

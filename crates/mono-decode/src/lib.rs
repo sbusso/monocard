@@ -1,12 +1,13 @@
 //! Monocard: a monochrome raw frame made into one linear plane, its clip
-//! map, and the HDR bracket merge.
+//! map, the HDR bracket merge, and the burst merge.
 //!
 //! The decode itself is greycard-core's. This crate takes its
 //! [`greycard_core::RawFrame`] from stored samples to a [`Prepared`]
 //! plane ([`prepare()`]), and runs the geometry ([`geometry`]), the
-//! highlight inpaint ([`inpaint_edges`]), and the bracket merge ([`hdr`])
-//! on single planes. No step makes an RGB buffer.
+//! highlight inpaint ([`inpaint_edges`]), the bracket merge ([`hdr`]) and
+//! the burst merge ([`burst`]) on single planes. No step makes an RGB buffer.
 
+pub mod burst;
 pub mod geometry;
 pub mod hdr;
 mod histogram;

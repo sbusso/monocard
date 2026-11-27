@@ -265,6 +265,9 @@ export component App inherits Window {
     callback merge-pano();
     /// Merge to Focus stack: the frames chosen merged sharp everywhere.
     callback merge-focus();
+    /// Merge burst, Monocard's: the frames chosen, at one exposure,
+    /// merged into one with less noise.
+    callback merge-burst();
     /// The menu's Copy settings: the frame right-clicked, where Ctrl+C
     /// copies the frame on screen.
     callback menu-copy();
@@ -7295,6 +7298,7 @@ export component App inherits Window {
         merge-hdr => { root.merge-hdr(); root.menu-done(); }
         merge-pano => { root.merge-pano(); root.menu-done(); }
         merge-focus => { root.merge-focus(); root.menu-done(); }
+        merge-burst => { root.merge-burst(); root.menu-done(); }
     }
 
     // Recently opened: one list for the window, opened below the

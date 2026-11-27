@@ -1,0 +1,12 @@
+# Monocard's camera window: lets the user at the computer open a Ricoh
+# GR IV Monochrome (USB ID 25fb:2127) on a USB cable, with no root.
+# systemd-logind gives the user of the active session access to a device
+# tagged "uaccess"; the number is below 73 so that the tag is set before
+# systemd's 73-seat-late.rules reads it.
+#
+# Install, then connect the camera again:
+#
+#     sudo install -m 0644 70-monocard-camera.rules /etc/udev/rules.d/
+#     sudo udevadm control --reload-rules
+#     sudo udevadm trigger --subsystem-match=usb
+SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="25fb", ATTR{idProduct}=="2127", TAG+="uaccess"

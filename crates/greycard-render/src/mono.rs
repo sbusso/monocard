@@ -18,6 +18,7 @@ use mono_tone::point::{self, LocalCompiled};
 use rayon::prelude::*;
 
 use crate::export::{Format, Pixels, Rendered, Settings, Sharpen, Space, fit_size};
+use crate::mono_hdr::HEADROOM;
 use crate::refine::MaskPicture;
 use crate::watermark::{Channel, Mark};
 use crate::{border::Border, finish, geometry};
@@ -80,11 +81,22 @@ pub struct Finish {
 }
 
 impl Finish {
+    /// For a frame that is the whole picture.
     pub fn new(e: &MonoEdit, frame: &MonoFrame) -> Self {
+        Self::sized(e, frame, None)
+    }
+
+    /// For a frame that is a bin of a picture of `full` pixels: the film's
+    /// grain is sized by the picture's long side.
+    pub fn sized(e: &MonoEdit, frame: &MonoFrame, full: Option<(u32, u32)>) -> Self {
         let ev = e.basic.exposure;
+        let long_side = match full {
+            Some((w, h)) => w.max(h) as f32,
+            None => frame.base.width.max(frame.base.height) as f32,
+        };
         Self {
             tone: point::Compiled::of(e, frame.white * ev.exp2(), frame.rendered),
-            look: mono_look::Compiled::new(e, frame.iso),
+            look: mono_look::Compiled::new(e, frame.iso, long_side),
             ev,
         }
     }
@@ -124,6 +136,11 @@ impl Finish {
         locals: impl IntoIterator<Item = (&'a LocalCompiled, f32)>,
         at: &Spot,
     ) -> [f32; 3] {
+        self.finish(self.display(s, locals), at)
+    }
+
+    /// Step 12 alone, of display light.
+    pub fn finish(&self, display: f32, at: &Spot) -> [f32; 3] {
         let ctx = mono_look::Ctx {
             look: &self.look,
             uv: at.uv,
@@ -131,7 +148,7 @@ impl Finish {
             px: at.px,
             scale: at.scale,
         };
-        mono_look::finish(self.display(s, locals), &ctx)
+        mono_look::finish(display, &ctx)
     }
 }
 
@@ -187,7 +204,7 @@ pub fn render(
     }
     let (w, h) = (fitted.base.width, fitted.base.height);
 
-    let compiled = Finish::new(&mono, frame);
+    let compiled = Finish::sized(&mono, frame, with.full);
     let locals: Vec<(LocalCompiled, finish::Local)> = masks(edit)
         .map(|(a, l)| {
             let rasters = finish::rasterize(&a.mask, sh / sw, |i| {
@@ -208,7 +225,8 @@ pub fn render(
     // Full picture pixels to one of the frame's.
     let bin = with.full.map_or(1.0, |f| f.0 as f32 / sw);
     let aspect = w as f32 / h as f32;
-    let pixel = |x: usize, y: usize| -> [f32; 3] {
+    // Scene light after the masks, and where the pixel sits.
+    let light = |x: usize, y: usize| -> (f32, Spot) {
         let get = |p: &Option<Arc<Plane>>| p.as_ref().map(|p| p.get(x, y));
         let s = Scene::new(
             fitted.base.get(x, y),
@@ -232,14 +250,24 @@ pub fn render(
             px: [r.0 * bin, r.1 * bin],
             scale: 1.0 / (scale * bin),
         };
-        if locals.is_empty() {
-            compiled.pixel(&s, [], &spot)
+        let x2 = if locals.is_empty() {
+            compiled.scene(&s, [])
         } else {
-            compiled.pixel(&s, weights(), &spot)
-        }
+            compiled.scene(&s, weights())
+        };
+        (x2, spot)
     };
+    let pixel = |x: usize, y: usize| -> [f32; 3] {
+        let (x2, at) = light(x, y);
+        compiled.finish(compiled.tone.tone(x2), &at)
+    };
+    let sixteen = matches!(settings.format, Format::Tiff | Format::JpegXl16);
     let pixels = if mono.is_toned() {
-        let space = settings.space.for_color();
+        // The lossless JPEG XL's header says sRGB, and it holds no profile.
+        let space = match settings.format {
+            Format::JpegXl16 => Space::Srgb,
+            _ => settings.space.for_color(),
+        };
         let m = space.matrix();
         let out = |v: [f32; 3]| {
             [0, 1, 2].map(|r| {
@@ -247,22 +275,44 @@ pub fn render(
                 space.recode(finish::encode(lin.clamp(0.0, 1.0)))
             })
         };
-        match settings.format {
-            Format::Tiff => Pixels::Sixteen(rows(w, h, |x, y| out(pixel(x, y)))),
-            _ => Pixels::Eight(rows(w, h, |x, y| out(pixel(x, y)))),
+        match sixteen {
+            true => Pixels::Sixteen(rows(w, h, |x, y| out(pixel(x, y)))),
+            false => Pixels::Eight(rows(w, h, |x, y| out(pixel(x, y)))),
         }
     } else {
         let space = settings.space.for_grey();
-        let out = |v: [f32; 3]| [space.grey_encode(v[0])];
-        match settings.format {
-            Format::Tiff => Pixels::Sixteen(rows(w, h, |x, y| out(pixel(x, y)))),
-            _ => Pixels::Eight(rows(w, h, |x, y| out(pixel(x, y)))),
+        // The lossless JPEG XL's header says sRGB's curve.
+        let srgb = settings.format == Format::JpegXl16;
+        let out = |v: [f32; 3]| match srgb {
+            true => [finish::encode(v[0].clamp(0.0, 1.0))],
+            false => [space.grey_encode(v[0])],
+        };
+        match sixteen {
+            true => Pixels::Sixteen(rows(w, h, |x, y| out(pixel(x, y)))),
+            false => Pixels::Eight(rows(w, h, |x, y| out(pixel(x, y)))),
         }
     };
+    // The HDR print's gain over the SDR print's, of display light: the
+    // same scene through the display transform with headroom.
+    let gain = (settings.format == Format::UltraHdr).then(|| {
+        let clip = frame.white * compiled.ev.exp2();
+        let hdr = point::Compiled::with_headroom(&mono, clip, frame.rendered, HEADROOM);
+        let mut out = vec![0f32; w * h];
+        out.par_chunks_mut(w.max(1))
+            .enumerate()
+            .for_each(|(y, row)| {
+                for (x, g) in row.iter_mut().enumerate() {
+                    let x2 = light(x, y).0;
+                    *g = crate::mono_hdr::gain(compiled.tone.tone(x2), hdr.tone(x2));
+                }
+            });
+        out
+    });
     Ok(Rendered {
         width: w as u32,
         height: h as u32,
         pixels,
+        gain,
     })
 }
 
@@ -480,6 +530,60 @@ pub(crate) fn settings_for(rendered: &Rendered, settings: &Settings) -> Settings
     }
 }
 
+/// A lossy JPEG XL of 8-bit `pixels`, one channel when `grey`, by jixel,
+/// at a JPEG's `quality`, with the profile, the EXIF and the XMP.
+// The writer's arguments are the file's parts.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn jpeg_xl(
+    pixels: &[u8],
+    w: u32,
+    h: u32,
+    grey: bool,
+    quality: u8,
+    icc: Option<Vec<u8>>,
+    exif: Option<Vec<u8>>,
+    xmp: Option<String>,
+) -> Result<Vec<u8>> {
+    let mut config = jixel::EncodeConfig::default();
+    config.distance = jixel::distance_from_quality(f32::from(quality.clamp(1, 100)));
+    if let Some(icc) = icc {
+        config = config.with_icc_profile(icc);
+    }
+    if let Some(exif) = exif {
+        config = config.with_exif(exif);
+    }
+    if let Some(xmp) = xmp {
+        config = config.with_xmp(xmp.into_bytes());
+    }
+    let (w, h) = (w as usize, h as usize);
+    let out = match grey {
+        true => jixel::encode_image_gray(pixels, w, h, &config),
+        false => jixel::encode_image(pixels, w, h, &config),
+    };
+    out.map_err(|e| anyhow::anyhow!("the JPEG XL: {e:?}"))
+}
+
+/// A lossless JPEG XL of 16-bit `pixels`, one channel when `grey`, by
+/// zune-jpegxl. Its header says sRGB's curve (and sRGB's primaries in
+/// color), and it holds no profile and no metadata.
+pub(crate) fn jpeg_xl_16(pixels: &[u16], w: u32, h: u32, grey: bool) -> Result<Vec<u8>> {
+    use zune_core::bit_depth::BitDepth;
+    use zune_core::colorspace::ColorSpace;
+    use zune_core::options::EncoderOptions;
+    let space = if grey {
+        ColorSpace::Luma
+    } else {
+        ColorSpace::RGB
+    };
+    let options = EncoderOptions::new(w as usize, h as usize, space, BitDepth::Sixteen);
+    let bytes: Vec<u8> = pixels.iter().flat_map(|v| v.to_ne_bytes()).collect();
+    let mut out = Vec::new();
+    zune_jpegxl::JxlSimpleEncoder::new(&bytes, options)
+        .encode(&mut out)
+        .map_err(|e| anyhow::anyhow!("the JPEG XL: {e:?}"))?;
+    Ok(out)
+}
+
 /// Dot gain's parabola: the printed dot of an ink dot `a`, 20 % at half.
 fn dot_gain(a: f32) -> f32 {
     a + 0.8 * a * (1.0 - a)
@@ -620,8 +724,30 @@ pub(crate) fn border(rendered: &mut Rendered, border: &Border, settings: &Settin
             band
         }
     };
+    pad_gain(rendered, band);
     rendered.width += 2 * band;
     rendered.height += 2 * band;
+}
+
+/// An Ultra HDR export's gains with a border `band` pixels wide round
+/// them, of no gain, before the picture's size takes the border.
+pub(crate) fn pad_gain(rendered: &mut Rendered, band: u32) {
+    let (w, h, band) = (
+        rendered.width as usize,
+        rendered.height as usize,
+        band as usize,
+    );
+    if let Some(g) = &mut rendered.gain
+        && band > 0
+        && g.len() == w * h
+    {
+        let ow = w + 2 * band;
+        let mut out = vec![0.0; ow * (h + 2 * band)];
+        for (y, row) in g.chunks_exact(w.max(1)).enumerate() {
+            out[(y + band) * ow + band..][..w].copy_from_slice(row);
+        }
+        *g = out;
+    }
 }
 
 /// [`export::mark`] on a grey picture: the mark by its own luminance.
@@ -751,6 +877,156 @@ mod tests {
                 assert!((a - b).abs() < 0.005, "{x},{y}: {a} for {b}");
             }
         }
+    }
+
+    /// A crop keeps the film grain of the whole picture, pixel for pixel:
+    /// the grain is placed by the picture's pixels and sized by its long
+    /// side, neither of which a crop changes (§741).
+    #[test]
+    fn a_crop_has_the_film_grain_of_the_whole() {
+        let (w, h) = (256, 128);
+        let data = (0..w * h)
+            .map(|i| 0.02 + 0.3 * (i % w) as f32 / w as f32)
+            .collect();
+        let frame = MonoFrame {
+            base: Arc::new(Plane::new(w, h, data)),
+            guide: None,
+            detail: None,
+            local: None,
+            clip: None,
+            iso: None,
+            white: 1.0,
+            rendered: false,
+            raw: None,
+        };
+        let mut edit = Edit::default();
+        let m = edit.mono.get_or_insert_default();
+        m.film.stock = mono_core::edit::FilmStock::Delta3200;
+        m.grain.amount = 1.0;
+        let light = |edit: &Edit| {
+            let s = Settings {
+                format: Format::Tiff,
+                ..Settings::default()
+            };
+            let r = render(&frame, edit, &s, &Beside::default()).unwrap();
+            let Pixels::Sixteen(p) = r.pixels else {
+                panic!("sixteen bits")
+            };
+            let data = p.iter().map(|v| f32::from(*v) / 65535.0).collect();
+            Plane::new(r.width as usize, r.height as usize, data)
+        };
+        let whole = light(&edit);
+        let mut cropped = edit.clone();
+        cropped.geometry.crop = Some(greycard_edit::geometry::Crop {
+            x: 0.25,
+            y: 0.25,
+            w: 0.5,
+            h: 0.5,
+        });
+        let part = light(&cropped);
+        assert_eq!((part.width, part.height), (128, 64));
+        let mut grainless = edit.clone();
+        grainless.mono.as_mut().unwrap().grain.amount = 0.0;
+        let plain = light(&grainless);
+        let mut moved = 0;
+        for y in 0..64 {
+            for x in 0..128 {
+                let (a, b) = (part.get(x, y), whole.get(x + 64, y + 32));
+                assert!((a - b).abs() < 1e-4, "{x},{y}: {a} for {b}");
+                moved += usize::from((b - plain.get(x + 64, y + 32)).abs() > 2e-3);
+            }
+        }
+        assert!(moved > 2000, "{moved}");
+    }
+
+    /// A grey ramp out as JPEG XL, lossy and lossless, and as Ultra HDR:
+    /// one channel each, the lossless one sample for sample, and a gain
+    /// map that lifts the lights alone.
+    #[test]
+    fn a_grey_picture_goes_out_as_jpeg_xl_and_ultra_hdr() {
+        let (w, h) = (96, 16);
+        let data = (0..w * h)
+            .map(|i| (((i % w) as f32 / w as f32) * 12.0 - 11.0).exp2())
+            .collect();
+        let frame = MonoFrame {
+            base: Arc::new(Plane::new(w, h, data)),
+            guide: None,
+            detail: None,
+            local: None,
+            clip: None,
+            iso: None,
+            white: 1.0,
+            rendered: false,
+            raw: None,
+        };
+        let edit = Edit {
+            mono: Some(Box::default()),
+            ..Edit::default()
+        };
+        let dir = std::env::temp_dir().join(format!("mono-export-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let out = |format: Format| {
+            let s = Settings {
+                format,
+                metadata: crate::export::Metadata::None,
+                ..Settings::default()
+            };
+            let r = render(&frame, &edit, &s, &Beside::default()).unwrap();
+            let path = dir.join(format!("ramp-{}.{}", format.name(), format.extension()));
+            crate::export::write(&r, &s, &path, None, &Default::default()).unwrap();
+            (r, std::fs::read(path).unwrap())
+        };
+        let read_jxl = |bytes: &[u8]| {
+            let image = jxl_oxide::JxlImage::builder().read(bytes).unwrap();
+            let fb = image.render_frame(0).unwrap().image_all_channels();
+            assert_eq!((fb.width(), fb.height(), fb.channels()), (w, h, 1));
+            fb.buf().to_vec()
+        };
+
+        let (r, bytes) = out(Format::JpegXl16);
+        let Pixels::Sixteen(p) = &r.pixels else {
+            panic!("sixteen bits")
+        };
+        let back = read_jxl(&bytes);
+        for (a, b) in p.iter().zip(&back) {
+            assert!((f32::from(*a) / 65535.0 - b).abs() < 2e-5, "{a} {b}");
+        }
+        let (r, bytes) = out(Format::JpegXl);
+        let Pixels::Eight(p) = &r.pixels else {
+            panic!("eight bits")
+        };
+        let back = read_jxl(&bytes);
+        // jxl-oxide gives the file's own encoding back: Gray Gamma 2.2.
+        let off = p
+            .iter()
+            .zip(&back)
+            .map(|(a, b)| (f32::from(*a) / 255.0 - b).abs())
+            .fold(0.0, f32::max);
+        assert!(off < 0.05, "{off}");
+
+        let (r, bytes) = out(Format::UltraHdr);
+        let gain = r.gain.as_ref().unwrap();
+        // Shadows and grey keep their light, the lights gain up to 2 stops.
+        assert!(gain[w / 4].abs() < 1e-3 && gain[w / 2].abs() < 1e-3);
+        assert!(gain[w - 1] > 1.5 && gain[w - 1] <= 2.0, "{}", gain[w - 1]);
+        let base = image::load_from_memory(&bytes).unwrap();
+        assert_eq!(base.color(), image::ColorType::L8);
+        let find = |what: &[u8]| bytes.windows(what.len()).position(|w| w == what);
+        assert!(find(b"MPF\0").is_some() && find(b"hdrgm:Version").is_some());
+        assert!(find(b"urn:iso:std:iso:ts:21496:-1").is_some());
+        // The second JPEG is the map: dark at black, bright at white.
+        let second = bytes[2..]
+            .windows(2)
+            .rposition(|w| w == [0xff, 0xd8])
+            .unwrap()
+            + 2;
+        let map = image::load_from_memory(&bytes[second..])
+            .unwrap()
+            .to_luma8();
+        assert_eq!((map.width(), map.height()), (w as u32, h as u32));
+        assert!(map.get_pixel(0, 8)[0] < 10 && map.get_pixel(w as u32 - 1, 8)[0] > 240);
+        // remove_dir_all allowed: plain files, nothing open under it.
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

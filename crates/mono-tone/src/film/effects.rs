@@ -51,7 +51,7 @@ pub fn wants_effects(film: &Film) -> bool {
 /// The gain in EV, for scene light `light` on a picture reduced by `bin`
 /// (its pixels are `bin` picture pixels across). None for no film.
 pub fn effects(light: &Plane, film: &Film, bin: f32) -> Option<Plane> {
-    let print = Print::new(film, mono_core::edit::NORMAL_GRADE)?;
+    let print = Print::new(film, &Default::default(), mono_core::edit::NORMAL_GRADE)?;
     let px = PIXEL_UM * bin.max(1.0);
     let (w, h) = (light.width, light.height);
     let e0: Vec<f32> = light.data.iter().map(|v| v.max(0.0)).collect();
@@ -85,7 +85,7 @@ pub fn effects(light: &Plane, film: &Film, bin: f32) -> Option<Plane> {
     }
     let edges = film.edges.clamp(0.0, 2.0);
     if edges > 0.0 {
-        let m = EDGE_GAMMA * edges;
+        let m = EDGE_GAMMA * edges * print.edges();
         let dmax = print.dmax();
         let (k, reference) = (dmax, dmax / 2.0);
         let donor = |d: f32| d * (k + reference) / (k + d);

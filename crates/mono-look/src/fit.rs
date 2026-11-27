@@ -159,7 +159,7 @@ pub fn fit(shots: &[Shot]) -> Result<Fit, String> {
     let (train, test, held_out) = split(&shots);
     let parts: Vec<_> = train.iter().map(thin).collect();
     let (levels, offsets) = align(&parts, encode(white))?;
-    let tone = compiled(&points(&levels, white), white);
+    let tone = compiled(&points(&|g| levels.at(g), white), white);
 
     let mut offsets: Vec<(String, f32)> = train
         .iter()
@@ -208,7 +208,7 @@ pub fn fit(shots: &[Shot]) -> Result<Fit, String> {
             train.len()
         },
         seen: levels.ends().map(|g| (decode(g) / white).log2()),
-        points: points(&levels, white),
+        points: points(&|g| levels.at(g), white),
         white,
         offsets,
         held_out,
@@ -558,12 +558,19 @@ fn offset(curve: impl Fn(f32) -> f32, part: &[(f32, f32)], start: f32) -> f32 {
     best
 }
 
+/// The curve tool's points that print `levels`: a JPEG level of 255 at
+/// each 1/2.2 encoded light, white at 1, under the display transform at
+/// its default. A LUT's tone is laid on the curve so (`crate::lut`).
+pub(crate) fn curve_points(levels: &dyn Fn(f32) -> f32) -> Vec<[f32; 2]> {
+    points(levels, 1.0)
+}
+
 /// Points of the curve tool that print `levels`.
-fn points(levels: &Levels, white: f32) -> Vec<[f32; 2]> {
+fn points(levels: &dyn Fn(f32) -> f32, white: f32) -> Vec<[f32; 2]> {
     let off = |p: &[[f32; 2]]| {
         let tone = compiled(p, white);
         let e = (1..=200).map(|i| encode(white.min(1.0)) * i as f32 / 200.0);
-        e.map(|g| (level(tone.tone(decode(g))) - levels.at(g)).abs())
+        e.map(|g| (level(tone.tone(decode(g))) - levels(g)).abs())
             .sum::<f32>()
     };
     let mut points = Curve::default().points;
@@ -587,10 +594,10 @@ fn points(levels: &Levels, white: f32) -> Vec<[f32; 2]> {
 // Ceiling: above light 1.0 (a file with a positive baseline exposure) the
 // curve tool goes on straight, and the print of 1.0 is under white, so a
 // JPEG not white above 1.0, or white below it, is not matched.
-fn pick(levels: &Levels, display: &Compiled, white: f32) -> Vec<[f32; 2]> {
+fn pick(levels: &dyn Fn(f32) -> f32, display: &Compiled, white: f32) -> Vec<[f32; 2]> {
     // Where the display prints the level: it rises, so by halves.
     let want = |g: f32| {
-        let y = unlevel(levels.at(g));
+        let y = unlevel(levels(g));
         let (mut lo, mut hi) = (0.0f32, 1.0f32);
         for _ in 0..24 {
             let mid = 0.5 * (lo + hi);
@@ -612,7 +619,7 @@ fn pick(levels: &Levels, display: &Compiled, white: f32) -> Vec<[f32; 2]> {
         let worst = grid
             .iter()
             .filter(|g| points.iter().all(|p| (p[0] - **g).abs() > 0.005))
-            .map(|g| (*g, (print(*g) - levels.at(*g)).abs()))
+            .map(|g| (*g, (print(*g) - levels(*g)).abs()))
             .max_by(|a, b| a.1.total_cmp(&b.1));
         let Some((g, _)) = worst.filter(|w| w.1 > 0.1) else {
             break;
@@ -753,7 +760,7 @@ mod tests {
             // The sensor's white of a file with a negative baseline
             // exposure, and of one with none.
             for white in [0.7, 1.0f32] {
-                let tone = compiled(&points(&levels, white), white);
+                let tone = compiled(&points(&|g| levels.at(g), white), white);
                 let e: Vec<f32> = (0..1000)
                     .map(|i| encode(white) * i as f32 / 1000.0)
                     .map(|g| (level(tone.tone(decode(g))) - curve(g)).abs())

@@ -23,6 +23,14 @@ Click a tile in the **LOOK** panel. Each tile shows the open photo under that lo
 
 Solar 1 to 3 are not matched to the camera's Solarized modes. Selenium and Warm Fibre tone the photo, so it [exports in color](export.md#grey-or-color).
 
+### Film looks for color photos
+
+Twelve more looks are black and white film emulations from t3mujinpack by João Almeida (MIT), named with **(t3mujinpack)** after the film: AGFA APX 25 and 100, Fuji Neopan 1600 and Neopan Acros 100, Ilford Delta 100, 400 and 3200, FP4 125, HP5 Plus 400 and XP2, Kodak T-Max 3200 and Tri-X 400.
+
+Each one sets the curve to the film's tone and the filter to the film's mix of colors to grey. The mix acts on color photos only. On a photo from a monochrome camera only the curve acts. The **Filter** row shows **From LUT**; choose a filter to take the film's mix off.
+
+These looks are not the films of the [FILM panel](develop.md#film), which model the film's chemistry from its data sheet.
+
 ## Save your own look
 
 1. Set the controls of the panels. A film and its settings are kept too.
@@ -30,16 +38,39 @@ Solar 1 to 3 are not matched to the camera's Solarized modes. Selenium and Warm 
 
 The look holds each control that is not at its default, **Exposure** too. It does not hold the crop, the lens, the masks, or the retouch. A name of your own that is in use is written over. A name of a bundled look is refused.
 
-With a look on, **Export** writes it as a file. For your own looks, there are also **Rename** and **Delete**. Photos that have a renamed or deleted look keep their values, but **Strength** no longer works on them. The open photo follows a rename.
+With a look on, **Export** shows four buttons:
 
-### Import a look or a Lightroom preset
+| Button | What it writes |
+| --- | --- |
+| **Look** | The look's own file (`.toml`) |
+| **1D LUT** | A 1D `.cube` of 4096 entries, for grey pictures: the look's tone, and its toning as one curve a channel |
+| **3D LUT** | A 3D `.cube` of 33 points, for color pictures: the filter or film's conversion to grey, the tone, and the toning |
+| **Lightroom** | A creative profile (`-profile.xmp`) and a Develop preset (`-preset.xmp`) |
 
-Click **Import look or preset** and choose a file:
+Both LUTs take and give display-referred sRGB. They hold the tone and the toning only: the grain, the vignette, and the local contrast are not in a LUT.
+
+The Lightroom profile converts to black and white and holds the look's conversion and tone as a table, which Lightroom's **Amount** slider scales. Put it in Camera Raw's `Settings` folder, then restart Lightroom. The preset puts the profile on, with the clarity, texture, grain, vignette, and toning (as split toning). Import it in Lightroom's **Presets** panel. Lightroom's sliders are not Monocard's, so the grain and vignette look different.
+
+For your own looks, there are also **Rename** and **Delete**. Photos that have a renamed or deleted look keep their values, but **Strength** no longer works on them. The open photo follows a rename.
+
+### Import a look, a Lightroom preset, or a LUT
+
+Click **Import look, preset, or LUT** and choose a file:
 
 - A look (`.toml`).
 - A monochrome Lightroom preset (`.xmp`). Monocard takes the basic tone, the curves, clarity, texture, grain, split toning, and vignette. A line under the button lists what it left out, such as color values and masks. The picture is not equal to Lightroom's.
+- A LUT: a `.cube` (1D or 3D) or a HaldCLUT `.png`, made for display-referred sRGB. The look takes the file's name.
 
 A name that is in use is refused.
+
+On a grey photo a 3D LUT acts only along its black-to-white line. So the look holds that line as an editable curve, and the difference between the LUT's channels on it as toning. The LUT's filter part, how it turns colors into greys, acts on color photos only:
+
+- When a filter mix comes near the LUT, the look sets the **Filter** to that mix. The line under the button gives how near, in levels of 255.
+- When none does (on average more than 1.5 levels off, or 4 levels for 95% of the colors), the line says so, and the look keeps the LUT's own conversion to grey in place of a filter.
+
+In both cases the **Filter** row shows **From LUT**.
+
+The curve is fitted under the default display transform, as for a raw. A camera JPEG has no display transform, so on a JPEG the look's tone differs from the LUT's.
 
 ### The file of a look
 

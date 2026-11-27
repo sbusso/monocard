@@ -63,6 +63,15 @@ if command -v gtk-update-icon-cache >/dev/null 2>&1 &&
 fi
 
 echo "done. monocard-ui is the editor, monocard the command line."
+# The camera's udev rule needs root, so it is only named here.
+rule=70-monocard-camera.rules
+if [ -f "$here/$rule" ] && [ ! -f "/etc/udev/rules.d/$rule" ]; then
+    echo
+    echo "note: to import from the camera on a USB cable, install its udev rule"
+    echo "      (this needs root), then connect the camera again:"
+    echo "      sudo install -m 0644 \"$here/$rule\" /etc/udev/rules.d/"
+    echo "      sudo udevadm control --reload-rules"
+fi
 case ":${PATH-}:" in
 *":$bin_dir:"*) ;;
 *)

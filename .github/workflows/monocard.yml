@@ -68,6 +68,8 @@ jobs:
         run: cargo clippy --locked $MONO_CRATES --all-targets -- -D warnings
       - name: clippy, Greycard's crates with mono
         run: cargo clippy --locked $FEATURE_CRATES --features mono --all-targets -- -D warnings
+      - name: clippy, the import from the camera (mtp-rs on Linux)
+        run: cargo clippy --locked -p greycard-ui --features mono-usb --all-targets -- -D warnings
       - name: test, the mono crates
         run: cargo test --locked $MONO_CRATES
       - name: test, the mono pipeline

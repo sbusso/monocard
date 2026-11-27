@@ -74,6 +74,25 @@ def test_synthetic_noise_is_the_profile_s(profile, tmp_path):
         assert abs((noisy - clean).var() / want - 1) < 0.05
 
 
+def test_no_pairs_noise_and_its_map_are_the_profile_s(profile):
+    rng = np.random.default_rng(5)
+    step = 1 / 16383
+    # Away from the clip at black, which narrows the deepest shadows.
+    for x, gain, read in ((0.02, 1e-3, 5e-7), (0.3, 4e-3, 4e-6), (0.05, 1.5e-4, 2e-8)):
+        clean = np.full((500, 500), x)
+        noisy = data.synthesize(clean, read, gain, step, rng)
+        a, b = gain, read + step * step / 12
+        assert abs(noisy.astype(np.float64).var() / (a * x + b) - 1) < 0.05
+        # Through the transform the noise is the map's deviation.
+        w = data.white(a, b)
+        d = data.forward(np.maximum(noisy, 0.0), a, b) / w
+        assert abs(d.std() / data.sigma_map(clean, a, b).mean() - 1) < 0.05
+    assert np.allclose(data.sigma_map(clean, a, b, 0.5), data.sigma_map(clean, a, b) / 2)
+    plane, sigma, target = data.NoPairs(profile, synthetic=2, size=96).batch(3, 64, rng)
+    assert plane.shape == sigma.shape == target.shape == (3, 1, 64, 64)
+    assert np.all(sigma > 0) and np.isfinite(plane).all()
+
+
 def test_pairs_are_matched_and_moved_ones_refused(profile, tmp_path, capsys):
     clean = scene()
     rng = np.random.default_rng(5)

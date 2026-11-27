@@ -276,6 +276,8 @@ fn a_learned_denoise_falls_back_and_says_so() {
 struct Late {
     runs: usize,
     fills: bool,
+    /// The deblock's runs, each lifting the plane by 0.01.
+    deblocks: usize,
 }
 
 impl Models for Late {
@@ -332,6 +334,75 @@ impl Models for Late {
         let data = plane.data.iter().map(|v| v * 0.5).collect();
         Ok((Plane::new(plane.width, plane.height, data), "stub"))
     }
+    fn deblock_mono(&mut self, plane: &Plane, strength: f32) -> Result<Plane, String> {
+        assert!(strength > 0.0 && strength <= 100.0);
+        self.deblocks += 1;
+        let data = plane.data.iter().map(|v| v + 0.01).collect();
+        Ok(Plane::new(plane.width, plane.height, data))
+    }
+}
+
+/// A camera's JPEG has its blocks removed at the start of the full
+/// develop, once for the sliders after it; a raw, a reduced develop, and
+/// a strength of 0 have none.
+#[test]
+fn a_jpeg_is_deblocked_first_and_once() {
+    let mut jpeg = small();
+    jpeg.dng.rendered = Some(greycard_core::raw::Rendered {
+        space: "sRGB".into(),
+        bits: 8,
+    });
+    let jpeg = Input::Raw(Arc::new(jpeg));
+    let raw = Input::Raw(Arc::new(small()));
+    let on = mono(|m| m.denoise.deblock = 60.0);
+    let names = |input: &Input, e: &Edit, p: &Purpose| {
+        let s = stages(e, p, &input.facts(0), None);
+        let ops: Vec<&str> = s
+            .steps
+            .iter()
+            .filter_map(|st| match st {
+                Step::Op(Stage::Mono(op)) => Some(op.name()),
+                _ => None,
+            })
+            .collect();
+        (ops.join(", "), s.skipped)
+    };
+    let (ops, _) = names(&jpeg, &on, &Purpose::Viewport);
+    assert!(ops.starts_with("prepare, JPEG deblock"), "{ops}");
+    assert!(!names(&raw, &on, &Purpose::Viewport).0.contains("deblock"));
+    assert!(
+        !names(&jpeg, &mono(|_| {}), &Purpose::Viewport)
+            .0
+            .contains("deblock")
+    );
+    let (ops, skipped) = names(&jpeg, &on, &Purpose::Reduced);
+    assert!(!ops.contains("deblock"));
+    assert!(skipped.contains(&("the JPEG deblock", Skip::Reduced)));
+
+    let (mut kept, mut models) = (Kept::new(), Late::default());
+    let plain = {
+        let w = walked_with(&jpeg, &mono(|_| {}), &mut kept, &mut models);
+        let Buf::Plane(m) = w.buf else { panic!() };
+        m
+    };
+    let w = walked_with(&jpeg, &on, &mut kept, &mut models);
+    let Buf::Plane(m) = w.buf else { panic!() };
+    assert_eq!(models.deblocks, 1);
+    assert!(
+        m.plane
+            .data
+            .iter()
+            .zip(&plain.plane.data)
+            .all(|(a, b)| a > b)
+    );
+    // A slider after it starts from a kept point past it.
+    let later = mono(|m| (m.denoise.deblock, m.contrast_eq.fine) = (60.0, 10.0));
+    walked_with(&jpeg, &later, &mut kept, &mut models);
+    assert_eq!(models.deblocks, 1);
+    // Without its model, the picture goes on as it is.
+    let w = walked(&jpeg, &on, &Purpose::Viewport, &mut Kept::new());
+    let Buf::Plane(m) = w.buf else { panic!() };
+    assert!(m.plane == plain.plane);
 }
 
 fn walked_with(input: &Input, edit: &Edit, kept: &mut Kept, models: &mut dyn Models) -> Walked {

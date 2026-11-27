@@ -27,15 +27,20 @@
 //!
 //! A monochrome sensor has no spectrum, so the film's spectral sensitivity
 //! is left out: the sensor's own stands in for it.
+//!
+//! The development of a film with a fitted curve family, the other papers
+//! and the split-grade print are in `develop.rs` and `paper.rs` (§740).
 
 mod data;
+mod develop;
 mod effects;
+mod paper;
 
 pub use effects::{effects, wants_effects};
 
 use mono_core::MIDDLE_GREY;
 use mono_core::color::ColorResponse;
-use mono_core::edit::{Film, FilmStock, Filter};
+use mono_core::edit::{Film, FilmStock, Filter, Paper, PaperStock};
 use std::sync::{Arc, OnceLock};
 
 /// A density curve: three layers, each a normal CDF.
@@ -74,7 +79,8 @@ pub(crate) struct Stock {
     curve: Curve3,
 }
 
-/// How much one step of development multiplies the negative's contrast.
+/// How much one step of development multiplies the negative's contrast,
+/// for a film without a fitted family (§740 has the others).
 // Ceiling: a draft. A real push changes the whole curve, as the data
 // sheets' curves for longer times show; Fotufilm's data has those for
 // seven of the films (CC BY-SA 4.0), to bring in as their own curves.
@@ -108,60 +114,111 @@ fn grade_exposures(grade: f32) -> [f32; 3] {
     std::array::from_fn(|e| a[e] + (b[e] - a[e]) * t)
 }
 
+/// The negative: SpektraLab's curve at a contrast, or a fitted family
+/// developed.
+#[derive(Debug, Clone, Copy)]
+enum Negative {
+    Sum { curve: Curve3, gamma: f32 },
+    Fitted(develop::Developed),
+}
+
+impl Negative {
+    fn at(&self, x: f32) -> f32 {
+        match self {
+            Negative::Sum { curve, gamma } => curve.at(x, *gamma),
+            Negative::Fitted(d) => d.at(x),
+        }
+    }
+}
+
+/// The print's exposure: a grade, timed to print the mid-grey at
+/// [`paper::MID`], or a split-grade pair.
+#[derive(Debug, Clone, Copy)]
+enum Exposure {
+    Grade { grade: f32, at: f32 },
+    Split(paper::Split),
+}
+
 /// The film and print as a function, for a film that is not none.
 #[derive(Debug, Clone)]
 pub struct Print {
-    film: Curve3,
-    gamma: f32,
+    negative: Negative,
     mid: f32,
-    grade: [f32; 3],
+    paper: PaperStock,
+    exposure: Exposure,
     rms: f32,
     halation: [f32; 2],
+    edges: f32,
 }
 
-/// One picture pixel on the film, in um: a 36 mm frame 6000 pixels wide.
-// Ceiling: a fixed frame. The grain and the spreads are sized as if every
-// picture were 6000 pixels across 36 mm; a picture's own width (and the
-// GR IV's 23.5 mm sensor, should it be the reference) would size them
-// to it.
+/// The film frame's long side, um: a 35 mm negative, 36 by 24 mm. A
+/// picture's long side is laid on it, so a pixel is `FRAME_UM` over the
+/// long side in pixels, in um (§741).
+pub const FRAME_UM: f32 = 36_000.0;
+/// One picture pixel on the film, in um, where the picture's size is not
+/// known: a 36 mm frame 6000 pixels wide.
+// Ceiling: the halation and the edge effect are still sized by it, as
+// if every picture were 6000 pixels across; the grain takes the
+// picture's own size (§741). Passing the size to `effects` would end it.
 pub const PIXEL_UM: f32 = 6.0;
-/// The ISO 6328 aperture's area, um^2: 48 um across.
-const APERTURE_UM2: f32 = std::f32::consts::PI * 24.0 * 24.0;
-/// The silver's share that a developed grain's density leaves, for the
-/// grain's variance (spektrafilm's `uniformity` for black and white).
-const UNIFORMITY: f32 = 0.6;
 
 impl Print {
-    /// None for no film. `grade` is the paper's, as [`mono_core::edit::Display::grade`].
-    pub fn new(film: &Film, grade: f32) -> Option<Self> {
+    /// None for no film. `grade` is the paper's, as [`mono_core::edit::Display::grade`];
+    /// a split-grade `paper` stands in for it.
+    pub fn new(film: &Film, paper: &Paper, grade: f32) -> Option<Self> {
         let stock = data::STOCKS[film.stock.index()?];
-        let gamma = DEVELOPMENT_STEP.powf(film.development.clamp(-2.0, 2.0));
+        let dev = develop::develop(film);
+        let negative = match dev.negative {
+            Some(d) => Negative::Fitted(d),
+            None => Negative::Sum {
+                curve: stock.curve,
+                gamma: DEVELOPMENT_STEP.powf(dev.steps.clamp(-3.0, 3.0)),
+            },
+        };
+        let mid = negative.at(0.0);
+        let exposure = if paper.is_split() {
+            // A shadow two stops under the grey, on the paper.
+            let shadow = mid - negative.at(-2.0 * std::f32::consts::LOG10_2);
+            Exposure::Split(paper::Split::new(
+                paper.stock,
+                paper.soft,
+                paper.hard,
+                shadow,
+            ))
+        } else {
+            Exposure::Grade {
+                grade,
+                at: paper::mid_exposure(paper.stock, grade),
+            }
+        };
         Some(Self {
-            film: stock.curve,
-            gamma,
-            mid: stock.curve.at(0.0, gamma),
-            grade: grade_exposures(grade),
-            rms: stock.rms,
+            negative,
+            mid,
+            paper: paper.stock,
+            exposure,
+            rms: stock.rms * dev.grain,
             halation: stock.halation,
+            edges: dev.edges,
         })
     }
 
     /// The negative's deepest density.
     pub fn dmax(&self) -> f32 {
-        self.film.at(4.0, self.gamma)
+        self.negative.at(4.0)
     }
 
     /// The negative's density at log10 exposure over mid-grey.
     pub fn density_at(&self, log_exposure: f32) -> f32 {
-        self.film.at(log_exposure, self.gamma)
+        self.negative.at(log_exposure)
     }
 
     /// Display light off the print of a negative of density `d`.
     pub fn light_of_density(&self, d: f32) -> f32 {
         let xp = self.mid - d;
-        let p: f32 = (0..3)
-            .map(|e| data::PAPER[e].at(xp + self.grade[e], 1.0))
-            .sum();
+        let p = match self.exposure {
+            Exposure::Grade { grade, at } => paper::density(self.paper, grade, xp + at),
+            Exposure::Split(s) => s.density(self.paper, xp),
+        };
         10f32.powf(-p)
     }
 
@@ -170,56 +227,55 @@ impl Print {
         self.halation
     }
 
-    /// The negative's grain, one standard deviation of density, in one
-    /// picture pixel at net density 1. Selwyn's law: it goes as one over
-    /// the square root of the area, from the data sheet's 48 um aperture.
-    pub fn grain_sigma(&self) -> f32 {
-        self.rms / 1000.0 * (APERTURE_UM2 / (PIXEL_UM * PIXEL_UM)).sqrt()
+    /// The developer's edge effect against D-76's at 30 s agitation.
+    pub fn edges(&self) -> f32 {
+        self.edges
     }
 
-    /// How a unit of the negative's grain moves display light, at each
-    /// display light: the print's slope against density times the grain's
-    /// share at that density, `sqrt(D (Dmax - u D) / (Dmax - u))`
-    /// (spektrafilm `model/grain.py`, one layer). `TABLE` entries over
-    /// display light encoded by 1/2.2, 0 to 1.
-    pub fn grain_table(&self) -> [[f32; 4]; TABLE / 4] {
+    /// The data sheet's RMS granularity: one standard deviation of
+    /// density at net density 1, seen through the ISO 6328 aperture of
+    /// 48 um. The grain's model sizes its grains from it (§741).
+    pub fn grain_rms(&self) -> f32 {
+        self.rms / 1000.0
+    }
+
+    /// The negative behind each display light: its net density and how
+    /// display light moves with it there. `TABLE` pairs over display
+    /// light encoded by 1/2.2, 0 to 1, two to an entry; a light the print
+    /// does not reach has a slope of 0.
+    pub fn grain_table(&self) -> [[f32; 4]; TABLE / 2] {
         let dmax = self.dmax();
-        let at_one = (dmax - UNIFORMITY).max(1e-3);
-        let share = |d: f32| (d.max(0.0) * (dmax - UNIFORMITY * d).max(0.0) / at_one).sqrt();
         // Display light rises as density does: a walk over density, then
         // read at even encoded light.
         let n = 512;
-        let walk: Vec<(f32, f32)> = (0..=n)
+        let walk: Vec<(f32, f32, f32)> = (0..=n)
             .map(|i| {
                 let d = dmax * i as f32 / n as f32;
                 let h = 1e-3;
                 let slope =
                     (self.light_of_density(d + h) - self.light_of_density(d - h)) / (2.0 * h);
-                (
-                    self.light_of_density(d).max(0.0).powf(1.0 / 2.2),
-                    slope.abs() * share(d),
-                )
+                (self.light_of_density(d).max(0.0).powf(1.0 / 2.2), d, slope)
             })
             .collect();
+        let pair = |g: f32| match walk.windows(2).find(|w| (w[0].0 >= g) != (w[1].0 >= g)) {
+            Some(w) => {
+                let t = (g - w[0].0) / (w[1].0 - w[0].0);
+                [
+                    w[0].1 + (w[1].1 - w[0].1) * t,
+                    w[0].2 + (w[1].2 - w[0].2) * t,
+                ]
+            }
+            None => [0.0; 2],
+        };
         std::array::from_fn(|i| {
-            std::array::from_fn(|j| {
-                let g = (4 * i + j) as f32 / (TABLE - 1) as f32;
-                // The walk's light falls as density rises: find g in it.
-                match walk.windows(2).find(|w| (w[0].0 >= g) != (w[1].0 >= g)) {
-                    Some(w) => {
-                        let t = (g - w[0].0) / (w[1].0 - w[0].0);
-                        w[0].1 + (w[1].1 - w[0].1) * t
-                    }
-                    None => 0.0,
-                }
-            })
+            let [a, b] = [2 * i, 2 * i + 1].map(|k| pair(k as f32 / (TABLE - 1) as f32));
+            [a[0], a[1], b[0], b[1]]
         })
     }
 
     /// The negative's density at scene light `x`, base not included.
     pub fn negative(&self, x: f32) -> f32 {
-        self.film
-            .at((x.max(1e-12) / MIDDLE_GREY).log10(), self.gamma)
+        self.negative.at((x.max(1e-12) / MIDDLE_GREY).log10())
     }
 
     /// Display light off the print, 0 to 1, for scene light `x`.
@@ -249,13 +305,14 @@ pub fn look_up(t: &[[f32; 4]; TABLE / 4], x: f32) -> f32 {
     a + (b - a) * (p - i as f32)
 }
 
-/// The table of [`Print::grain_table`] at display light `n`, 0 to 1.
-pub fn grain_look_up(t: &[[f32; 4]; TABLE / 4], n: f32) -> f32 {
-    let at = |i: usize| t[i / 4][i % 4];
+/// The table of [`Print::grain_table`] at display light `n`, 0 to 1:
+/// density and slope.
+pub fn grain_look_up(t: &[[f32; 4]; TABLE / 2], n: f32) -> [f32; 2] {
+    let at = |i: usize, c: usize| t[i / 2][2 * (i % 2) + c];
     let p = n.clamp(0.0, 1.0).powf(1.0 / 2.2) * (TABLE - 1) as f32;
     let i = (p as usize).min(TABLE - 2);
-    let (a, b) = (at(i), at(i + 1));
-    a + (b - a) * (p - i as f32)
+    let f = p - i as f32;
+    [0, 1].map(|c| at(i, c) + (at(i + 1, c) - at(i, c)) * f)
 }
 
 /// How `stock` turns a color photo to grey, through `filter` on the lens.
@@ -291,6 +348,10 @@ mod tests {
         }
     }
 
+    fn print(film: &Film, grade: f32) -> Option<Print> {
+        Print::new(film, &Paper::default(), grade)
+    }
+
     #[test]
     fn the_names_are_the_datas() {
         assert_eq!(FilmStock::ALL.len(), data::STOCKS.len() + 1);
@@ -304,7 +365,7 @@ mod tests {
                 d.name
             );
         }
-        assert!(Print::new(&film(FilmStock::None), NORMAL_GRADE).is_none());
+        assert!(print(&film(FilmStock::None), NORMAL_GRADE).is_none());
     }
 
     #[test]
@@ -328,7 +389,7 @@ mod tests {
         let want = 0.184 * 10f32.powf(0.06);
         for stock in &FilmStock::ALL[1..] {
             for grade in [-1.0, 0.0, 1.5, 2.0, 3.0, 4.5, 5.0] {
-                let p = Print::new(&film(*stock), grade).unwrap();
+                let p = print(&film(*stock), grade).unwrap();
                 let got = p.light(MIDDLE_GREY);
                 assert!((got - want).abs() < 0.004, "{stock:?} grade {grade}: {got}");
             }
@@ -338,7 +399,7 @@ mod tests {
     #[test]
     fn the_print_rises_with_light_and_the_grade_hardens_it() {
         for stock in &FilmStock::ALL[1..] {
-            let p = Print::new(&film(*stock), NORMAL_GRADE).unwrap();
+            let p = print(&film(*stock), NORMAL_GRADE).unwrap();
             let mut last = 0.0;
             for i in 0..200 {
                 let y = p.light(MIDDLE_GREY * (-10.0 + 0.08 * i as f32).exp2());
@@ -347,7 +408,7 @@ mod tests {
             }
             // Two stops either side of grey: further apart on a harder grade.
             let spread = |g: f32| {
-                let p = Print::new(&film(*stock), g).unwrap();
+                let p = print(&film(*stock), g).unwrap();
                 p.light(MIDDLE_GREY * 4.0) / p.light(MIDDLE_GREY / 4.0)
             };
             assert!(
@@ -359,19 +420,84 @@ mod tests {
 
     #[test]
     fn a_push_hardens_the_negative_and_keeps_its_grey() {
-        let normal = Print::new(&film(FilmStock::TriX400), NORMAL_GRADE).unwrap();
-        let pushed = Print::new(
+        // A fitted film and one on the contrast factor.
+        for stock in [FilmStock::TriX400, FilmStock::PanFPlus] {
+            let normal = print(&film(stock), NORMAL_GRADE).unwrap();
+            let pushed = print(
+                &Film {
+                    stock,
+                    development: 2.0,
+                    ..Default::default()
+                },
+                NORMAL_GRADE,
+            )
+            .unwrap();
+            let slope = |p: &Print| p.negative(MIDDLE_GREY * 2.0) - p.negative(MIDDLE_GREY / 2.0);
+            assert!(slope(&pushed) > slope(&normal) * 1.2, "{stock:?}");
+            assert!((pushed.light(MIDDLE_GREY) - normal.light(MIDDLE_GREY)).abs() < 1e-4);
+        }
+    }
+
+    /// An edit from before §740: the factor 1.15 a step, on the same curve.
+    #[test]
+    fn a_film_without_a_family_develops_as_before() {
+        let p = print(
             &Film {
-                stock: FilmStock::TriX400,
-                development: 2.0,
-                ..Default::default()
+                stock: FilmStock::Hp5Plus,
+                ..film(FilmStock::PanFPlus)
             },
             NORMAL_GRADE,
         )
         .unwrap();
-        let slope = |p: &Print| p.negative(MIDDLE_GREY * 2.0) - p.negative(MIDDLE_GREY / 2.0);
-        assert!(slope(&pushed) > slope(&normal) * 1.2);
-        assert!((pushed.light(MIDDLE_GREY) - normal.light(MIDDLE_GREY)).abs() < 1e-4);
+        assert!(matches!(p.negative, Negative::Fitted(_)));
+        for development in [-2.0f32, -0.5, 0.0, 1.0, 2.0] {
+            let p = print(
+                &Film {
+                    development,
+                    ..film(FilmStock::PanFPlus)
+                },
+                NORMAL_GRADE,
+            )
+            .unwrap();
+            let curve = data::STOCKS[FilmStock::PanFPlus.index().unwrap()].curve;
+            let gamma = DEVELOPMENT_STEP.powf(development);
+            for x in [-2.0, -0.5, 0.0, 0.7, 2.0] {
+                assert!((p.density_at(x) - curve.at(x, gamma)).abs() < 1e-5);
+            }
+        }
+    }
+
+    #[test]
+    fn a_paper_and_a_split_print_keep_the_grey() {
+        let want = 0.184 * 10f32.powf(0.06);
+        for stock in PaperStock::ALL {
+            for split in [false, true] {
+                let paper = Paper {
+                    stock,
+                    split,
+                    ..Default::default()
+                };
+                let p = Print::new(&film(FilmStock::Fp4Plus), &paper, 3.0).unwrap();
+                let got = p.light(MIDDLE_GREY);
+                assert!((got - want).abs() < 0.004, "{stock:?} {split}: {got}");
+                // Split only on Multigrade.
+                assert_eq!(
+                    matches!(p.exposure, Exposure::Split(_)),
+                    split && stock.is_multigrade()
+                );
+            }
+        }
+        // More hard time darkens the shadows of a split print.
+        let at = |hard| {
+            let paper = Paper {
+                split: true,
+                hard,
+                ..Default::default()
+            };
+            let p = Print::new(&film(FilmStock::TriX400), &paper, NORMAL_GRADE).unwrap();
+            p.light(MIDDLE_GREY / 8.0)
+        };
+        assert!(at(1.0) < at(0.0) * 0.9);
     }
 
     #[test]
@@ -405,24 +531,34 @@ mod tests {
     }
 
     #[test]
-    fn grain_is_none_at_paper_white_and_most_in_the_middle() {
+    fn the_grain_table_finds_the_negative_behind_the_print() {
         for stock in &FilmStock::ALL[1..] {
-            let p = Print::new(&film(*stock), NORMAL_GRADE).unwrap();
+            let p = print(&film(*stock), NORMAL_GRADE).unwrap();
             let t = p.grain_table();
-            let mid = grain_look_up(&t, 0.2);
-            assert!(mid > 0.0, "{stock:?}");
-            assert!(grain_look_up(&t, 1.0) < 0.2 * mid, "{stock:?}");
-            assert!(p.grain_sigma() > 0.03 && p.grain_sigma() < 0.3, "{stock:?}");
+            // The density read back prints the light it was read at, and
+            // light rises with it.
+            for n in [0.02, 0.1, 0.2, 0.5] {
+                let [d, slope] = grain_look_up(&t, n);
+                assert!(
+                    (p.light_of_density(d) - n).abs() < 0.01 * n.max(0.05),
+                    "{stock:?} {n}"
+                );
+                assert!(slope > 0.0, "{stock:?} {n}");
+            }
+            // At the paper's white density no longer moves the print.
+            let mid = grain_look_up(&t, 0.2)[1];
+            assert!(grain_look_up(&t, 1.0)[1] < 0.01 * mid, "{stock:?}");
+            assert!((0.005..0.03).contains(&p.grain_rms()), "{stock:?}");
         }
         // Faster film, more grain.
-        let s = |f| Print::new(&film(f), NORMAL_GRADE).unwrap().grain_sigma();
+        let s = |f| print(&film(f), NORMAL_GRADE).unwrap().grain_rms();
         assert!(s(FilmStock::Delta3200) > s(FilmStock::Hp5Plus));
         assert!(s(FilmStock::Hp5Plus) > s(FilmStock::AcrosII));
     }
 
     #[test]
     fn the_table_is_the_function() {
-        let p = Print::new(&film(FilmStock::Hp5Plus), 3.0).unwrap();
+        let p = print(&film(FilmStock::Hp5Plus), 3.0).unwrap();
         let t = p.table();
         for ev in [-9.0, -3.3, 0.0, 1.7, 5.0] {
             let x = MIDDLE_GREY * f32::exp2(ev);

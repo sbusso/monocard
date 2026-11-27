@@ -61,10 +61,24 @@ impl Gpu {
             })
     }
 
+    // Each test crate that includes this file calls one of the two.
+    #[allow(dead_code)]
     pub fn run(
         &self,
         pipeline: &wgpu::ComputePipeline,
         uniforms: &[&[u8]],
+        cases: &[[f32; 4]],
+    ) -> Vec<[f32; 4]> {
+        self.run_with(pipeline, uniforms, &[], cases)
+    }
+
+    /// [`Gpu::run`] with read only storage buffers bound after the uniforms.
+    #[allow(dead_code)]
+    pub fn run_with(
+        &self,
+        pipeline: &wgpu::ComputePipeline,
+        uniforms: &[&[u8]],
+        storage: &[&[u8]],
         cases: &[[f32; 4]],
     ) -> Vec<[f32; 4]> {
         let bytes: &[u8] = bytemuck::cast_slice(cases);
@@ -93,6 +107,11 @@ impl Gpu {
             uniforms
                 .iter()
                 .map(|u| filled(u, wgpu::BufferUsages::UNIFORM)),
+        );
+        buffers.extend(
+            storage
+                .iter()
+                .map(|s| filled(s, wgpu::BufferUsages::STORAGE)),
         );
         let back = empty(wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST);
         let entries: Vec<_> = buffers

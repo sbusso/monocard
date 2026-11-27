@@ -304,6 +304,36 @@ component Rest inherits VerticalLayout {
             clicked => { Mono.pressed("look.delete"); }
         }
     }
+    // The forms a look goes out in.
+    if root.item.id == "look.save" && Mono.look-ask == "export": HorizontalLayout {
+        padding-top: 2px;
+        padding-bottom: 2px;
+        spacing: Theme.space-2;
+        PanelButton {
+            horizontal-stretch: 1;
+            text: "Look";
+            accessible-label: "Export as a look file";
+            clicked => { Mono.pressed("look.export-toml"); }
+        }
+        PanelButton {
+            horizontal-stretch: 1;
+            text: "1D LUT";
+            accessible-label: "Export as a 1D cube for grey pictures";
+            clicked => { Mono.pressed("look.export-cube1d"); }
+        }
+        PanelButton {
+            horizontal-stretch: 1;
+            text: "3D LUT";
+            accessible-label: "Export as a 3D cube for color pictures";
+            clicked => { Mono.pressed("look.export-cube3d"); }
+        }
+        PanelButton {
+            horizontal-stretch: 1;
+            text: "Lightroom";
+            accessible-label: "Export as a Lightroom profile and preset";
+            clicked => { Mono.pressed("look.export-lightroom"); }
+        }
+    }
     if root.item.id == "look.save" && Mono.look-ask == "rename": NameField {
         name: Mono.look-chosen;
         done: "Rename";

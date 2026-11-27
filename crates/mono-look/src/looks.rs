@@ -35,6 +35,8 @@ pub enum Error {
     Field { field: String, what: String },
     #[error("not a Lightroom preset: {0}")]
     Xmp(String),
+    #[error("not a LUT: {0}")]
+    Lut(String),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -257,6 +259,19 @@ pub fn builtin() -> Vec<Look> {
         include_str!("../looks/selenium.toml"),
         include_str!("../looks/warm-fibre.toml"),
         include_str!("../looks/high-key.toml"),
+        // t3mujinpack's films (`lut::T3MUJINPACK`), for color photos.
+        include_str!("../looks/t3mujinpack/agfa-apx-100.toml"),
+        include_str!("../looks/t3mujinpack/agfa-apx-25.toml"),
+        include_str!("../looks/t3mujinpack/fuji-neopan-1600.toml"),
+        include_str!("../looks/t3mujinpack/fuji-neopan-acros-100.toml"),
+        include_str!("../looks/t3mujinpack/ilford-delta-100.toml"),
+        include_str!("../looks/t3mujinpack/ilford-delta-3200.toml"),
+        include_str!("../looks/t3mujinpack/ilford-delta-400.toml"),
+        include_str!("../looks/t3mujinpack/ilford-fp4-125.toml"),
+        include_str!("../looks/t3mujinpack/ilford-hp5-plus-400.toml"),
+        include_str!("../looks/t3mujinpack/ilford-xp2.toml"),
+        include_str!("../looks/t3mujinpack/kodak-t-max-3200.toml"),
+        include_str!("../looks/t3mujinpack/kodak-tri-x-400.toml"),
     ]
     .into_iter()
     // A test reads them all.
@@ -341,6 +356,11 @@ fn table(e: &MonoEdit) -> Table {
             .or_insert(Value::Float(e.film.development.into()));
         t.insert("film".into(), Value::Table(film));
     }
+    if !t.contains_key("paper")
+        && let Ok(paper) = Value::try_from(e.paper)
+    {
+        t.insert("paper".into(), paper);
+    }
     t
 }
 
@@ -358,6 +378,10 @@ fn schema() -> Table {
     if let Some(Value::Table(s)) = t.get_mut("solarize") {
         let nodes = vec![Value::Float(0.0); SOLAR_NODES];
         s.insert("nodes".into(), Value::Array(nodes));
+    }
+    if let Some(Value::Table(b)) = t.get_mut("basic") {
+        b.insert("mix".into(), Value::Array(vec![Value::Float(0.0); 3]));
+        b.insert("lut".into(), Value::String(String::new()));
     }
     t
 }
@@ -379,7 +403,10 @@ fn difference(t: &Table, base: &Table) -> Table {
         match (value, base.get(key)) {
             (_, Some(b)) if b == value => {}
             (Value::Table(t), Some(Value::Table(b))) => {
-                out.insert(key.clone(), Value::Table(difference(t, b)));
+                let d = difference(t, b);
+                if !d.is_empty() {
+                    out.insert(key.clone(), Value::Table(d));
+                }
             }
             _ => {
                 out.insert(key.clone(), value.clone());
@@ -396,13 +423,20 @@ fn range(path: &str) -> Option<(f64, f64)> {
     let (section, name) = path.split_once('.')?;
     Some(match (section, name) {
         ("basic", "exposure") => (-5.0, 5.0),
+        ("basic", "mix") => (-4.0, 4.0),
         ("basic" | "contrast_eq" | "local_contrast", _) => (-100.0, 100.0),
         ("display", "contrast") => (0.5, 3.0),
         ("display", "white_ceiling") => (0.5, 1.0),
         ("display", "black_floor") => (0.0, 0.1),
         ("display", "grade") => (-1.0, 5.0),
-        ("film", "development") => (-2.0, 2.0),
+        ("film", "development") => (-3.0, 3.0),
         ("film", "halation" | "edges") => (0.0, 2.0),
+        ("film", "temperature") => (18.0, 24.0),
+        ("paper", "soft" | "hard") => (-3.0, 3.0),
+        ("paper", "over") => (0.0, 4.0),
+        ("paper", "range") => (0.5, 3.0),
+        ("paper", "snatch" | "abruptness" | "bleach" | "tannin") => (0.0, 1.0),
+        ("toning", "selenium" | "sepia" | "gold" | "blue" | "copper" | "vanadium") => (0.0, 1.0),
         ("tone_eq", "zones" | "mask_contrast") => (-2.0, 2.0),
         ("tone_eq", "smoothing") => (0.0, 0.25),
         ("tone_eq", "edges") => (0.0, 10.0),
@@ -434,6 +468,13 @@ fn check_table(path: &str, t: &mut Table, schema: &Table) -> Result<()> {
             (Some(Value::Float(_)), v) => *v = Value::Float(number(&path, v)?),
             (Some(Value::Integer(_)), v @ Value::Integer(_)) => {
                 *v = Value::Integer(number(&path, v)? as i64);
+            }
+            (Some(Value::String(_)), Value::String(text)) if path == "basic.lut" => {
+                let sound = text.is_empty()
+                    || mono_core::color::GreyLut::from_hex(text, |x| x.min(1.0)).is_some();
+                if !sound {
+                    return field(&path, "not a LUT's cube of greys");
+                }
             }
             (Some(s), v) if s.same_type(v) => {}
             (Some(s), v) => {
@@ -484,6 +525,7 @@ fn check_array(path: &str, a: &mut Vec<Value>) -> Result<()> {
         return Ok(());
     }
     let legal = match path {
+        "basic.mix" => 3..=3,
         "tone_eq.zones" => mono_core::ZONES..=mono_core::ZONES,
         "solarize.nodes" => SOLAR_NODES..=SOLAR_NODES,
         _ => 0..=MAX_SCALES,
@@ -691,9 +733,9 @@ mod tests {
     }
 
     #[test]
-    fn the_ten_looks_are_here_and_each_changes_something() {
-        // A look that does not read is left out.
-        assert_eq!(builtin().len(), 10);
+    fn the_looks_are_here_and_each_changes_something() {
+        // A look that does not read is left out: ten and t3mujinpack's.
+        assert_eq!(builtin().len(), 10 + crate::lut::T3MUJINPACK.len());
         for l in builtin() {
             let e = apply(&MonoEdit::default(), &l, 1.0);
             let bare = MonoEdit {
@@ -775,7 +817,7 @@ mod tests {
         assert_eq!(none.basic.midtones, 20.0);
         assert_eq!(
             MonoEdit {
-                basic: e.basic,
+                basic: e.basic.clone(),
                 ..none
             },
             e

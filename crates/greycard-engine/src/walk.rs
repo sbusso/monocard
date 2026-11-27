@@ -482,6 +482,26 @@ pub trait Models {
         Err("the learned denoise is not run here; the profiled denoise is used".into())
     }
 
+    /// The model the learned denoise of `mode` waits on, where it is to
+    /// be fetched: the window offers it.
+    #[cfg(feature = "mono")]
+    fn mono_to_fetch(
+        &mut self,
+        _mode: mono_denoise::learned::Mode,
+    ) -> Option<&'static greycard_ai::Model> {
+        None
+    }
+
+    /// A JPEG's plane with its blocks removed at `strength` (§739); why not.
+    #[cfg(feature = "mono")]
+    fn deblock_mono(
+        &mut self,
+        _plane: &mono_core::Plane,
+        _strength: f32,
+    ) -> Result<mono_core::Plane, String> {
+        Err("the JPEG deblock is not run here".into())
+    }
+
     /// [`Models::rasters`] on a monochrome raw's base.
     #[cfg(feature = "mono")]
     fn rasters_mono(&mut self, _how: Masks, _plane: &mono_core::Plane, _meta: &Meta) -> Rasters {

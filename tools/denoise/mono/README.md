@@ -1,11 +1,41 @@
 # Mono denoiser training
 
-This folder fine-tunes Greycard's denoiser into a one-channel model for
-monochrome sensors. No trained mono model exists yet. The app uses the
-profiled denoise until one is installed.
+This folder makes Monocard's learned models: the published grey
+denoisers and JPEG deblocker converted to ONNX (`convert.py`), measured
+(`bench.py`), and Monocard's own one-channel denoiser, fine-tuned from
+Greycard's or trained with no photo pairs (`train.py`). See §739 of the
+notes for the choices and the numbers.
 
 Run every command from this folder. `uv run` installs the dependencies,
 including PyTorch, on first use. To train, use a machine with a CUDA GPU.
+
+## Convert the published models
+
+```
+uv run convert.py --weights ~/kair-weights --out onnx
+```
+
+The script downloads the `.pth` files from the KAIR and FBCNN releases
+into `--weights` when they are not there, checks their SHA-256, and writes
+`mono-ffdnet.onnx` (Fast), `mono-drunet.onnx` (Best), `mono-fbcnn.onnx`
+(Remove JPEG blocks), and the SCUNet and FBCNN double files that §739
+measured and left out. It compares each file with PyTorch and prints its
+size and SHA-256, which `crates/greycard-ai/src/registry.rs` pins.
+
+## Measure
+
+```
+uv run --with pillow bench.py onnx/mono-ffdnet.onnx onnx/mono-drunet.onnx onnx/mono-fbcnn.onnx [--images folder]
+```
+
+Speed is one tile on ONNX Runtime's CPU and Core ML providers. Quality is
+on synthetic pictures, or the PNGs in `--images`, with a sensor's noise
+added at four levels; a deblock model is run on the pictures saved as
+JPEGs at five qualities. For the app's own timing, with its providers:
+
+```
+cargo run --release -p mono-denoise --example learned_bench -- onnx/mono-drunet.onnx
+```
 
 ## Prepare the data
 
@@ -35,6 +65,22 @@ Monocard's model store. Start Fast from `denoise-v19.onnx` and Best from
 `denoise-v20.onnx`. Half of each batch is aligned pairs and half is
 synthetic; `--real` changes the share.
 
+## Train with no pairs
+
+The method of ansel-denoise: clean base-ISO planes only, and the noise
+drawn from the profile at each step (shot, read, quantization, the clip
+at white). The network takes the plane and its noise map, and answers a
+residual.
+
+```
+uv run train.py --no-pairs --data base-iso --profile body.toml --out runs/nopairs \
+    --init denoise-v19.onnx --steps 200000 --batch 16 --patch 128
+```
+
+`--data` is a folder of planes from `export_planes`, all shot at the
+body's base ISO; every tenth is held out. `--init` is optional. A smoke
+run needs no photos: `--synthetic 40 --minutes 5` in place of `--data`.
+
 ## Export
 
 ```
@@ -42,7 +88,8 @@ uv run export.py runs/fast/last.pt mono-fast.onnx --version 1
 ```
 
 The file is ONNX opset 17. The script compares it with PyTorch and prints
-its SHA-256.
+its SHA-256. A network of `--no-pairs` exports with two inputs, the plane
+and its noise map.
 
 ## Validate
 
@@ -57,10 +104,11 @@ file and the metric.
 
 ## Install a model
 
-Copy `mono-fast.onnx` and `mono-best.onnx` to the `monocard-denoise` folder
-of the model store (macOS: `~/Library/Caches/monocard/models`). To try a
-file without installing it, set `MONOCARD_DENOISE_MODEL` to the file, or to
-a folder that holds both.
+Monocard downloads Fast, Best and the JPEG deblocker from the URLs in the
+registry. To try a file without installing it, set `MONOCARD_DENOISE_MODEL`
+to the file, or to a folder that holds `mono-ffdnet.onnx` and
+`mono-drunet.onnx`, and `MONOCARD_DEBLOCK_MODEL` to `mono-fbcnn.onnx`.
+`XDG_CACHE_HOME` moves the whole model store.
 
 ## Test
 

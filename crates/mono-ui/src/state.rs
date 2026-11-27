@@ -128,6 +128,8 @@ pub struct MonoUiState {
     pub proof: Proof,
     /// The open photo is a color one, mixed to grey through a filter.
     pub color: bool,
+    /// The open photo is a JPEG: its block removal is on show.
+    pub jpeg: bool,
 }
 
 impl Default for MonoUiState {
@@ -141,6 +143,7 @@ impl Default for MonoUiState {
             surround: Surround::Grey,
             proof: Proof::Off,
             color: false,
+            jpeg: false,
         }
     }
 }

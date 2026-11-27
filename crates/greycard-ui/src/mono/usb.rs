@@ -5,8 +5,9 @@
 //!
 //! [`Camera`] is all this asks of a camera: a list, a small picture, a part
 //! of a file, and a whole file. Nothing on the camera is written or deleted.
-//! The one real camera is [`icc`]'s; the tests' is made up. Compiled with
-//! the `mono-usb` feature, on macOS.
+//! The real camera is ImageCaptureCore's on macOS (`icc`), and mtp-rs's on
+//! Linux and Windows (`mtp`, through `ptp`); the tests' is made up.
+//! Compiled with the `mono-usb` feature, on those three.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
@@ -28,7 +29,19 @@ use crate::panel::import as sheet;
 use crate::{App, STATE, State};
 
 pub(crate) mod event;
+#[cfg(target_os = "macos")]
 mod icc;
+#[cfg(not(target_os = "macos"))]
+mod mtp;
+// On macOS its tests alone use it.
+#[cfg(any(test, not(target_os = "macos")))]
+mod ptp;
+
+/// The system's camera: start, rest, and stop.
+#[cfg(target_os = "macos")]
+use icc as system;
+#[cfg(not(target_os = "macos"))]
+use mtp as system;
 
 /// A file as the camera lists it. The names are the camera's, unchecked
 /// ([`safe`]).
@@ -897,7 +910,7 @@ fn heard(st: &mut State, app: &App, event: Event) {
 pub(crate) fn watch(st: &State, _app: &App) {
     let quiet = cfg!(test) || st.window.batch || st.launch.owned || !super::only();
     if !quiet {
-        icc::start();
+        system::start();
     }
 }
 
@@ -954,13 +967,13 @@ pub(crate) fn close(st: &mut State, _app: &App) {
 fn end(usb: &mut Sheet) {
     // Their files are the session's.
     usb.frames.clear();
-    icc::rest();
+    system::rest();
 }
 
 /// The window is closed: no loop runs any more, so what is under way on the
 /// camera is stopped here.
 pub(crate) fn leave() {
-    icc::stop();
+    system::stop();
 }
 
 /// Read the camera's list, then what of it is imported. While a run copies,

@@ -223,6 +223,10 @@ fn the_six_panels_are_all_there_is_whatever_is_open() {
     mono.invoke_pressed("lens".into());
     settle(&app);
     no_color_tool(&app, "the lens panel");
+    // Merge burst with one frame chosen says what it wants.
+    assert!(count_labeled(&app, "Merge burst") > 0);
+    mono.invoke_pressed("burst".into());
+    assert_eq!(app.get_status(), words::BURST_WANTS);
 
     // With no file.
     let app = window(0);
@@ -755,8 +759,20 @@ fn a_look_is_renamed_exported_and_deleted_from_the_panel() {
     assert!(mono.get_look_note().starts_with("Not renamed"));
 
     // Out to a folder, never over a file.
-    assert_eq!(exported(&dir, "Test 2"), "Test 2 exported as test-2.toml");
-    assert!(exported(&dir, "Test 2").starts_with("Not exported"));
+    assert_eq!(
+        exported(&dir, "Test 2", None),
+        "Test 2 exported as test-2.toml"
+    );
+    assert!(exported(&dir, "Test 2", None).starts_with("Not exported"));
+    let lr = exported(&dir, "Test 2", Some(Form::Lightroom));
+    assert!(
+        lr.contains("test-2-profile.xmp and test-2-preset.xmp"),
+        "{lr}"
+    );
+    mono.invoke_pressed("look.export".into());
+    assert_eq!(mono.get_look_ask(), "export");
+    mono.invoke_pressed("look.export".into());
+    assert_eq!(mono.get_look_ask(), "");
 
     // Deleted once asked; another photo's look takes the question along.
     mono.invoke_pressed("look.delete".into());
@@ -1024,4 +1040,17 @@ fn the_raw_histogram_is_shown_of_a_raw_alone() {
     crate::testing::click_segment(&app, "PanelHead::scope-row", "Wave");
     assert_eq!(state.borrow().develop.scope, crate::scope::Scope::Waveform);
     assert_eq!(raw_shown(), 0);
+}
+
+/// A choice whose names do not fit a line of buttons is a list.
+#[test]
+fn long_choices_are_lists() {
+    use mono_core::edit::{Agitation, Developer, PaperStock, Process};
+    assert!(super::is_list(&PaperStock::LABELS));
+    assert!(super::is_list(&Agitation::LABELS));
+    assert!(!super::is_list(&Developer::LABELS));
+    assert!(!super::is_list(&Process::LABELS));
+    assert!(!super::is_list(&[
+        "None", "Yellow", "Orange", "Red", "Green", "Blue"
+    ]));
 }

@@ -52,8 +52,8 @@ Monocard's crates (`docs/monocard/CONTRACT.md`), in the build under the
 |---|---|---|
 | `mono-core` | The single-channel picture, the mono edit, the routing rule | none |
 | `mono-tone` | Tone equalizer, local contrast tools, curves, display transform, CPU and WGSL | mono-core |
-| `mono-look` | Grain, solarize, toning, vignette, looks, Lightroom preset import | mono-core, mono-tone |
-| `mono-decode` | A monochrome frame made into one plane, its geometry, the HDR merge | mono-core, core |
+| `mono-look` | Grain, solarize, toning, vignette, looks, Lightroom preset import, LUT import and export, Lightroom profile export | mono-core, mono-tone, core |
+| `mono-decode` | A monochrome frame made into one plane, its geometry, the HDR and burst merges | mono-core, core |
 | `mono-denoise` | Profiled, raw wavelet, and learned denoise on one plane | mono-core, core, ai |
 | `mono-profile` | Camera noise profiles and their fit | mono-core, mono-decode, core |
 | `mono-ui` | The mono panel set, without a window | mono-core, mono-look, mono-tone |

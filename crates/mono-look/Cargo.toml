@@ -2,7 +2,8 @@
 name = "mono-look"
 version.workspace = true
 description = "Monocard: grain, solarize, toning, vignette, looks, and the Lightroom preset reader"
-license = "GPL-3.0-or-later"
+# GPL-3.0-only for src/print.rs, ported from NegPy (docs/notes/740).
+license = "GPL-3.0-or-later AND GPL-3.0-only"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true
@@ -19,6 +20,10 @@ serde.workspace = true
 toml.workspace = true
 thiserror.workspace = true
 roxmltree.workspace = true
+rayon.workspace = true
+greycard-core = { path = "../greycard-core", features = ["mono"] }
+flate2.workspace = true
+md5 = "0.8"
 
 [dev-dependencies]
 # A device for the shader's tests.

@@ -109,7 +109,7 @@ pub(super) fn pressed(app: &App, action: &str, key: &str) {
             app.set_status(note.as_str().into());
             mono.set_look_note(note.into());
         }
-        "export" => super::export(app, row.look.into()),
+        "export" => super::export(app, row.look.into(), None),
         "delete" => {
             mono.set_profile_ask("".into());
             super::delete_look(app, &row.look);

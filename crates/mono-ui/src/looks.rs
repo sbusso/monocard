@@ -107,6 +107,65 @@ pub fn import_toml(dir: &Path, file: &Path) -> Result<String, String> {
     Ok(look.name)
 }
 
+/// A LUT, `.cube` or HaldCLUT `.png`, kept as a look: what there is to
+/// say of it (`mono_look::lut::Imported::note`).
+pub fn import_lut(dir: &Path, file: &Path) -> Result<String, String> {
+    let read = mono_look::lut::import_file(file).map_err(|e| e.to_string())?;
+    looks::free(dir, &read.look.name).map_err(|e| e.to_string())?;
+    looks::save(dir, &read.look).map_err(|e| e.to_string())?;
+    load_user(dir);
+    Ok(read.note())
+}
+
+/// The forms a look is exported in, beside its own file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Form {
+    /// A 1D `.cube` for grey pictures.
+    Cube1d,
+    /// A 3D `.cube` with the conversion of a color photo in it.
+    Cube3d,
+    /// A Lightroom and Camera Raw creative profile and a preset.
+    Lightroom,
+}
+
+/// Look `name` in `form`, as files in `folder`, never over one there: the
+/// files.
+pub fn export_as(folder: &Path, name: &str, form: Form) -> Result<Vec<PathBuf>, String> {
+    let all = all();
+    let look = all.iter().find(|l| l.name == name).ok_or("no such look")?;
+    let e = looks::apply(&MonoEdit::default(), look, 1.0);
+    let stem = looks::file_stem(name);
+    let files: Vec<(String, String)> = match form {
+        Form::Cube1d => vec![(format!("{stem}-1d.cube"), mono_look::lut::cube_1d(&e, name))],
+        Form::Cube3d => vec![(format!("{stem}.cube"), mono_look::lut::cube_3d(&e, name))],
+        Form::Lightroom => vec![
+            (
+                format!("{stem}-profile.xmp"),
+                mono_look::lightroom::profile(&e, name),
+            ),
+            (
+                format!("{stem}-preset.xmp"),
+                mono_look::lightroom::preset(&e, name),
+            ),
+        ],
+    };
+    if let Some((f, _)) = files.iter().find(|(f, _)| folder.join(f).exists()) {
+        return Err(format!("{f} is there already"));
+    }
+    let mut out = Vec::new();
+    for (f, text) in files {
+        let path = folder.join(f);
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .map_err(|e| e.to_string())?;
+        std::io::Write::write_all(&mut file, text.as_bytes()).map_err(|e| e.to_string())?;
+        out.push(path);
+    }
+    Ok(out)
+}
+
 /// Look `name` as a file in `folder`, never over one there: the file.
 pub fn export(folder: &Path, name: &str) -> Result<PathBuf, String> {
     let all = all();
@@ -194,6 +253,42 @@ mod tests {
         assert!(!pick(&mut e, "no such look"));
         clear(&mut e);
         assert_eq!(e, first);
+    }
+
+    /// A look out as both cubes and for Lightroom, and the 3D cube in
+    /// again as a look.
+    #[test]
+    fn a_look_goes_out_as_luts_and_a_lut_comes_in() {
+        let dir = std::env::temp_dir().join(format!("mono-ui-luts-{}", std::process::id()));
+        let out = dir.join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let mut files = Vec::new();
+        for form in [Form::Cube1d, Form::Cube3d, Form::Lightroom] {
+            files.extend(export_as(&out, "Hard", form).unwrap());
+        }
+        assert_eq!(files.len(), 4);
+        assert!(
+            export_as(&out, "Hard", Form::Cube3d).is_err(),
+            "never over a file"
+        );
+        let cube = files.iter().find(|f| f.ends_with("hard.cube")).unwrap();
+        // `import_lut` but the list, which the other test holds.
+        let read = mono_look::lut::import_file(cube).unwrap();
+        assert_eq!(read.look.name, "hard");
+        assert!(read.note().contains("color photos only"));
+        let mut e = MonoEdit::default();
+        e = looks::apply(&e, &read.look, 1.0);
+        let hard = swatch(all().iter().find(|l| l.name == "Hard").unwrap());
+        // The look's tones come back within a few levels.
+        let back = tones(&e);
+        let off = hard
+            .iter()
+            .zip(&back)
+            .map(|(a, b)| a[0].abs_diff(b[0]))
+            .max();
+        assert!(off.unwrap() <= 4, "{hard:?} {back:?}");
+        // remove_dir_all allowed: plain files, nothing open under it.
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

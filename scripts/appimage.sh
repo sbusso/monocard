@@ -158,6 +158,10 @@ cp "$stage/bin/$app-ui" "$stage/bin/$app" \
 cp -R "$stage/share/." "$appdir/usr/share/"
 cp "$stage/LICENSE" "$stage/THIRD-PARTY-NOTICES" "$stage/README.md" \
     "$appdir/usr/share/doc/$app/"
+# Monocard's camera rule (scripts/monocard-package.sh); Greycard has none.
+if [ -f "$stage/70-$app-camera.rules" ]; then
+    cp "$stage/70-$app-camera.rules" "$appdir/usr/share/doc/$app/"
+fi
 # For greycard, the file as it is.
 sed "s/greycard/$app/g" packaging/linux/AppRun >"$appdir/AppRun"
 chmod 0755 "$appdir/AppRun" "$appdir/usr/bin/$app-ui" "$appdir/usr/bin/$app"

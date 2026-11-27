@@ -1,4 +1,5 @@
 import { CollectionChoice } from "../structs.slint";
+import { Mono } from "../../../mono-ui/ui/state.slint";
 
 // The frame menu: what a right-click over a frame in the strip, the
 // grid or the viewport offers, on the whole selection. Slint's own
@@ -118,6 +119,8 @@ export component FrameMenu inherits Rectangle {
     callback merge-pano();
     /// Merge to Focus stack, the same.
     callback merge-focus();
+    /// Merge burst, the same: Monocard's alone.
+    callback merge-burst();
 
     // Nothing of its own to draw or to take a click: the menu is a
     // popup, placed from this corner, and a zero-sized area at the
@@ -223,6 +226,10 @@ export component FrameMenu inherits Rectangle {
             if !root.queue && root.count > 1: MenuItem {
                 title: @tr("Merge to HDR");
                 activated => { root.merge-hdr(); }
+            }
+            if !root.queue && root.count > 1 && Mono.only: MenuItem {
+                title: @tr("Merge burst");
+                activated => { root.merge-burst(); }
             }
             if !root.queue && root.count > 1: MenuItem {
                 title: @tr("Merge to Panorama");

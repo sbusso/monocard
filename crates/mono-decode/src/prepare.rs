@@ -26,6 +26,8 @@ pub struct PrepareOptions {
     pub mix: [f32; 3],
     /// A film's response, which stands in for `mix` where it is given.
     pub response: Option<mono_core::color::ColorResponse>,
+    /// A LUT's own mix to grey, which stands in for both.
+    pub lut: Option<mono_core::color::GreyLut>,
 }
 
 impl Default for PrepareOptions {
@@ -35,6 +37,7 @@ impl Default for PrepareOptions {
             defects: Vec::new(),
             mix: mono_core::edit::Filter::None.weights(),
             response: None,
+            lut: None,
         }
     }
 }
@@ -69,7 +72,7 @@ pub fn prepare(frame: &RawFrame, options: &PrepareOptions) -> Result<Prepared> {
     if frame.dng.from_color {
         // Its samples are a develop's, so nothing in them is a sensor's
         // to repair or to count.
-        let grey = grey_of(frame, options.mix, options.response.as_ref())?;
+        let grey = grey_of(frame, options)?;
         let options = PrepareOptions {
             hot_pixels: None,
             defects: Vec::new(),
@@ -146,13 +149,10 @@ pub fn prepare(frame: &RawFrame, options: &PrepareOptions) -> Result<Prepared> {
 }
 
 /// A frame made of a color photo as one channel: each pixel's three
-/// samples mixed by `mix`, and nothing under 0, which a color outside the
-/// working space can give.
-fn grey_of(
-    frame: &RawFrame,
-    mix: [f32; 3],
-    response: Option<&mono_core::color::ColorResponse>,
-) -> Result<RawFrame> {
+/// samples through the LUT, the film, or mixed by `mix`, and nothing under
+/// 0, which a color outside the working space can give.
+fn grey_of(frame: &RawFrame, options: &PrepareOptions) -> Result<RawFrame> {
+    let (mix, response, lut) = (options.mix, options.response.as_ref(), &options.lut);
     let Samples::F32(rgb) = &frame.samples else {
         return Err(Error::Unsupported("a color frame of integers".into()));
     };
@@ -169,9 +169,10 @@ fn grey_of(
     }
     let grey = rgb
         .par_chunks(3)
-        .map(|p| match response {
-            Some(r) => r.grey([p[0], p[1], p[2]]),
-            None => (mix[0] * p[0] + mix[1] * p[1] + mix[2] * p[2]).max(0.0),
+        .map(|p| match (lut, response) {
+            (Some(l), _) => l.grey([p[0], p[1], p[2]]),
+            (None, Some(r)) => r.grey([p[0], p[1], p[2]]),
+            (None, None) => (mix[0] * p[0] + mix[1] * p[1] + mix[2] * p[2]).max(0.0),
         })
         .collect();
     let mut dng = frame.dng.clone();
@@ -380,6 +381,24 @@ mod tests {
         for f in Filter::ALL {
             assert!((f.weights().iter().sum::<f32>() - 1.0).abs() < 1e-6);
         }
+        // A LUT's mix stands in for the filter's: one of red alone takes
+        // green to black and keeps a grey.
+        let mut greys = Vec::new();
+        for _b in 0..5 {
+            for _g in 0..5 {
+                for r in 0..5 {
+                    greys.push(r as f32 / 4.0);
+                }
+            }
+        }
+        let lut = mono_core::color::GreyLut::new(5, greys, |x| x.min(1.0)).unwrap();
+        let o = PrepareOptions {
+            lut: Some(lut),
+            ..Default::default()
+        };
+        let p = prepare(&frame, &o).unwrap().plane.data;
+        assert!(p[0] > 0.5 && p[1] < 0.05, "{p:?}");
+        assert!((p[2] - 0.3).abs() < 0.01, "a grey stays: {}", p[2]);
     }
 
     /// Black pattern, deltas, and crop, each taken off where it belongs.

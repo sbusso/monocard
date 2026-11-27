@@ -20,6 +20,10 @@ pub struct MonoEdit {
     /// there is none, so an edit without one reads as before.
     #[serde(skip_serializing_if = "Film::is_default")]
     pub film: Film,
+    /// The paper the negative is printed on, and how. Not written at its
+    /// default, Multigrade IV RC on silver gelatin.
+    #[serde(skip_serializing_if = "Paper::is_default")]
+    pub paper: Paper,
     pub tone_eq: ToneEq,
     pub curve: Curve,
     pub contrast_eq: ContrastEq,
@@ -41,6 +45,7 @@ impl Default for MonoEdit {
             basic: Default::default(),
             display: Default::default(),
             film: Default::default(),
+            paper: Default::default(),
             tone_eq: Default::default(),
             curve: Default::default(),
             contrast_eq: Default::default(),
@@ -98,7 +103,7 @@ pub struct CameraSteps {
 }
 
 /// The BASIC panel. Exposure in EV (-5 to 5), the rest -100 to 100.
-#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Basic {
     pub exposure: f32,
@@ -109,7 +114,28 @@ pub struct Basic {
     /// to a monochrome one.
     #[serde(skip_serializing_if = "Filter::is_none")]
     pub filter: Filter,
+    /// A mix of the filter's kind, `[r, g, b]` adding up to 1, in place
+    /// of `filter`'s: a LUT fitted to it (docs/notes/742).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mix: Option<[f32; 3]>,
+    /// A LUT's own mix to grey, in place of `filter` and `mix`, where it
+    /// fits no mix ([`crate::color::GreyLut::from_hex`]). Empty for none.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub lut: String,
     // Whites is `Highlights::shoulder`: one control, two sliders.
+}
+
+impl Basic {
+    /// The mix of red, green and blue a color photo goes to grey by,
+    /// where no LUT and no film stands in for it.
+    pub fn weights(&self) -> [f32; 3] {
+        self.mix.unwrap_or_else(|| self.filter.weights())
+    }
+
+    /// Whether a LUT and not the filter decides the mix.
+    pub fn from_lut(&self) -> bool {
+        self.mix.is_some() || !self.lut.is_empty()
+    }
 }
 
 /// A black and white film photographer's color filter, as a mix of the
@@ -204,7 +230,7 @@ pub struct Display {
 #[serde(default)]
 pub struct Film {
     pub stock: FilmStock,
-    /// Push (+) or pull (-), -2 to 2: steps of the negative's contrast.
+    /// Push (+) or pull (-), -3 to 3: steps of development, see §740.
     #[serde(skip_serializing_if = "is_zero")]
     pub development: f32,
     /// The glow round bright light and the film's own spread, 0 to 2 of
@@ -212,6 +238,10 @@ pub struct Film {
     pub halation: f32,
     /// The developer's edge effect, 0 to 2 of the film's.
     pub edges: f32,
+    pub developer: Developer,
+    /// The developer's temperature, 18 to 24 degrees C.
+    pub temperature: f32,
+    pub agitation: Agitation,
 }
 
 impl Default for Film {
@@ -221,8 +251,205 @@ impl Default for Film {
             development: 0.0,
             halation: 1.0,
             edges: 1.0,
+            developer: Developer::D76,
+            temperature: 20.0,
+            agitation: Agitation::Every30s,
         }
     }
+}
+
+/// The film developer and its dilution (§740).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Developer {
+    #[default]
+    #[serde(rename = "d-76")]
+    D76,
+    #[serde(rename = "d-76-1+1")]
+    D76Half,
+    #[serde(rename = "hc-110-b")]
+    Hc110B,
+    #[serde(rename = "rodinal-1+50")]
+    Rodinal50,
+}
+
+impl Developer {
+    pub const ALL: [Developer; 4] = [
+        Developer::D76,
+        Developer::D76Half,
+        Developer::Hc110B,
+        Developer::Rodinal50,
+    ];
+    pub const LABELS: [&'static str; 4] = ["D-76", "D-76 1+1", "HC-110 B", "Rodinal 1+50"];
+}
+
+/// How the tank is agitated, from continuous to none after the start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Agitation {
+    Continuous,
+    #[default]
+    #[serde(rename = "every-30-s")]
+    Every30s,
+    #[serde(rename = "every-minute")]
+    EveryMinute,
+    /// Two agitations in the time, after the first.
+    SemiStand,
+    Stand,
+}
+
+impl Agitation {
+    pub const ALL: [Agitation; 5] = [
+        Agitation::Continuous,
+        Agitation::Every30s,
+        Agitation::EveryMinute,
+        Agitation::SemiStand,
+        Agitation::Stand,
+    ];
+    pub const LABELS: [&'static str; 5] = [
+        "Continuous",
+        "Every 30 s",
+        "Every minute",
+        "Semi-stand",
+        "Stand",
+    ];
+}
+
+/// The print: its paper, a split-grade exposure, and the process (§740).
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Paper {
+    pub stock: PaperStock,
+    /// Two exposures, through filter 00 and filter 5, in place of the
+    /// grade. On a Multigrade paper only.
+    pub split: bool,
+    /// The soft and the hard exposure, stops of time from the pair that
+    /// prints middle grey and white as they should, -3 to 3.
+    pub soft: f32,
+    pub hard: f32,
+    pub process: Process,
+    /// Lith and cyanotype: stops of exposure over the normal print, 0 to 4.
+    pub over: f32,
+    /// Lith: where the infectious development takes off, 0 to 1.
+    pub snatch: f32,
+    /// Lith: how suddenly, 0 to 1.
+    pub abruptness: f32,
+    pub sensitizer: Sensitizer,
+    /// Cyanotype: the density range the sensitizer holds, 0.5 to 3.
+    pub range: f32,
+    /// Cyanotype: washing soda and tannin, 0 to 1 each.
+    pub bleach: f32,
+    pub tannin: f32,
+}
+
+impl Default for Paper {
+    fn default() -> Self {
+        Self {
+            stock: PaperStock::MultigradeIvRc,
+            split: false,
+            soft: 0.0,
+            hard: 0.0,
+            process: Process::SilverGelatin,
+            over: 0.0,
+            snatch: 0.55,
+            abruptness: 0.6,
+            sensitizer: Sensitizer::Classic,
+            range: 1.4,
+            bleach: 0.0,
+            tannin: 0.0,
+        }
+    }
+}
+
+impl Paper {
+    fn is_default(&self) -> bool {
+        *self == Paper::default()
+    }
+
+    /// Whether the print is two exposures.
+    pub fn is_split(&self) -> bool {
+        self.split && self.stock.is_multigrade()
+    }
+}
+
+/// The papers, in the order of the FILM panel's list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum PaperStock {
+    #[default]
+    #[serde(rename = "ilford-multigrade-iv-rc")]
+    MultigradeIvRc,
+    #[serde(rename = "ilford-multigrade-fb-classic")]
+    MultigradeFbClassic,
+    #[serde(rename = "ilford-multigrade-warmtone")]
+    MultigradeWarmtone,
+    #[serde(rename = "kodak-polymax-ii-rc")]
+    PolymaxIiRc,
+    #[serde(rename = "kodak-polycontrast-iv-rc")]
+    PolycontrastIvRc,
+    #[serde(rename = "foma-fomatone")]
+    Fomatone,
+}
+
+impl PaperStock {
+    pub const ALL: [PaperStock; 6] = [
+        PaperStock::MultigradeIvRc,
+        PaperStock::MultigradeFbClassic,
+        PaperStock::MultigradeWarmtone,
+        PaperStock::PolymaxIiRc,
+        PaperStock::PolycontrastIvRc,
+        PaperStock::Fomatone,
+    ];
+    pub const LABELS: [&'static str; 6] = [
+        "Ilford Multigrade IV RC",
+        "Ilford Multigrade FB Classic",
+        "Ilford Multigrade Warmtone",
+        "Kodak Polymax II RC",
+        "Kodak Polycontrast IV RC",
+        "Foma Fomatone",
+    ];
+
+    /// Ilford's: what a split-grade print is made on.
+    pub fn is_multigrade(self) -> bool {
+        matches!(
+            self,
+            PaperStock::MultigradeIvRc
+                | PaperStock::MultigradeFbClassic
+                | PaperStock::MultigradeWarmtone
+        )
+    }
+
+    /// A warm-tone paper's silver is warm; its tint is `mono-look`'s.
+    pub fn is_warm(self) -> bool {
+        matches!(self, PaperStock::MultigradeWarmtone | PaperStock::Fomatone)
+    }
+}
+
+/// How the print is made.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Process {
+    #[default]
+    SilverGelatin,
+    Lith,
+    Cyanotype,
+}
+
+impl Process {
+    pub const ALL: [Process; 3] = [Process::SilverGelatin, Process::Lith, Process::Cyanotype];
+    pub const LABELS: [&'static str; 3] = ["Silver gelatin", "Lith", "Cyanotype"];
+}
+
+/// A cyanotype's sensitizer: Herschel's, or Mike Ware's new one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Sensitizer {
+    #[default]
+    Classic,
+    New,
+}
+
+impl Sensitizer {
+    pub const ALL: [Sensitizer; 2] = [Sensitizer::Classic, Sensitizer::New];
+    pub const LABELS: [&'static str; 2] = ["Classic", "New"];
 }
 
 impl Film {
@@ -533,6 +760,9 @@ pub struct Denoise {
     /// ISO. Runs whatever the mode.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub raw_threshold: Option<f32>,
+    /// JPEG block removal on a camera's JPEG, 0 (off) to 100; 50 is the
+    /// quality the model reads from the picture (§739).
+    pub deblock: f32,
 }
 
 impl Default for Denoise {
@@ -544,6 +774,7 @@ impl Default for Denoise {
             shadows: 0.0,
             keep_grain: 0.0,
             raw_threshold: None,
+            deblock: 0.0,
         }
     }
 }
@@ -665,7 +896,8 @@ pub struct Tint {
 }
 
 /// The only step that may make color. `balance` -100 (shadows' tint
-/// reaches further) to 100.
+/// reaches further) to 100. The baths, 0 to 1 each, convert the print's
+/// silver as a toner does (§740); the tints go over them.
 #[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Toning {
@@ -673,11 +905,37 @@ pub struct Toning {
     pub highlights: Tint,
     pub shadows: Tint,
     pub balance: f32,
+    pub selenium: f32,
+    pub sepia: f32,
+    pub gold: f32,
+    pub blue: f32,
+    pub copper: f32,
+    pub vanadium: f32,
 }
 
 impl Toning {
     pub fn is_neutral(&self) -> bool {
-        self.overall.amount == 0.0 && self.highlights.amount == 0.0 && self.shadows.amount == 0.0
+        !self.has_tint() && !self.has_bath()
+    }
+
+    pub fn has_tint(&self) -> bool {
+        self.overall.amount != 0.0 || self.highlights.amount != 0.0 || self.shadows.amount != 0.0
+    }
+
+    pub fn has_bath(&self) -> bool {
+        self.baths().iter().any(|b| *b > 0.0)
+    }
+
+    /// Selenium, sepia, gold, blue, copper, vanadium.
+    pub fn baths(&self) -> [f32; 6] {
+        [
+            self.selenium,
+            self.sepia,
+            self.gold,
+            self.blue,
+            self.copper,
+            self.vanadium,
+        ]
     }
 }
 
@@ -715,8 +973,12 @@ impl MonoEdit {
     }
 
     /// Whether the picture leaves grey: what decides a grey or RGB export.
+    /// A toning, a lith or cyanotype print, or a warm-tone paper under a
+    /// film.
     pub fn is_toned(&self) -> bool {
         !self.toning.is_neutral()
+            || self.paper.process != Process::SilverGelatin
+            || (!self.film.is_none() && self.paper.stock.is_warm())
     }
 }
 
@@ -731,6 +993,25 @@ mod tests {
         assert_eq!(serde_json::from_str::<MonoEdit>(&s).unwrap(), e);
         assert_eq!(serde_json::from_str::<MonoEdit>("{}").unwrap(), e);
         assert!(!e.wants_detail() && !e.is_toned());
+    }
+
+    #[test]
+    fn a_film_from_before_the_developer_reads_as_d76_and_paper_is_left_out() {
+        let old =
+            r#"{"film":{"stock":"kodak-tri-x-400","development":1.0,"halation":1.0,"edges":1.0}}"#;
+        let e: MonoEdit = serde_json::from_str(old).unwrap();
+        assert_eq!(e.film.developer, Developer::D76);
+        assert_eq!(
+            (e.film.temperature, e.film.agitation),
+            (20.0, Agitation::Every30s)
+        );
+        assert_eq!(e.paper, Paper::default());
+        assert!(!serde_json::to_string(&e).unwrap().contains("paper"));
+        let mut lith = e.clone();
+        lith.paper.process = Process::Lith;
+        assert!(lith.is_toned() && !e.is_toned());
+        let text = serde_json::to_string(&lith).unwrap();
+        assert_eq!(serde_json::from_str::<MonoEdit>(&text).unwrap(), lith);
     }
 
     #[test]
