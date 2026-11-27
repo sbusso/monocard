@@ -11,7 +11,7 @@ Crop and straighten a photo, correct the lens, and remove dust and unwanted thin
 | Control | What it does |
 | --- | --- |
 | **Draw** | Draws a new crop on the photo |
-| **Aspect** | **Free**, **Original**, **1:1**, **3:2**, **4:3**, **5:4**, **16:9**, **65:24**, or **Custom** |
+| **Aspect** | **Free**, **Original**, **1:1**, **3:2**, **4:3**, **5:4**, **16:9**, **65:24**, **Custom**, and, on a photo taken wider than them, **35 mm** and **50 mm** |
 | **Custom** | Your own aspect, shown when you choose it. Type the width and the height, as `7:5` |
 | **Portrait** | Turns the aspect upright |
 | **Guides** | **Thirds**, **Golden ratio**, **Golden spiral**, **Diagonals**, **Triangles**, or **None** |
@@ -20,7 +20,7 @@ Crop and straighten a photo, correct the lens, and remove dust and unwanted thin
 
 Press **O** for the next guide. Press **Shift+O** to turn the spiral or the triangles. The aspect of a new crop is in [Settings](settings.md#editing).
 
-A DNG shot in a crop mode, such as the 35 mm or 50 mm crop of a Ricoh GR, keeps the whole sensor. It opens at the camera's crop. To use the whole sensor, choose **Free** in the Crop tab and drag the edges out.
+A DNG shot in a crop mode, such as the 35 mm or 50 mm crop of a Ricoh GR, keeps the whole sensor. It opens at the camera's crop. To use the whole sensor, choose **Free** in the Crop tab and drag the edges out. To crop any photo the way a camera's crop mode does, choose **35 mm** or **50 mm** under Aspect: the crop keeps the photo's shape and frames what that lens would, centered, and you can move it. The list shows them only when the photo's EXIF gives its focal length on a full frame and the photo was taken wider.
 
 ![The Crop tab with CROP, ROTATE, and PERSPECTIVE](images/panel-crop.webp "The Crop tab, enlarged")
 

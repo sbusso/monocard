@@ -13,6 +13,16 @@ export component CropSection inherits Section {
     in-out property <string> aspect-name;
     in-out property <string> aspect-custom;
     in-out property <bool> portrait;
+    // The camera's crop modes ("35 mm", "50 mm") a lens wider than
+    // them took the picture with (§747), and the share of the plane's
+    // area each one's crop covers. Picked, one sets Original and its
+    // crop about the center; the list names it while the crop under
+    // Original is still of its size, wherever it was moved.
+    in property <[string]> crop-lenses;
+    in property <[float]> crop-lens-areas;
+    // The crop's area as a share of the plane's, 0 for none.
+    in property <float> crop-area;
+    callback crop-lens-picked(string);
     in property <bool> portrait-shown;
     in property <bool> portrait-live: true;
     // Draw in hand: the next drag on the picture, inside the crop
@@ -52,8 +62,9 @@ export component CropSection inherits Section {
             root.aspect-typing = false;
             root.geometry-settled();
         }
-        aspect-box.current-index = root.aspect-index(root.aspect-name);
+        aspect-box.current-index = root.shown-index();
     }
+    changed lens-at => { aspect-box.current-index = root.shown-index(); }
     // The guides by their names, which the settings file keeps, in
     // the order O steps through them (`panel::crop::overlay`).
     property <[string]> overlays: ["Thirds", "Golden ratio", "Golden spiral", "Diagonals", "Triangles", "None"];
@@ -69,6 +80,17 @@ export component CropSection inherits Section {
         return name == "Free" ? 0 : name == "Original" ? 1 : name == "1:1" ? 2 : name == "3:2" ? 3
             : name == "4:3" ? 4 : name == "5:4" ? 5 : name == "16:9" ? 6 : name == "65:24" ? 7
             : name == "Custom" ? 8 : -1;
+    }
+    // The crop mode whose crop the crop is, by its place in
+    // `crop-lenses`, or -1; a hundredth of a percent of the area
+    // either way, so a crop moved and not resized still is one.
+    property <int> lens-at: root.aspect-name != "Original" || root.portrait || root.crop-area <= 0 ? -1
+        : root.crop-lenses.length > 0 && abs(root.crop-area / root.crop-lens-areas[0] - 1) < 0.0001 ? 0
+        : root.crop-lenses.length > 1 && abs(root.crop-area / root.crop-lens-areas[1] - 1) < 0.0001 ? 1
+        : -1;
+    // The crop modes come after Custom, so the aspects keep their places.
+    pure function shown-index() -> int {
+        return root.lens-at >= 0 ? root.aspects.length + root.lens-at : root.aspect-index(root.aspect-name);
     }
 
     title: @tr("CROP");
@@ -110,11 +132,24 @@ export component CropSection inherits Section {
             aspect-box := ComboBox {
                 accessible-label: aspect-words.text;
                 // Crop aspect choices
-                model: [@tr("Free"), @tr("aspect" => "Original"), "1:1", "3:2", "4:3", "5:4", "16:9", "65:24", @tr("Custom")];
-                current-index: root.aspect-index(root.aspect-name);
+                model: root.crop-lenses.length >= 2
+                    ? [@tr("Free"), @tr("aspect" => "Original"), "1:1", "3:2", "4:3", "5:4", "16:9", "65:24", @tr("Custom"),
+                        root.crop-lenses[0], root.crop-lenses[1]]
+                    : root.crop-lenses.length == 1
+                    ? [@tr("Free"), @tr("aspect" => "Original"), "1:1", "3:2", "4:3", "5:4", "16:9", "65:24", @tr("Custom"),
+                        root.crop-lenses[0]]
+                    : [@tr("Free"), @tr("aspect" => "Original"), "1:1", "3:2", "4:3", "5:4", "16:9", "65:24", @tr("Custom")];
+                current-index: root.shown-index();
                 selected(v) => {
-                    root.aspect-name = root.aspects[self.current-index];
-                    root.geometry-changed();
+                    if (self.current-index >= root.aspects.length) {
+                        root.crop-lens-picked(root.crop-lenses[self.current-index - root.aspects.length]);
+                        // What the crop now is: the lens's, or as it
+                        // was where the pick could not take.
+                        self.current-index = root.shown-index();
+                    } else {
+                        root.aspect-name = root.aspects[self.current-index];
+                        root.geometry-changed();
+                    }
                 }
             }
         }

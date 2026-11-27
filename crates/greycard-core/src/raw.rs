@@ -896,6 +896,11 @@ pub struct Shot {
     pub lens_model: Option<String>,
     /// Focal length, millimeters.
     pub focal_length: Option<f32>,
+    /// The EXIF's `FocalLengthIn35mmFilm`, millimeters: the focal
+    /// length on a full frame of the picture the camera framed, which on
+    /// a crop mode's raw is less than the raw keeps (§747). None where
+    /// the file does not say, or says 0.
+    pub focal_35mm: Option<f32>,
     /// The aperture, as an f-number.
     pub f_number: Option<f32>,
     /// The focus distance, meters, when the file records one.
@@ -949,6 +954,23 @@ impl Shot {
                 iso.as_str(),
             ]),
         }
+    }
+}
+
+impl Shot {
+    /// The focal length on a full frame of the whole picture a develop
+    /// makes (§747). `focal_35mm` is said of the picture the camera
+    /// framed; where the develop covers more than that, the camera's
+    /// frame on its area (`framed`, as `stages::Facts::camera` applies
+    /// it), the whole is as much wider as the frame is narrower than
+    /// the area. Both are in sensor samples, so the frame's way up
+    /// does not enter. None where the file does not say.
+    pub fn whole_focal_35mm(&self, framed: Option<&CameraFrame>) -> Option<f32> {
+        let mm = self.focal_35mm?;
+        Some(match framed {
+            Some(c) if c.area.width > 0 => mm * c.frame.width as f32 / c.area.width as f32,
+            _ => mm,
+        })
     }
 }
 
@@ -1220,12 +1242,39 @@ mod tests {
         assert_eq!(camera_name("", ""), "");
     }
 
+    /// A Ricoh GR IV's 35 mm crop mode DNG says 35 of a frame 4944
+    /// samples wide in an area of 6224: the whole is a 27.8 mm picture.
+    /// With no frame, or no word, it is what the file says, or nothing.
+    #[test]
+    fn the_whole_picture_is_wider_than_the_cameras_frame() {
+        let rect = |x, y, width, height| Rect {
+            x,
+            y,
+            width,
+            height,
+        };
+        let frame = CameraFrame {
+            area: rect(26, 34, 6224, 4160),
+            frame: rect(678, 474, 4944, 3296),
+            orientation: Orientation::Rotate90,
+        };
+        let shot = Shot {
+            focal_35mm: Some(35.0),
+            ..Shot::default()
+        };
+        let eq = shot.whole_focal_35mm(Some(&frame)).unwrap();
+        assert!((eq - 27.80).abs() < 0.01, "{eq}");
+        assert_eq!(shot.whole_focal_35mm(None), Some(35.0));
+        assert_eq!(Shot::default().whole_focal_35mm(Some(&frame)), None);
+    }
+
     #[test]
     fn a_summary_is_the_camera_then_the_triangle() {
         let shot = Shot {
             lens_model: Some("RF50mm F1.2 L USM".into()),
             lens_make: Some("Canon".into()),
             focal_length: Some(50.0),
+            focal_35mm: None,
             f_number: Some(1.2),
             exposure_time: Some(1.0 / 250.0),
             iso: Some(400),

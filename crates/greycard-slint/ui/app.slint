@@ -1921,6 +1921,12 @@ export component App inherits Window {
     in-out property <string> aspect-name: "Free";
     in-out property <string> aspect-custom: "65:24";
     in-out property <bool> portrait: false;
+    // The camera's crop modes offered for the open frame, and the
+    // share of the plane's area each one's crop covers
+    // (`panel::crop::show_lenses`); empty in greycard.
+    in-out property <[string]> crop-lenses: [];
+    in-out property <[float]> crop-lens-areas: [];
+    callback crop-lens-picked(string);
     // The aspect the crop was last shown or fitted under, as
     // `panel::crop::aspect_key` writes it, so a pick from the list
     // knows what it was picked over; and the size, in plane pixels
@@ -5327,6 +5333,10 @@ export component App inherits Window {
                                     aspect-typing <=> root.aspect-typing;
                                     geometry-settled => { root.geometry-settled(); }
                                     portrait <=> root.portrait;
+                                    crop-lenses: root.crop-lenses;
+                                    crop-lens-areas: root.crop-lens-areas;
+                                    crop-area: root.geo-has-crop ? root.geo-crop-w * root.geo-crop-h : 0;
+                                    crop-lens-picked(name) => { root.crop-lens-picked(name); }
                                     portrait-shown: root.portrait-shown;
                                     portrait-live: root.portrait-live;
                                     crop-draw-armed <=> root.crop-draw-armed;

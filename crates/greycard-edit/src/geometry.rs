@@ -133,6 +133,14 @@ impl Aspect {
     }
 }
 
+/// The share of each side of a picture whose focal length on a full
+/// frame is `eq` millimeters that a lens of `target` millimeters frames:
+/// `eq / target`. None where that lens is no longer than the picture's
+/// own (it would frame all of it or more) or either is not a length.
+pub fn focal_share(eq: f32, target: f32) -> Option<f32> {
+    (eq > 0.0 && eq.is_finite() && eq < target).then(|| eq / target)
+}
+
 /// The presets the panel offers, by name; "Free", "Original" and a
 /// custom ratio besides.
 pub const PRESETS: [(&str, Aspect); 6] = [
@@ -471,6 +479,49 @@ impl Geometry {
             Aspect::Original => g.portrait = false,
             Aspect::Ratio { .. } | Aspect::Free => {}
         }
+        g
+    }
+
+    /// The geometry with the crop a longer lens frames (§747): the
+    /// aspect Original, picked as from the list ([`Geometry::with_aspect`],
+    /// and the Portrait switch off), and a crop of the picture's own
+    /// shape about the plane's center whose sides are `share` of the
+    /// whole picture's ([`focal_share`]). The whole picture is the
+    /// largest crop of that shape on the plane with no angle or
+    /// keystone, so a straightened picture keeps the lens's framing;
+    /// where an angle or a keystone leaves that crop off the source,
+    /// it is the largest of its shape about the center that fits. A
+    /// share out of (0, 1], or a source of no size, leaves the crop.
+    pub fn at_focal(&self, share: f32, w: f32, h: f32, camera: Option<Crop>) -> Geometry {
+        let mut g = Geometry {
+            portrait: false,
+            ..self.with_aspect(Aspect::Original, w, h, camera)
+        };
+        if !(share > 0.0 && share <= 1.0) || w < 1.0 || h < 1.0 {
+            return g;
+        }
+        let (pw, ph) = g.plane_size(w, h);
+        let ratio = g.ratio(w, h, camera).unwrap_or(pw / ph);
+        let level = Geometry {
+            angle: 0.0,
+            vertical: 0.0,
+            horizontal: 0.0,
+            crop: None,
+            ..g.clone()
+        };
+        let whole = level.largest_fit((0.5, 0.5), ratio, w, h);
+        let (cx, cy) = whole.center();
+        let crop = Crop {
+            x: cx - whole.w * share / 2.0,
+            y: cy - whole.h * share / 2.0,
+            w: whole.w * share,
+            h: whole.h * share,
+        };
+        g.crop = Some(if g.fits(&crop, w, h) {
+            crop
+        } else {
+            g.largest_fit((0.5, 0.5), ratio, w, h)
+        });
         g
     }
 
@@ -3321,6 +3372,99 @@ mod tests {
             g.effective_crop(FW, FH, None)
         );
         assert!(g.framed_by_camera(Some(off)));
+    }
+
+    /// A longer lens's share: 28 mm frames 0.8 of each side at 35 mm
+    /// and 0.56 at 50 mm; a lens no longer than the picture's own, or
+    /// a length not known, frames nothing of its own.
+    #[test]
+    fn a_longer_lens_frames_its_share_of_each_side() {
+        assert!((focal_share(28.0, 35.0).unwrap() - 0.8).abs() < 1e-6);
+        assert!((focal_share(28.0, 50.0).unwrap() - 0.56).abs() < 1e-6);
+        assert_eq!(focal_share(35.0, 35.0), None);
+        assert_eq!(focal_share(52.0, 50.0), None);
+        assert_eq!(focal_share(0.0, 35.0), None);
+        assert_eq!(focal_share(f32::NAN, 35.0), None);
+    }
+
+    /// The crop a longer lens frames: Original, the picture's own shape
+    /// about the center at the share of its sides, the way the frame
+    /// stands (a quarter turn stands it on end); a small angle keeps
+    /// the size, one that leaves it off the source fits it smaller.
+    #[test]
+    fn a_lens_crop_is_the_pictures_shape_at_its_share() {
+        let size = |g: &Geometry| g.frame(6000.0, 4000.0, None).size;
+        let g = Geometry {
+            aspect: Aspect::Ratio { w: 1.0, h: 1.0 },
+            portrait: true,
+            ..Geometry::default()
+        }
+        .at_focal(0.8, 6000.0, 4000.0, None);
+        assert_eq!((g.aspect, g.portrait), (Aspect::Original, false));
+        let c = g.crop.unwrap();
+        let near = |a: f32, b: f32| (a - b).abs() < 1e-5;
+        assert!(
+            near(c.x, 0.1) && near(c.y, 0.1) && near(c.w, 0.8) && near(c.h, 0.8),
+            "{c:?}"
+        );
+        assert_eq!(size(&g), (4800.0, 3200.0));
+        let fifty = Geometry::default().at_focal(0.56, 6000.0, 4000.0, None);
+        assert_eq!(size(&fifty), (3360.0, 2240.0));
+
+        let turned = Geometry {
+            turns: 1,
+            ..Geometry::default()
+        }
+        .at_focal(0.8, 6000.0, 4000.0, None);
+        assert_eq!(size(&turned), (3200.0, 4800.0));
+        let tall = Geometry::default().at_focal(0.8, 4000.0, 6000.0, None);
+        assert_eq!(tall.frame(4000.0, 6000.0, None).size, (3200.0, 4800.0));
+
+        let leveled = Geometry {
+            angle: 2.0,
+            ..Geometry::default()
+        }
+        .at_focal(0.8, 6000.0, 4000.0, None);
+        assert_eq!(size(&leveled), (4800.0, 3200.0));
+        let steep = Geometry {
+            angle: 10.0,
+            ..Geometry::default()
+        }
+        .at_focal(0.95, 6000.0, 4000.0, None);
+        let c = steep.crop.unwrap();
+        assert!(steep.fits(&c, 6000.0, 4000.0));
+        let (w, h) = size(&steep);
+        assert!(w < 5700.0 && (w / h - 1.5).abs() < 1e-2, "{w}x{h}");
+        assert_eq!(Geometry::default().at_focal(0.8, 0.0, 0.0, None).crop, None);
+    }
+
+    /// A Ricoh GR's 35 mm crop mode DNG (§746): the develop is the whole
+    /// ActiveArea, 6224 by 4160, the camera's frame 4944 by 3296, and
+    /// the EXIF's 35 mm is the frame's. The whole picture is a 27.8 mm
+    /// one, and 35 mm on it is the camera's frame again; 50 mm keeps
+    /// 0.556 of each side.
+    #[test]
+    fn a_crop_modes_lens_on_the_whole_sensor_is_the_cameras_frame() {
+        let (w, h) = (6224.0, 4160.0);
+        let frame = Crop {
+            x: 652.0 / w,
+            y: 440.0 / h,
+            w: 4944.0 / w,
+            h: 3296.0 / h,
+        };
+        let eq = 35.0 * 4944.0 / 6224.0;
+        let share = focal_share(eq, 35.0).unwrap();
+        assert!((share - 0.794).abs() < 1e-3);
+        let g = Geometry::default().at_focal(share, w, h, Some(frame));
+        assert_eq!(g.frame(w, h, Some(frame)).size, (4944.0, 3296.0));
+        let share = focal_share(eq, 50.0).unwrap();
+        assert!((share - 0.556).abs() < 1e-3);
+        let g = Geometry::default().at_focal(share, w, h, Some(frame));
+        let (fw, fh) = g.frame(w, h, Some(frame)).size;
+        assert!(
+            (fw - 3461.0).abs() <= 1.0 && (fh - 2307.0).abs() <= 1.0,
+            "{fw}x{fh}"
+        );
     }
 
     /// For a renderer that takes a whole geometry: the camera's frame

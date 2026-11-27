@@ -5,7 +5,7 @@ use super::{refit_crop, show_geometry};
 use crate::testing::{drag, retouch_state, window};
 use crate::{App, Crop};
 use i_slint_backend_testing::ElementHandle;
-use slint::ComponentHandle;
+use slint::{ComponentHandle, Model};
 
 /// A source small enough that the whole of it, and the room
 /// around it, sit inside a test window's viewport at zoom 1.
@@ -2571,4 +2571,160 @@ fn an_undo_across_a_crop_over_a_fill_develops() {
     // otherwise again.
     settle_to(greycard_edit::Geometry::default());
     assert_eq!(generation(&state), before + 2);
+}
+
+/// The 35 mm frame a Ricoh GR IV records of its whole sensor in its
+/// crop mode (§746), as a 6224 by 4160 develop holds it.
+fn gr_thirty_five() -> greycard_core::raw::CameraFrame {
+    use greycard_core::raw::{CameraFrame, Orientation, Rect};
+    CameraFrame {
+        area: Rect {
+            x: 26,
+            y: 34,
+            width: 6224,
+            height: 4160,
+        },
+        frame: Rect {
+            x: 678,
+            y: 474,
+            width: 4944,
+            height: 3296,
+        },
+        orientation: Orientation::Normal,
+    }
+}
+
+/// The open frame's decode, saying `focal_35mm` of the frame `camera`.
+fn decoded_saying(
+    state: &Rc<crate::Shared>,
+    focal_35mm: Option<f32>,
+    camera: greycard_core::raw::CameraFrame,
+) {
+    let frame = greycard_core::RawFrame {
+        shot: greycard_core::raw::Shot {
+            focal_35mm,
+            camera_frame: Some(camera),
+            ..Default::default()
+        },
+        ..crate::panel::viewport::tests::daylight_frame()
+    };
+    let profile = greycard_core::color::profile_from_frame(&frame).unwrap();
+    state.borrow_mut().develop.frame = Some((std::sync::Arc::new(frame), Box::new(profile)));
+}
+
+/// What the Aspect list shows, once its change handlers have run.
+fn aspect_shown(app: &App) -> String {
+    i_slint_backend_testing::mock_elapsed_time(std::time::Duration::from_millis(1));
+    i_slint_backend_testing::ElementHandle::find_by_element_id(app, "CropSection::aspect-box")
+        .next()
+        .expect("the Aspect list is on the panel")
+        .accessible_value()
+        .unwrap_or_default()
+        .to_string()
+}
+
+/// A GR crop mode DNG (§747), shot at 35 mm and developed whole: the
+/// whole is a 27.8 mm picture, so the list offers 35 mm and 50 mm.
+/// 35 mm picked stores Original and the camera's frame's size about
+/// the center, and the list names it; moved, it still does; resized,
+/// it is Original. No word of the focal length offers neither.
+#[test]
+fn a_crop_mode_picked_stores_what_its_lens_frames() {
+    let dir = crate::testing::scratch_dir("crop-lens");
+    let raw = dir.join("R0000185.DNG");
+    std::fs::write(&raw, b"not a raw").unwrap();
+    let app = window(1);
+    let (state, _worker) = crate::testing::state_for(&app, vec![raw.clone()]);
+    state.borrow_mut().window.write_sidecars = true;
+    app.set_panel_tab("Crop".into());
+    let (sw, sh) = (6224.0f32, 4160.0f32);
+    open_framed(&app, &state, 0, (6224, 4160), gr_thirty_five());
+    decoded_saying(&state, Some(35.0), gr_thirty_five());
+    super::show_lenses(&state.borrow(), &app);
+    let offered: Vec<String> = app
+        .get_crop_lenses()
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    if !cfg!(feature = "mono") {
+        assert!(offered.is_empty(), "greycard's list is as it was");
+        return;
+    }
+    assert_eq!(offered, ["35 mm", "50 mm"]);
+    assert_eq!(aspect_shown(&app), "Free");
+
+    press_crop(&app);
+    app.invoke_crop_lens_picked("35 mm".into());
+    assert_eq!(app.get_aspect_name(), "Original");
+    let [x, y, w, h] = crop_px(&app, sw, sh);
+    assert!(
+        (w - 4944.0).abs() < 0.5 && (h - 3296.0).abs() < 0.5,
+        "{w}x{h}"
+    );
+    assert!(
+        (x - 640.0).abs() < 0.5 && (y - 432.0).abs() < 0.5,
+        "at {x}, {y}"
+    );
+    assert_eq!(aspect_shown(&app), "35 mm");
+    rest();
+    {
+        let st = state.borrow();
+        let g = &st.sidecars[0].current().geometry;
+        assert_eq!(
+            (g.aspect, g.portrait),
+            (greycard_edit::geometry::Aspect::Original, false)
+        );
+        let c = g.crop.expect("the crop is stored");
+        assert!(
+            (c.w * sw - 4944.0).abs() < 0.5 && (c.h * sh - 3296.0).abs() < 0.5,
+            "{c:?}"
+        );
+    }
+
+    app.invoke_crop_pressed(8);
+    app.invoke_crop_dragged(8, -30.0, 10.0);
+    app.invoke_crop_released();
+    let [x, _, w, _] = crop_px(&app, sw, sh);
+    assert!(x < 639.0 && (w - 4944.0).abs() < 0.5, "moved: {x}, {w}");
+    assert_eq!(aspect_shown(&app), "35 mm", "moved, the same lens");
+
+    app.invoke_crop_lens_picked("50 mm".into());
+    let [_, _, w, h] = crop_px(&app, sw, sh);
+    assert!(
+        (w - 3460.6).abs() < 1.0 && (h - 2307.0).abs() < 1.0,
+        "{w}x{h}"
+    );
+    assert_eq!(aspect_shown(&app), "50 mm");
+
+    drag_corner(&app);
+    assert_eq!(aspect_shown(&app), "Original", "resized, no lens's");
+
+    decoded_saying(&state, None, gr_thirty_five());
+    super::show_lenses(&state.borrow(), &app);
+    assert_eq!(
+        app.get_crop_lenses().row_count(),
+        0,
+        "no focal length, no crop mode"
+    );
+    crate::testing::remove_dir_retry(&dir);
+}
+
+/// The crop modes a picture's lens is wider than, each with its share
+/// of the sides: a GR's 28 mm offers both, a 40 mm only 50 mm, a 50 mm
+/// or a picture that does not say neither.
+#[test]
+fn a_crop_mode_is_offered_only_for_a_wider_lens() {
+    let names = |eq| {
+        super::lenses_for(eq)
+            .into_iter()
+            .map(|(n, _)| n)
+            .collect::<Vec<_>>()
+    };
+    let shares = super::lenses_for(Some(28.0));
+    assert!((shares[0].1 - 0.8).abs() < 1e-6 && (shares[1].1 - 0.56).abs() < 1e-6);
+    assert_eq!(names(Some(28.0)), ["35 mm", "50 mm"]);
+    assert_eq!(names(Some(40.0)), ["50 mm"]);
+    assert!(names(Some(50.0)).is_empty());
+    assert!(names(Some(35.0)).len() == 1);
+    assert!(names(None).is_empty());
 }

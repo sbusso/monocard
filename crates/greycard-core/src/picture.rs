@@ -512,7 +512,10 @@ pub fn decode_picture(bytes: &[u8]) -> Result<Picture> {
             String::new(),
         ),
     };
-    let shot = crate::decode::rawler_backend::shot_of(&metadata);
+    let mut shot = crate::decode::rawler_backend::shot_of(&metadata);
+    shot.focal_35mm = exif_bytes
+        .as_deref()
+        .and_then(crate::decode::sensor::focal_35mm_in);
 
     let (transform, space) = transform_of(icc.as_deref())?;
     let (image, bits) = to_working(decoded, &transform)?;

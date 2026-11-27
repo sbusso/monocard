@@ -15,7 +15,7 @@ mod focus;
 mod pef;
 pub mod rawler_backend;
 pub mod ricoh;
-mod sensor;
+pub(crate) mod sensor;
 mod sparse;
 pub mod style;
 

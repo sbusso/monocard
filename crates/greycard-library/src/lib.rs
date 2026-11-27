@@ -832,6 +832,7 @@ impl Exif {
             lens_make: None,
             lens_model: self.lens.clone(),
             focal_length: self.focal.map(|v| v as f32),
+            focal_35mm: None,
             f_number: self.aperture.map(|v| v as f32),
             focus_distance: None,
             iso: self.iso,

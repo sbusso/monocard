@@ -696,6 +696,7 @@ pub(crate) fn open_frame(st: &mut State, app: &App, worker: &Worker, i: usize) {
     st.develop.guiding.clear();
     st.develop.source_size = (0, 0);
     st.develop.turn_pressed = None;
+    crate::panel::crop::show_lenses(st, app);
     app.set_guide_mode("".into());
     // The frame's mosaic as far as the session knows it, with no read
     // here: the worker says ahead of its decode.

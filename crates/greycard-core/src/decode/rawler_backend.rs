@@ -1223,6 +1223,8 @@ fn decode_source(source: &RawSource) -> Result<(RawFrame, RawMetadata)> {
         frame.orientation = o;
     }
     frame.shot = shot_of(&metadata);
+    // rawler's EXIF has no word for it; a TIFF-based raw's head does.
+    frame.shot.focal_35mm = super::sensor::focal_35mm_in(source.buf());
     frame.shot.camera_frame = camera_frame_of(source, frame.crop);
     let area = frame
         .crop
@@ -1577,6 +1579,7 @@ pub(crate) fn shot_of(metadata: &RawMetadata) -> Shot {
         lens_model: text(&exif.lens_model)
             .or_else(|| metadata.lens.as_ref().map(|l| l.lens_name.clone())),
         focal_length: exif.focal_length.as_ref().and_then(rational),
+        focal_35mm: None,
         f_number: exif.fnumber.as_ref().and_then(rational),
         focus_distance: exif.subject_distance.as_ref().and_then(rational),
         iso: iso_of(exif),

@@ -1,8 +1,10 @@
 use std::rc::Rc;
 
 use crate::tr;
-use greycard_edit::geometry::{Aspect, Crop, Geometry, Guide, Handle, MAX_ANGLE, MAX_TILT};
-use slint::ComponentHandle;
+use greycard_edit::geometry::{
+    Aspect, Crop, Geometry, Guide, Handle, MAX_ANGLE, MAX_TILT, focal_share,
+};
+use slint::{ComponentHandle, ModelRc, SharedString};
 
 use crate::panel::viewport::{effective_zoom, view_to_plane, view_to_source};
 use crate::worker::Worker;
@@ -190,6 +192,92 @@ pub(crate) fn start_landed(st: &mut State, app: &App) {
     if app.get_crop_mode() && open_under_start(st, app, true) != Laid::No {
         app.window().request_redraw();
     }
+}
+
+/// The camera's crop modes the Aspect list offers (§747), by name, and
+/// the focal length on a full frame each frames.
+pub(crate) const LENSES: [(&str, f32); 2] = [("35 mm", 35.0), ("50 mm", 50.0)];
+
+/// The crop modes a picture whose whole is an `eq` mm one may be cropped
+/// to, and the share of each side each keeps: those longer than it.
+/// None for a picture whose focal length is not known.
+pub(crate) fn lenses_for(eq: Option<f32>) -> Vec<(&'static str, f32)> {
+    let Some(eq) = eq else { return Vec::new() };
+    LENSES
+        .iter()
+        .filter_map(|&(name, mm)| Some((name, focal_share(eq, mm)?)))
+        .collect()
+}
+
+/// The focal length on a full frame of the open frame's whole develop:
+/// the EXIF's, widened by the camera's frame where the develop covers
+/// more than it framed (`drawn_camera`, a crop mode's DNG).
+// Ceiling: a file that gives only `FocalLength` offers no crop mode;
+// the lens database's crop factors cover few monochrome bodies.
+fn whole_focal(st: &State) -> Option<f32> {
+    let (frame, _) = st.develop.frame.as_ref()?;
+    let camera = st.develop.drawn_camera.as_ref().map(|(c, _)| c);
+    frame.shot.whole_focal_35mm(camera)
+}
+
+/// The open frame's crop modes on the list, with the share of the
+/// plane's area each one's crop covers, by which the list names the
+/// crop that still is one: once its develop has said its size, none
+/// before. Monocard's alone, so greycard's list is as it was.
+pub(crate) fn show_lenses(st: &State, app: &App) {
+    let (sw, sh) = (
+        st.develop.source_size.0 as f32,
+        st.develop.source_size.1 as f32,
+    );
+    let lenses = if cfg!(feature = "mono") && sw >= 1.0 && sh >= 1.0 {
+        lenses_for(whole_focal(st))
+    } else {
+        Vec::new()
+    };
+    let camera = crate::panel::viewport::camera_crop(st);
+    // The crop's share of the plane's area is the same whichever way
+    // the plane stands, so it is measured with no turn.
+    let areas: Vec<f32> = lenses
+        .iter()
+        .map(|&(_, share)| {
+            Geometry::default()
+                .at_focal(share, sw, sh, camera)
+                .crop
+                .map_or(0.0, |c| c.w * c.h)
+        })
+        .collect();
+    let names: Vec<SharedString> = lenses.iter().map(|&(name, _)| name.into()).collect();
+    app.set_crop_lenses(ModelRc::from(names.as_slice()));
+    app.set_crop_lens_areas(ModelRc::from(areas.as_slice()));
+}
+
+/// A crop mode picked from the list: Original and the crop that lens
+/// frames, about the center, the way a pick from the list takes it.
+fn lens_picked(state: &Shared, app: &App, name: &str) {
+    let (sw, sh, settled, camera, share) = {
+        let st = state.borrow();
+        (
+            st.develop.source_size.0 as f32,
+            st.develop.source_size.1 as f32,
+            !st.develop.edit.needs_frame(),
+            crate::panel::viewport::camera_crop(&st),
+            lenses_for(whole_focal(&st))
+                .into_iter()
+                .find(|&(n, _)| n == name)
+                .map(|(_, share)| share),
+        )
+    };
+    let Some(share) = share.filter(|_| settled && sw >= 1.0 && sh >= 1.0) else {
+        return;
+    };
+    let lensed = read_geometry(app).at_focal(share, sw, sh, camera);
+    app.set_aspect_name("Original".into());
+    if let Some(picked) = pick_aspect(app, sw, sh, camera) {
+        remember_last(&mut state.borrow_mut(), picked);
+    }
+    app.set_portrait(lensed.portrait);
+    set_crop(app, lensed.crop);
+    app.invoke_view_changed();
 }
 
 /// A frame as the panel shows it: its file and its version, none for
@@ -923,6 +1011,14 @@ pub(crate) fn install(app: &App, state: &Rc<Shared>, _worker: &Rc<Worker>) {
             app.set_guide_mode("".into());
             state.borrow_mut().develop.guiding.clear();
             app.invoke_view_changed();
+        });
+    }
+    {
+        let (state, app_weak) = (state.clone(), app.as_weak());
+        app.on_crop_lens_picked(move |name| {
+            if let Some(app) = app_weak.upgrade() {
+                lens_picked(&state, &app, name.as_str());
+            }
         });
     }
     // Quarter turns and mirrors: the geometry does the bookkeeping, the

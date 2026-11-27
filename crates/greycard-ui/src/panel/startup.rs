@@ -3227,6 +3227,7 @@ pub(crate) fn land_pending(st: &mut State, app: &App) -> Landing {
         // and the panel takes its state as measured.
         crate::panel::browser::panel_settled(st, app);
         crate::panel::crop::start_landed(st, app);
+        crate::panel::crop::show_lenses(st, app);
         app.set_shot_size(size_text(w, h).into());
         st.develop.base_white = Some(landed.white);
         st.develop.white_cache = None;

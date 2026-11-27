@@ -758,3 +758,4 @@ in its section; the roadmap and the changelog only point at it.
 - [§744. The import from the camera on Linux and Windows](notes/744-usb-import-on-linux-and-windows.md) (2026-11-27)
 - [§745. Stand development keeps the negative's contrast](notes/745-stand-development.md) (2026-11-28)
 - [§746. A crop mode's DNG opens at the camera's crop](notes/746-a-crop-mode-dng-opens-at-the-cameras-crop.md) (2026-11-28)
+- [§747. The crop modes in the Aspect list](notes/747-the-crop-modes-in-the-aspect-list.md) (2026-11-28)

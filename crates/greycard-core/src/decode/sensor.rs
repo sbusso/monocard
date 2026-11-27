@@ -57,6 +57,15 @@ pub fn dng_focal_35mm(path: &Path) -> Option<u16> {
     focal_35mm(std::fs::File::open(path).ok()?).ok()?
 }
 
+/// [`dng_focal_35mm`] of a TIFF structure held in memory: a TIFF-based
+/// raw, or a picture's EXIF chunk. None for one that does not read.
+pub(crate) fn focal_35mm_in(tiff: &[u8]) -> Option<f32> {
+    focal_35mm(std::io::Cursor::new(tiff))
+        .ok()
+        .flatten()
+        .map(f32::from)
+}
+
 fn focal_35mm(file: impl Read + Seek) -> Result<Option<u16>> {
     let mut tiff = Tiff::new(file)?;
     let (ifd0, endian) = tiff_ifd0(&mut tiff)?;
@@ -124,6 +133,9 @@ mod tests {
         assert_eq!(said(&[(FOCAL_35MM, 0)]), None);
         assert_eq!(said(&[(SAMPLES, 1)]), None);
         assert_eq!(dng_focal_35mm(Path::new("/nowhere.dng")), None);
+        let file = tiff_under(EXIF_IFD, &[(PHOTOMETRIC, 2)], &[(FOCAL_35MM, 35)]);
+        assert_eq!(focal_35mm_in(&file), Some(35.0));
+        assert_eq!(focal_35mm_in(b"\xff\xd8 not a TIFF"), None);
     }
 
     #[test]
