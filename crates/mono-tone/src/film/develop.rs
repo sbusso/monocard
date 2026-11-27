@@ -142,8 +142,6 @@ struct Fit {
     ei: f64,
     /// The published family's agitation interval, s.
     interval_s: f64,
-    /// How much faster 30 s agitation develops than the family's own.
-    small_tank_rate: f64,
     /// The temperature coefficient in each developer, `Developer::ALL`'s order.
     alpha: [f64; 4],
 }
@@ -153,14 +151,12 @@ const ALPHA: [f64; 4] = [0.087, 0.055, 0.098, 0.09];
 
 const FITS: [Fit; 8] = [
     // Kodak F-4017: D-76 large tank, agitation every minute, 6/8/10/12 min.
-    // Large tank is about 1.155 times as slow as small tank in Kodak's
-    // tables. HC-110 B and D-76 1+1 from the contrast-index lines.
+    // HC-110 B and D-76 1+1 from the contrast-index lines.
     Fit {
         stock: FilmStock::TriX400,
         curve: include_str!("curves/tri-x_d76-stock.csv"),
         ei: 400.0,
         interval_s: 60.0,
-        small_tank_rate: 1.155,
         alpha: [0.0867, 0.0545, 0.0980, 0.09],
     },
     // Kodak F-4016: D-76 small tank, 6/7.5/10 min.
@@ -169,7 +165,6 @@ const FITS: [Fit; 8] = [
         curve: include_str!("curves/tmax-100_d76-stock.csv"),
         ei: 100.0,
         interval_s: 30.0,
-        small_tank_rate: 1.0,
         alpha: [0.0947, 0.055, 0.098, 0.09],
     },
     // Kodak F-4043: D-76 small tank, 6/8/11 min.
@@ -178,7 +173,6 @@ const FITS: [Fit; 8] = [
         curve: include_str!("curves/tmax-400_d76-stock.csv"),
         ei: 400.0,
         interval_s: 30.0,
-        small_tank_rate: 1.0,
         alpha: [0.0676, 0.0568, 0.0548, 0.09],
     },
     // Ilford's one published curve each, with the growth of the Kodak film
@@ -188,7 +182,6 @@ const FITS: [Fit; 8] = [
         curve: include_str!("curves/ilford-hp5.csv"),
         ei: 400.0,
         interval_s: 30.0,
-        small_tank_rate: 1.0,
         alpha: ALPHA,
     },
     Fit {
@@ -196,7 +189,6 @@ const FITS: [Fit; 8] = [
         curve: include_str!("curves/ilford-fp4.csv"),
         ei: 125.0,
         interval_s: 30.0,
-        small_tank_rate: 1.0,
         alpha: ALPHA,
     },
     Fit {
@@ -204,7 +196,6 @@ const FITS: [Fit; 8] = [
         curve: include_str!("curves/ilford-delta-100.csv"),
         ei: 100.0,
         interval_s: 30.0,
-        small_tank_rate: 1.0,
         alpha: ALPHA,
     },
     Fit {
@@ -212,7 +203,6 @@ const FITS: [Fit; 8] = [
         curve: include_str!("curves/ilford-delta-400.csv"),
         ei: 400.0,
         interval_s: 30.0,
-        small_tank_rate: 1.0,
         alpha: ALPHA,
     },
     Fit {
@@ -220,7 +210,6 @@ const FITS: [Fit; 8] = [
         curve: include_str!("curves/ilford-delta-3200.csv"),
         ei: 3200.0,
         interval_s: 30.0,
-        small_tank_rate: 1.0,
         alpha: ALPHA,
     },
 ];
@@ -305,8 +294,13 @@ impl Developed {
             .d_inf
             .at(self.h_grey + f64::from(x) + self.shift)
             .max(0.0);
-        let tau_c = self.fitted.tau_c0 * (1.0 + self.kappa * d_inf);
-        (self.fog + d_inf * (1.0 - (-self.tau / tau_c).exp())) as f32
+        // Stand's compensation slows development where the film develops
+        // the most silver: by the density it reaches without it, not by
+        // the fit's limit, which on Delta 400 and T-Max 400 lies far above
+        // any print and flattened the whole negative (§745).
+        let grow = |tau_c: f64| d_inf * (1.0 - (-self.tau / tau_c).exp());
+        let tau_c = self.fitted.tau_c0 * (1.0 + self.kappa * grow(self.fitted.tau_c0));
+        (self.fog + grow(tau_c)) as f32
     }
 }
 
@@ -332,30 +326,21 @@ pub(crate) fn develop(film: &Film) -> Development {
         .position(|d| *d == film.developer)
         .unwrap_or(0);
     let fit = FITS.iter().position(|f| f.stock == film.stock);
-    // The family's own agitation, and its rate's slope from small to
-    // large tank; 30 s and film-darkroom's 0.25 for the others.
-    let (a_ref, slope, alpha) = match fit {
-        Some(i) => {
-            let f = &FITS[i];
-            let a_ref = 1.0 / (1.0 + f.interval_s / 120.0);
-            let slope = if f.small_tank_rate == 1.0 {
-                0.25
-            } else {
-                (f.small_tank_rate - 1.0) / (index(Agitation::Every30s) - a_ref)
-            };
-            (a_ref, slope, f.alpha[dev])
-        }
-        None => (index(Agitation::Every30s), 0.25, ALPHA[dev]),
+    // The family's own agitation; 30 s for the others.
+    let (a_ref, alpha) = match fit {
+        Some(i) => (1.0 / (1.0 + FITS[i].interval_s / 120.0), FITS[i].alpha[dev]),
+        None => (index(Agitation::Every30s), ALPHA[dev]),
     };
     let a = index(film.agitation);
-    let rate = |a: f64| (1.0 + slope * (a - a_ref)).max(0.1);
     let temperature = f64::from(film.temperature.clamp(18.0, 24.0));
-    // tau over the normal tau: one step a push, warmer faster, agitation
-    // against 30 s.
+    // tau over the normal tau: one step a push, warmer faster. The normal
+    // time is the one for the agitation chosen, as a printer reads it off
+    // a stand or a tank chart: agitation does not shorten it, it holds the
+    // highlights back (kappa) and sharpens the edges. Carrying the tank
+    // rates down to stand left a fifth of the development and a flat grey
+    // negative (§745).
     let relative = f64::from(TIME_STEP).powf(f64::from(film.development.clamp(-3.0, 3.0)))
-        * (alpha * (temperature - 20.0)).exp()
-        * rate(a)
-        / rate(index(Agitation::Every30s));
+        * (alpha * (temperature - 20.0)).exp();
     let spec = &SPECS[dev];
     let deficit = ((a_ref - a) / a_ref.max(1e-6)).clamp(0.0, 1.0);
     let adjacency = spec.adjacency * (1.0 + 1.5 * (a_ref - a)).max(0.0);
@@ -470,8 +455,8 @@ mod tests {
         assert!(develop(&normal).steps.abs() < 1e-5);
         assert!((develop(&film(FilmStock::PanFPlus, 1.5)).steps - 1.5).abs() < 1e-4);
         assert!(develop(&film(FilmStock::PanFPlus, 0.0)).negative.is_none());
-        // Stand: slower, compensating (the highlights held back more than
-        // the shadows) and with stronger edges.
+        // Stand: at its own normal time, compensating (the highlights held
+        // back more than the shadows) and with stronger edges.
         let stand = Film {
             agitation: Agitation::Stand,
             ..film(FilmStock::Hp5Plus, 0.0)
@@ -479,13 +464,33 @@ mod tests {
         let (n, s) = (develop(&film(FilmStock::Hp5Plus, 0.0)), develop(&stand));
         assert!(s.edges > n.edges && (n.edges - 1.0).abs() < 1e-6);
         let (nn, ss) = (n.negative.unwrap(), s.negative.unwrap());
-        assert!(ss.kappa > 0.0 && nn.kappa == 0.0 && ss.tau < nn.tau);
+        assert!(ss.kappa > 0.0 && nn.kappa == 0.0 && ss.tau == nn.tau);
         // The compensation alone, at the same time.
         let held = Developed {
             kappa: ss.kappa,
             ..nn
         };
         assert!(held.at(1.0) / nn.at(1.0) < held.at(-1.0) / nn.at(-1.0));
+        // Stand and semi-stand keep most of a fitted film's contrast: each
+        // fitted film, in each developer.
+        for fit in &FITS {
+            for developer in Developer::ALL {
+                let at = |agitation| Film {
+                    agitation,
+                    developer,
+                    ..film(fit.stock, 0.0)
+                };
+                let normal = slope(&at(Agitation::Every30s));
+                for agitation in [Agitation::SemiStand, Agitation::Stand] {
+                    let held = slope(&at(agitation));
+                    assert!(
+                        held > normal * 0.55,
+                        "{:?} in {developer:?} at {agitation:?}: {held} against {normal}",
+                        fit.stock
+                    );
+                }
+            }
+        }
     }
 
     #[test]

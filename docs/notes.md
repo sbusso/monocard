@@ -756,3 +756,4 @@ in its section; the roadmap and the changelog only point at it.
 - [§742. LUTs in looks, Lightroom export, Ultra HDR, and JPEG XL](notes/742-luts-lightroom-hdr-and-jpeg-xl.md) (2026-11-27)
 - [§743. The burst merge: HDR+ align and merge on one plane](notes/743-the-burst-merge.md) (2026-11-27)
 - [§744. The import from the camera on Linux and Windows](notes/744-usb-import-on-linux-and-windows.md) (2026-11-27)
+- [§745. Stand development keeps the negative's contrast](notes/745-stand-development.md) (2026-11-28)

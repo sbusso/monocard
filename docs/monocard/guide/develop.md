@@ -114,7 +114,7 @@ FILM exposes the photo on a black and white film, develops it, and prints the ne
 | **Development** | -3 to +3 | 0 | Push (+) or pull (-). One step is about 19% more time in the developer, a push of one stop. Middle grey stays where it is |
 | **Developer** | **D-76**, **D-76 1+1**, **HC-110 B**, **Rodinal 1+50** | **D-76** | Each at its own normal time. It changes the grain, the edge effect, and how the temperature and the agitation act. With a film only |
 | **Bath temperature** | 18 to 24 °C | 20 °C | A warmer developer works faster: the same time gives a harder negative. With a film only |
-| **Agitation** | **Continuous**, **Every 30 s**, **Every minute**, **Semi-stand**, **Stand** | **Every 30 s** | Less agitation develops slower, holds back the highlights, and makes a stronger edge effect. With a film only |
+| **Agitation** | **Continuous**, **Every 30 s**, **Every minute**, **Semi-stand**, **Stand** | **Every 30 s** | Each at its own normal time. Less agitation holds back the highlights and makes a stronger edge effect. With a film only |
 | **Halation** | 0 to 200% | 100% | A soft glow around bright points, from light that bounces off the back of the film. With a film only |
 | **Edge effect** | 0 to 200% | 100% | A dark and a light rim along an edge, from the developer. It makes the negative look sharper. With a film only |
 | **Paper** | Six papers | **Ilford Multigrade IV RC** | The paper the negative is printed on. With a film only |

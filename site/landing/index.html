@@ -53,9 +53,9 @@
   <ol>
     <li><a href="#one-channel" style="--z:#000000"><span class="n">0</span><span class="t">One channel</span></a></li>
     <li><a href="#zones" style="--z:#1b1b1b"><span class="n">I</span><span class="t">Zone view</span></a></li>
-    <li><a href="#noise" style="--z:#303030"><span class="n">II</span><span class="t">Noise</span></a></li>
+    <li><a href="#noise" style="--z:#303030"><span class="n">II</span><span class="t">Noise and detail</span></a></li>
     <li><a href="#tone" style="--z:#474747"><span class="n">III</span><span class="t">Tone</span></a></li>
-    <li><a href="#detail" style="--z:#5e5e5e"><span class="n">IV</span><span class="t">Detail</span></a></li>
+    <li><a href="#film" style="--z:#5e5e5e"><span class="n">IV</span><span class="t">Film</span></a></li>
     <li><a class="lt" href="#highlights" style="--z:#777777"><span class="n">V</span><span class="t">Highlights</span></a></li>
     <li><a class="lt" href="#masks" style="--z:#919191"><span class="n">VI</span><span class="t">Masks</span></a></li>
     <li><a class="lt" href="#looks" style="--z:#ababab"><span class="n">VII</span><span class="t">Looks</span></a></li>
@@ -70,14 +70,14 @@
 <!-- 0 -->
 <section class="zone hero" id="one-channel" style="--g:#0f0f0f">
   <div class="wrap">
-    <p class="new"><a href="changelog.html"><span class="new-v">0.5.0</span><span>Early release<span class="new-dot" aria-hidden="true"> · </span><span class="vh">: </span>What’s new</span><span aria-hidden="true">→</span></a></p>
+    <p class="new"><a href="changelog.html"><span class="new-v">0.5.1</span><span>Early release<span class="new-dot" aria-hidden="true"> · </span><span class="vh">: </span>What’s new</span><span aria-hidden="true">→</span></a></p>
     <div class="hero-head">
       <h1>The darkroom for monochrome sensors.</h1>
       <div class="hero-side">
         <p>Monocard is a free, open source raw editor for cameras with no color filter on the sensor. It develops one channel, from the sensor data to the print. The first camera is the Ricoh&nbsp;GR&nbsp;IV Monochrome.</p>
         <p class="hero-act">
           <a class="btn btn-main" data-download href="https://github.com/sbusso/monocard/releases/latest/download/Monocard.dmg"><svg class="os" aria-hidden="true"><use href="#os-mac"/></svg><span>Download for macOS</span></a>
-          <span class="note">Version 0.5.0.</span>
+          <span class="note">Version 0.5.1.</span>
           <span class="note" data-note>macOS 13.4 or later, Apple silicon. Notarized.</span>
           <span class="note">Also for <a href="#downloads" data-others>Linux and Windows</a>.</span>
         </p>
@@ -165,8 +165,8 @@
   <div class="wrap">
     <div class="head">
       <div class="head-main">
-        <h2><span class="num" aria-hidden="true">II</span>Noise</h2>
-        <p>Denoise works from a noise model of the sensor at each ISO, on the one channel the sensor recorded. A slider keeps part of the sensor’s grain.</p>
+        <h2><span class="num" aria-hidden="true">II</span>Noise and detail</h2>
+        <p>Denoise works from a noise model of the sensor at each ISO, on the one channel the sensor recorded. A slider keeps part of the sensor’s grain. Contrast by scale, from fine texture to large forms, and sharpening at the sensor’s pixel pitch.</p>
       </div>
       <dl class="spec">
         <div><dt>Profiled</dt><dd>A noise model for each ISO, with non-local means or wavelets.</dd></div>
@@ -175,6 +175,9 @@
         <div><dt>Learned</dt><dd>Fast and Best: learned models for grey pictures, downloaded the first time you use them.</dd></div>
         <div><dt>JPEG blocks</dt><dd>Removes the 8 by 8 blocks of a compressed JPEG.</dd></div>
         <div><dt>Burst merge</dt><dd>Merges 2 to 16 handheld frames at one exposure into one with less noise.</dd></div>
+        <div><dt>Local contrast</dt><dd>Contrast between neighbouring areas.</dd></div>
+        <div><dt>Contrast equalizer</dt><dd>One control for each scale, from fine texture to large forms.</dd></div>
+        <div><dt>Diffuse or sharpen</dt><dd>Deblurs detail at the sensor’s pixel pitch.</dd></div>
       </dl>
     </div>
   </div>
@@ -190,7 +193,6 @@
         <dl class="spec">
           <div><dt>LIGHT</dt><dd>Nine sliders, one a stop, from <span class="fig">−8&nbsp;EV</span> to <span class="fig">0&nbsp;EV</span>. A zone mask. The zone view switch.</dd></div>
           <div><dt>BASIC</dt><dd>Exposure, contrast, blacks, midtones, whites. Display transform: sigmoid or AgX. On a color photo, a black and white film filter.</dd></div>
-          <div><dt>FILM</dt><dd>18 black and white films from Kodak, Ilford, and Fujifilm. Developer, time, temperature, and agitation. Six papers, paper grade 00 to 5 or split grade, and silver gelatin, lith, or cyanotype. The film’s own grain, halation, and edge effect. A color photo goes to grey through the film’s color sensitivity.</dd></div>
           <div><dt>Curve</dt><dd>Drawn over the histogram. Presets: linear, soft S, strong S, lifted, faded.</dd></div>
         </dl>
       </div>
@@ -209,32 +211,45 @@
           </div>
           <figcaption><span>The BASIC panel.</span></figcaption>
         </figure>
-        <figure class="shot shot-panel">
-          <div class="frame" style="--ar:648/1176">
-            <img src="assets/panel-film.webp" width="648" height="1176" loading="lazy"
-                 alt="The FILM panel: Kodak Tri-X 400 pushed one stop in HC-110 B at 21 °C with stand agitation, halation and edge effect, and a split-grade print on Ilford Multigrade FB Classic, as silver gelatin.">
-          </div>
-          <figcaption><span>The FILM panel.</span></figcaption>
-        </figure>
       </div>
     </div>
   </div>
 </section>
 
 <!-- IV -->
-<section class="zone" id="detail" style="--g:#171717">
+<section class="zone" id="film" style="--g:#171717">
   <div class="wrap">
-    <div class="head">
+    <div class="head head-fig">
       <div class="head-main">
-        <h2><span class="num" aria-hidden="true">IV</span>Detail</h2>
-        <p>Contrast by scale, from fine texture to large forms, and sharpening at the sensor’s pixel pitch.</p>
+        <h2><span class="num" aria-hidden="true">IV</span>Film</h2>
+        <p>A darkroom in the editor. The photo is exposed on a black and white film, the film is developed, and the negative is printed on a paper. The print takes the place of the display transform.</p>
+        <dl class="spec">
+          <div><dt>Films</dt><dd>18 black and white films from Kodak, Ilford, and Fujifilm, from the makers’ data sheets. A color photo goes to grey through the film’s own color sensitivity.</dd></div>
+          <div><dt>Development</dt><dd>Push or pull, <span class="fig">−3</span> to <span class="fig">+3</span>. D-76, D-76 1+1, HC-110 B or Rodinal 1+50, 18 to 24&nbsp;°C, continuous agitation to stand. Eight films follow Kodak’s and Ilford’s development curves.</dd></div>
+          <div><dt>On the film</dt><dd>The film’s own grain, made of silver grains and sized for a 35&nbsp;mm frame. Halation round bright light. The developer’s edge effect.</dd></div>
+          <div><dt>Paper</dt><dd>Six papers from Ilford, Kodak, and Foma. Grade 00 to 5, or split grade with a soft and a hard exposure.</dd></div>
+          <div><dt>Print</dt><dd>Silver gelatin, lith, or cyanotype.</dd></div>
+          <div><dt>Toner baths</dt><dd>Selenium, sepia, gold, iron blue, copper, vanadium. Each acts on the silver by density, as in the darkroom.</dd></div>
+        </dl>
       </div>
-      <dl class="spec">
-        <div><dt>Local contrast</dt><dd>Contrast between neighbouring areas.</dd></div>
-        <div><dt>Contrast equalizer</dt><dd>One control for each scale, from fine texture to large forms.</dd></div>
-        <div><dt>Diffuse or sharpen</dt><dd>Deblurs detail at the sensor’s pixel pitch.</dd></div>
-      </dl>
+        <figure class="shot shot-panel">
+          <div class="frame" style="--ar:648/1176">
+            <img src="assets/panel-film.webp" width="648" height="1176" loading="lazy"
+                 alt="The FILM panel: Kodak Tri-X 400 pushed one stop in HC-110 B at 21 °C with stand agitation, halation and edge effect, and a split-grade print on Ilford Multigrade FB Classic, as silver gelatin."></div>
+          <figcaption><span>The FILM panel.</span></figcaption>
+        </figure>
     </div>
+    <div class="film-prints">
+      <figure><div class="frame"><img src="assets/film-none-800.webp" width="800" height="533" loading="lazy" alt="The sample picture with its edit and no film."></div><figcaption><span>No film</span></figcaption></figure>
+      <figure><div class="frame"><img src="assets/film-tri-x-800.webp" width="800" height="533" loading="lazy" alt="The picture on Kodak Tri-X 400, developed normally in D-76."></div><figcaption><span>Kodak Tri-X 400, D-76</span></figcaption></figure>
+      <figure><div class="frame"><img src="assets/film-tri-x-push-800.webp" width="800" height="533" loading="lazy" alt="The picture on Tri-X pushed two stops in HC-110 B: more contrast, darker shadows."></div><figcaption><span>Tri-X, pushed 2 stops in HC-110 B</span></figcaption></figure>
+      <figure><div class="frame"><img src="assets/film-tri-x-pull-800.webp" width="800" height="533" loading="lazy" alt="The picture on Tri-X pulled two stops: soft, open shadows."></div><figcaption><span>Tri-X, pulled 2 stops</span></figcaption></figure>
+      <figure><div class="frame"><img src="assets/film-pan-f-800.webp" width="800" height="533" loading="lazy" alt="The picture on Ilford Pan F Plus 50: fine grain, high contrast."></div><figcaption><span>Ilford Pan F Plus 50</span></figcaption></figure>
+      <figure><div class="frame"><img src="assets/film-delta-3200-800.webp" width="800" height="533" loading="lazy" alt="The picture on Ilford Delta 3200 pushed one stop, with its coarse grain."></div><figcaption><span>Ilford Delta 3200, pushed 1 stop</span></figcaption></figure>
+      <figure><div class="frame"><img src="assets/film-rodinal-stand-800.webp" width="800" height="533" loading="lazy" alt="The picture on Tri-X stand developed in Rodinal: highlights held back, strong edges."></div><figcaption><span>Tri-X, stand in Rodinal 1+50</span></figcaption></figure>
+      <figure><div class="frame"><img src="assets/film-split-800.webp" width="800" height="533" loading="lazy" alt="The picture on Tri-X, printed split grade on Ilford Multigrade FB Classic."></div><figcaption><span>Split grade on Multigrade FB</span></figcaption></figure>
+    </div>
+    <p class="cap">One sample picture, developed and printed eight ways in Monocard.</p>
   </div>
 </section>
 
@@ -444,7 +459,7 @@
   <div class="wrap">
     <div class="get-head">
       <h2>Download</h2>
-      <p class="note">Version 0.5.0, <time datetime="2026-11-27">27 November 2026</time>. Free.</p>
+      <p class="note">Version 0.5.1, <time datetime="2026-11-28">28 November 2026</time>. Free.</p>
     </div>
     <!-- script.js takes the first button's address and note from the card of the visitor's system. -->
     <div class="get-cards">
