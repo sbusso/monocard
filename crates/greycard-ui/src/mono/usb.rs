@@ -496,6 +496,8 @@ impl Temp {
             .map_or(0, |d| d.as_nanos());
         let path = root.join(format!("monocard-camera-{}-{n}-{when}", std::process::id()));
         let mut builder = std::fs::DirBuilder::new();
+        // On Windows the user's temporary folder is already the user's own.
+        #[cfg(unix)]
         std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
         // Not `create_dir_all`: a folder that is there is another's.
         builder
@@ -531,6 +533,7 @@ impl Drop for Temp {
 }
 
 /// The bytes free for this user on the disk `dir` is on.
+#[cfg(unix)]
 fn free(dir: &Path) -> Option<u64> {
     use std::os::unix::ffi::OsStrExt;
     let dir = std::ffi::CString::new(dir.as_os_str().as_bytes()).ok()?;
@@ -543,7 +546,29 @@ fn free(dir: &Path) -> Option<u64> {
         }
         said.assume_init()
     };
-    Some(u64::from(said.f_bavail).saturating_mul(said.f_frsize))
+    // `f_bavail` is a u32 on macOS and a u64 on Linux.
+    #[allow(clippy::useless_conversion)]
+    let blocks = u64::from(said.f_bavail);
+    Some(blocks.saturating_mul(said.f_frsize))
+}
+
+/// The bytes free for this user on the disk `dir` is on.
+#[cfg(windows)]
+fn free(dir: &Path) -> Option<u64> {
+    use std::os::windows::ffi::OsStrExt;
+    let dir: Vec<u16> = dir.as_os_str().encode_wide().chain(Some(0)).collect();
+    let mut bytes = 0u64;
+    // SAFETY: the path is null-terminated UTF-16, and the two totals we do
+    // not want may be null.
+    let ok = unsafe {
+        windows_sys::Win32::Storage::FileSystem::GetDiskFreeSpaceExW(
+            dir.as_ptr(),
+            &mut bytes,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    (ok != 0).then_some(bytes)
 }
 
 /// The room a run needs on the temporary folder's disk: each photo once, and
