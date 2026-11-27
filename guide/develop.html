@@ -63,6 +63,7 @@
         <li><a href="#scopes">Scopes</a></li>
         <li><a href="#look">LOOK</a></li>
         <li><a href="#basic">BASIC</a></li>
+        <li><a href="#film">FILM</a></li>
         <li><a href="#light">LIGHT</a></li>
         <li><a href="#detail">DETAIL</a></li>
         <li><a href="#highlights">HIGHLIGHTS</a></li>
@@ -156,12 +157,6 @@
 <td>Changes contrast around middle grey</td>
 </tr>
 <tr>
-<td><strong>Paper grade</strong></td>
-<td>00 to 5</td>
-<td>2</td>
-<td>Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. Middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG</td>
-</tr>
-<tr>
 <td><strong>Blacks</strong></td>
 <td>-100 to +100</td>
 <td>0</td>
@@ -183,7 +178,7 @@
 <td><strong>Display transform</strong></td>
 <td><strong>Sigmoid</strong>, <strong>AgX</strong></td>
 <td><strong>Sigmoid</strong></td>
-<td>Fits the light of the scene to the screen and the print</td>
+<td>Fits the light of the scene to the screen and the print. Off when a film is set in <a href="#film">FILM</a></td>
 </tr>
 </tbody>
 </table></div>
@@ -222,7 +217,7 @@
 </tr>
 </tbody>
 </table></div>
-<p>The filters are first versions, not measured filters. The grid shows a color photo's camera preview in grey without the filter until the photo has an edit.</p>
+<p>The filters are first versions, not measured filters. With a film in <a href="#film">FILM</a>, the mix is the film's color sensitivity, and the filter acts on the light before the film. The grid shows a color photo's camera preview in grey without the filter until the photo has an edit.</p>
 <h3 id="transform">Transform</h3>
 <div class="table" tabindex="0"><table>
 <thead>
@@ -272,6 +267,94 @@
 <figure class="wide"><a href="images/curves.webp"><img src="images/curves.webp" alt="One photo under the five presets of the curve" width="1066" height="270" loading="lazy" decoding="async"></a><figcaption>The presets of the curve</figcaption></figure>
 <p>The histogram is behind the curve. When the sensor clipped in the photo, a dashed line shows where its white is, and the part beyond it is hatched.</p>
 <p><strong>Levels</strong> has <strong>Input black</strong>, <strong>Input white</strong>, <strong>Output black</strong>, and <strong>Output white</strong>, each from 0 to 100%.</p>
+<h2 id="film">FILM</h2>
+<p>FILM exposes the photo on a black and white film and prints the negative on Ilford Multigrade paper. The film's print then takes the place of the display transform.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Film</strong></td>
+<td><strong>None</strong> and 18 films</td>
+<td><strong>None</strong></td>
+<td>The film the photo is exposed on. <strong>None</strong> keeps the display transform of BASIC</td>
+</tr>
+<tr>
+<td><strong>Development</strong></td>
+<td>-2 to +2</td>
+<td>0</td>
+<td>Push (+) or pull (-): makes the negative harder or softer. Middle grey stays where it is</td>
+</tr>
+<tr>
+<td><strong>Halation</strong></td>
+<td>0 to 200%</td>
+<td>100%</td>
+<td>A soft glow around bright points, from light that bounces off the back of the film. With a film only</td>
+</tr>
+<tr>
+<td><strong>Edge effect</strong></td>
+<td>0 to 200%</td>
+<td>100%</td>
+<td>A dark and a light rim along an edge, from the developer. It makes the negative look sharper. With a film only</td>
+</tr>
+<tr>
+<td><strong>Paper grade</strong></td>
+<td>00 to 5</td>
+<td>2</td>
+<td>Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. With a film, it sets the Multigrade filter. Without one, middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG</td>
+</tr>
+</tbody>
+</table></div>
+<p>The films are Kodak Tri-X 400, T-Max 100, T-Max 400, T-Max P3200, Plus-X 125 and Double-X 5222; Ilford HP5 Plus, FP4 Plus, Pan F Plus 50, Delta 100, Delta 400, Delta 3200, SFX 200, XP2 Super and Ortho Plus 80; and Fujifilm Acros II, Neopan 400 and Neopan 1600.</p>
+<p>Each film is its characteristic curve, from the maker's data sheet: how dark the negative gets for each amount of light. A film with a long toe, such as Tri-X, keeps more shadow detail. A film with a short one, such as Pan F Plus, makes deeper blacks.</p>
+<p>A color photo goes to grey through the film's own color sensitivity, and through the <strong>Filter</strong> of BASIC. So Ortho Plus 80, which does not see red, makes red lips and red bricks dark. A monochrome photo has no color, so this does not change it.</p>
+<p>The film also sets the grain. A fast film, such as Delta 3200, has large grain. A slow one, such as Pan F Plus, has fine grain. The grain is strongest in the midtones and none in the paper's white. <strong>Amount</strong> in <a href="#grain">Grain</a> scales it, and <strong>Link to ISO</strong> is off.</p>
+<p>The film's print, grain, halation and edge effect are the same on the screen and in an export. The curves were digitized from the makers' data sheets by SpektraLab (Hanze Qiu), under CC BY-SA 4.0. The film model is ported from spektrafilm (Andrea Volpato).</p>
+<h3 id="grain">Grain</h3>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Control</th>
+<th>Range</th>
+<th>Default</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Amount</strong></td>
+<td>0 to 100%</td>
+<td>0%</td>
+<td>The strength, most in the midtones</td>
+</tr>
+<tr>
+<td><strong>Size</strong></td>
+<td>0 to 100%</td>
+<td>30%</td>
+<td>The size of the grain</td>
+</tr>
+<tr>
+<td><strong>Roughness</strong></td>
+<td>0 to 100%</td>
+<td>50%</td>
+<td>How rough the grain is</td>
+</tr>
+<tr>
+<td><strong>Link to ISO</strong></td>
+<td>On, off</td>
+<td>Off</td>
+<td>Makes the grain stronger at a high ISO. Not shown with a film, whose grain is set by its speed</td>
+</tr>
+</tbody>
+</table></div>
+<figure><a href="images/panel-grain.webp"><img src="images/panel-grain.webp" alt="The Grain controls" width="350" height="191" loading="lazy" decoding="async"></a><figcaption>Grain</figcaption></figure>
+<figure class="wide"><a href="images/grain-effect.webp"><img src="images/grain-effect.webp" alt="A wall without grain, with fine grain, and with large grain" width="1088" height="280" loading="lazy" decoding="async"></a><figcaption>Amount and Size of the grain</figcaption></figure>
 <h2 id="light">LIGHT</h2>
 <p>LIGHT is the tone equalizer. It lightens or darkens each tone and keeps edges. The nine sliders, <strong>-8 EV</strong> to <strong>0 EV</strong>, are one stop of light each, from the deepest shadows to the brightest light. Each one goes from -2 to +2 EV.</p>
 <figure><a href="images/panel-light.webp"><img src="images/panel-light.webp" alt="The LIGHT panel with Zone mask open" width="350" height="559" loading="lazy" decoding="async"></a><figcaption>LIGHT, with Zone mask open</figcaption></figure>
@@ -465,45 +548,6 @@
 <figure class="wide"><a href="images/shoulder-effect.webp"><img src="images/shoulder-effect.webp" alt="White cloth with Shoulder at -70, 0, and +70" width="1088" height="280" loading="lazy" decoding="async"></a><figcaption>Shoulder</figcaption></figure>
 <p>To keep highlights, use the camera's highlight-weighted metering and negative exposure compensation, and lift the shadows in Monocard.</p>
 <h2 id="finish">FINISH</h2>
-<h3 id="grain">Grain</h3>
-<div class="table" tabindex="0"><table>
-<thead>
-<tr>
-<th>Control</th>
-<th>Range</th>
-<th>Default</th>
-<th>What it does</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><strong>Amount</strong></td>
-<td>0 to 100%</td>
-<td>0%</td>
-<td>The strength, most in the midtones</td>
-</tr>
-<tr>
-<td><strong>Size</strong></td>
-<td>0 to 100%</td>
-<td>30%</td>
-<td>The size of the grain</td>
-</tr>
-<tr>
-<td><strong>Roughness</strong></td>
-<td>0 to 100%</td>
-<td>50%</td>
-<td>How rough the grain is</td>
-</tr>
-<tr>
-<td><strong>Link to ISO</strong></td>
-<td>On, off</td>
-<td>Off</td>
-<td>Makes the grain stronger at a high ISO</td>
-</tr>
-</tbody>
-</table></div>
-<figure><a href="images/panel-grain.webp"><img src="images/panel-grain.webp" alt="The Grain controls" width="350" height="191" loading="lazy" decoding="async"></a><figcaption>Grain</figcaption></figure>
-<figure class="wide"><a href="images/grain-effect.webp"><img src="images/grain-effect.webp" alt="A wall without grain, with fine grain, and with large grain" width="1088" height="280" loading="lazy" decoding="async"></a><figcaption>Amount and Size of the grain</figcaption></figure>
 <h3 id="toning">Toning</h3>
 <p>Toning is the only tool that makes color. A toned photo is <a href="export.html#grey-or-color">exported in color</a>. <strong>Toning</strong> sets the sliders below it to <strong>None</strong>, <strong>Selenium</strong>, <strong>Sepia</strong>, <strong>Platinum</strong>, <strong>Cyanotype</strong>, or <strong>Gold</strong>.</p>
 <div class="table" tabindex="0"><table>
