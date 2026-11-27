@@ -11,7 +11,7 @@ pub const NAME: &str = if cfg!(feature = "mono") {
 /// This app's version, as its files say it: Greycard's own, or Monocard's,
 /// moved by hand at a Monocard release.
 pub const VERSION: &str = if cfg!(feature = "mono") {
-    "0.5.2"
+    "0.5.3"
 } else {
     env!("CARGO_PKG_VERSION")
 };
