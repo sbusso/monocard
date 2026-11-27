@@ -334,6 +334,13 @@ fn table(e: &MonoEdit) -> Table {
         d.entry("grade")
             .or_insert(Value::Float(e.display.grade.into()));
     }
+    if !t.contains_key("film")
+        && let Ok(Value::Table(mut film)) = Value::try_from(e.film)
+    {
+        film.entry("development")
+            .or_insert(Value::Float(e.film.development.into()));
+        t.insert("film".into(), Value::Table(film));
+    }
     t
 }
 
@@ -394,6 +401,8 @@ fn range(path: &str) -> Option<(f64, f64)> {
         ("display", "white_ceiling") => (0.5, 1.0),
         ("display", "black_floor") => (0.0, 0.1),
         ("display", "grade") => (-1.0, 5.0),
+        ("film", "development") => (-2.0, 2.0),
+        ("film", "halation" | "edges") => (0.0, 2.0),
         ("tone_eq", "zones" | "mask_contrast") => (-2.0, 2.0),
         ("tone_eq", "smoothing") => (0.0, 0.25),
         ("tone_eq", "edges") => (0.0, 10.0),
@@ -694,6 +703,32 @@ mod tests {
             assert_ne!(bare, MonoEdit::default(), "{}", l.name);
             assert_eq!(Look::parse(&l.to_toml()).unwrap(), l);
         }
+    }
+
+    #[test]
+    fn a_look_keeps_a_film_and_its_development() {
+        use mono_core::edit::{Film, FilmStock};
+        let mut e = MonoEdit {
+            film: Film {
+                stock: FilmStock::Hp5Plus,
+                development: 1.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        e.display.grade = 3.0;
+        let l = Look::from_edit("Pushed HP5", "", &e).unwrap();
+        let l = Look::parse(&l.to_toml()).unwrap();
+        let out = apply(&MonoEdit::default(), &l, 1.0);
+        assert_eq!(out.film, e.film);
+        assert_eq!(out.display.grade, 3.0);
+        // Half way, the development is half way and the film is the look's.
+        let half = apply(&MonoEdit::default(), &l, 0.5);
+        assert_eq!(half.film.stock, FilmStock::Hp5Plus);
+        assert_eq!(half.film.development, 0.5);
+        // A film that is not one is refused.
+        let bad = l.to_toml().replace("ilford-hp5-plus", "no-such-film");
+        assert!(Look::parse(&bad).is_err());
     }
 
     #[test]

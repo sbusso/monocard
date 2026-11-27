@@ -6,8 +6,10 @@ mod device {
 
 use device::{Gpu, Rng, worst};
 use mono_core::MonoEdit;
-use mono_core::edit::{Display, Grain, Solarize, SolarizeKind, Tint, Toning, Vignette};
-use mono_look::{Compiled, Ctx, WGSL, finish, grain, solarize, tone_rgb, vignette};
+use mono_core::edit::{
+    Display, Film, FilmStock, Grain, Solarize, SolarizeKind, Tint, Toning, Vignette,
+};
+use mono_look::{Compiled, Ctx, WGSL, finish, solarize, tone_rgb, vignette};
 
 /// Display light, absolute: an eighth of an 8 bit step.
 const DISPLAY: f32 = 5e-4;
@@ -57,6 +59,15 @@ fn edit(r: &mut Rng, k: usize) -> MonoEdit {
             roughness: r.slider(0.0, 1.0),
             link_iso: k.is_multiple_of(3),
             seed: (r.unit() * 1e9) as u32,
+        },
+        // Every fourth on a film, whose grain is the negative's.
+        film: if k % 4 == 1 {
+            Film {
+                stock: FilmStock::ALL[1 + (k / 4) % (FilmStock::ALL.len() - 1)],
+                ..Default::default()
+            }
+        } else {
+            Film::default()
         },
         toning: if k.is_multiple_of(5) {
             Toning::default()
@@ -135,7 +146,7 @@ fn the_shader_is_the_reference() {
         assert!(w < DISPLAY, "vignette {w}, {what}");
         let w = worst(&got, 1, |i| solarize(d(i), &e.solarize));
         assert!(w < DISPLAY, "solarize {w}, {what}");
-        let w = worst(&got, 2, |i| grain(d(i), px(i), cases[i][3], &e.grain, iso));
+        let w = worst(&got, 2, |i| look.grain(d(i), px(i), cases[i][3]));
         assert!(w < GRAINY, "grain {w}, {what}");
         let w = worst(&got, 3, |i| tone_rgb(d(i), &e.toning)[1]);
         assert!(w < DISPLAY, "toning {w}, {what}");

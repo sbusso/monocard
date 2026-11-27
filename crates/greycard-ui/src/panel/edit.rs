@@ -1247,33 +1247,39 @@ pub(crate) const FOLDS: &[Fold] = &[
     ),
     #[cfg(feature = "mono")]
     (
-        "mono-light",
+        "mono-film",
         crate::mono::folded::<2>,
         crate::mono::set_folded::<2>,
     ),
     #[cfg(feature = "mono")]
     (
-        "mono-detail",
+        "mono-light",
         crate::mono::folded::<3>,
         crate::mono::set_folded::<3>,
     ),
     #[cfg(feature = "mono")]
     (
-        "mono-highlights",
+        "mono-detail",
         crate::mono::folded::<4>,
         crate::mono::set_folded::<4>,
     ),
     #[cfg(feature = "mono")]
     (
-        "mono-finish",
+        "mono-highlights",
         crate::mono::folded::<5>,
         crate::mono::set_folded::<5>,
     ),
     #[cfg(feature = "mono")]
     (
-        "mono-mask",
+        "mono-finish",
         crate::mono::folded::<6>,
         crate::mono::set_folded::<6>,
+    ),
+    #[cfg(feature = "mono")]
+    (
+        "mono-mask",
+        crate::mono::folded::<7>,
+        crate::mono::set_folded::<7>,
     ),
 ];
 

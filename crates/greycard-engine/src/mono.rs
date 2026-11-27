@@ -22,7 +22,8 @@ use greycard_edit::retouch::{Method, Patch, Retouch};
 use greycard_edit::{Edit, Lens};
 use greycard_render::export;
 use mono_core::edit::{
-    CameraSteps, ContrastEq, Denoise, DenoiseMode, Diffuse, Filter, LocalContrast, ToneEq,
+    CameraSteps, ContrastEq, Denoise, DenoiseMode, Diffuse, FilmStock, Filter, LocalContrast,
+    ToneEq,
 };
 use mono_core::{MonoEdit, MonoFrame, Plane, RawHistogram};
 pub use mono_decode::camera;
@@ -45,8 +46,8 @@ use crate::worker::LearnedReport;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Op {
     /// Samples to the plane and its clip map; a color photo's mixed
-    /// through the filter.
-    Prepare(Filter),
+    /// through the filter, and seen by the film where there is one.
+    Prepare(Filter, FilmStock),
     /// Both reduced by a whole factor, for the edit's pictures.
     Reduce(usize),
     /// The threshold; none is the profile's for the ISO.
@@ -70,12 +71,14 @@ pub enum Op {
     Detail(Box<DetailOp>),
     /// The masks' local contrast.
     Local(Light),
+    /// The film's spread, halation and edge effect, added to the detail.
+    Film(Box<FilmOp>),
 }
 
 impl Op {
     pub fn name(&self) -> &'static str {
         match self {
-            Op::Prepare(_) => "prepare",
+            Op::Prepare(..) => "prepare",
             Op::Reduce(_) => "reduce",
             Op::RawWavelet(_) => "raw denoise",
             Op::Denoise(_) => "denoise",
@@ -87,6 +90,7 @@ impl Op {
             Op::Guide(_) => "guide",
             Op::Detail(_) => "detail",
             Op::Local(_) => "mask contrast",
+            Op::Film(_) => "film",
         }
     }
 }
@@ -128,6 +132,16 @@ pub struct DetailOp {
     pub contrast_eq: ContrastEq,
     pub local_contrast: LocalContrast,
     pub diffuse: Diffuse,
+}
+
+/// The film's effects across the picture, and the light they see: the
+/// scene after the exposure and the zones.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FilmOp {
+    pub film: mono_core::edit::Film,
+    pub exposure: f32,
+    pub tone_eq: ToneEq,
+    pub bin: usize,
 }
 
 /// The plane between two steps, with what the steps after read beside it.
@@ -240,7 +254,7 @@ pub(crate) fn stages(
     let mut s = Steps::default();
     let op = |s: &mut Steps, op: Op| s.steps.push(Step::Op(Stage::Mono(op)));
     let keep = |s: &mut Steps, k: Keep| s.steps.push(Step::Keep(k));
-    op(&mut s, Op::Prepare(mono.basic.filter));
+    op(&mut s, Op::Prepare(mono.basic.filter, mono.film.stock));
     let denoise = mono.denoise;
     if reduced {
         if bin > 1 {
@@ -354,6 +368,17 @@ pub(crate) fn stages(
     }
     if greycard_render::mono::masks(edit).any(|(_, l)| l.local_contrast != 0.0) {
         op(&mut s, Op::Local(light));
+    }
+    if mono_tone::film::wants_effects(&mono.film) {
+        op(
+            &mut s,
+            Op::Film(Box::new(FilmOp {
+                film: mono.film,
+                exposure: mono.basic.exposure,
+                tone_eq: mono.tone_eq,
+                bin,
+            })),
+        );
     }
     keep(&mut s, Keep::Developed);
     s.steps
@@ -923,11 +948,11 @@ pub(crate) fn corrections(
 
 /// The plane of `frame`, from nothing.
 pub(crate) fn prepare(frame: &RawFrame) -> Result<Mono, String> {
-    prepare_with(frame, Filter::None)
+    prepare_with(frame, Filter::None, FilmStock::None)
 }
 
-/// [`prepare`], a color photo mixed through `filter`.
-fn prepare_with(frame: &RawFrame, filter: Filter) -> Result<Mono, String> {
+/// [`prepare`], a color photo mixed through `filter`, as `stock` sees it.
+fn prepare_with(frame: &RawFrame, filter: Filter, stock: FilmStock) -> Result<Mono, String> {
     let profiles = profiles();
     let camera = mono_decode::camera(frame);
     // A profile is of a sensor's samples: nothing in it is a rendered
@@ -941,6 +966,7 @@ fn prepare_with(frame: &RawFrame, filter: Filter) -> Result<Mono, String> {
             defects,
             hot_pixels: (!rendered).then(Default::default),
             mix: filter.weights(),
+            response: mono_tone::film::color_response(stock, filter),
         },
     )
     .map_err(|e| e.to_string())?;
@@ -987,7 +1013,7 @@ fn baseline(frame: &RawFrame) -> f32 {
 /// `op` on the plane.
 pub(crate) fn run(op: &Op, m: &mut Mono, on: On<'_>) -> Result<(), String> {
     match op {
-        Op::Prepare(filter) => *m = prepare_with(on.frame, *filter)?,
+        Op::Prepare(filter, stock) => *m = prepare_with(on.frame, *filter, *stock)?,
         Op::Reduce(bin) => {
             m.set(greycard_render::mono::reduced(&m.plane, *bin));
             m.clip = Arc::new(greycard_render::mono::reduced(&m.clip, *bin));
@@ -1091,6 +1117,36 @@ pub(crate) fn run(op: &Op, m: &mut Mono, on: On<'_>) -> Result<(), String> {
                 mono_tone::spatial::local_ev(&lit.picture())
             }));
         }
+        Op::Film(f) => {
+            // The film sees the exposure whether the zones rest or not.
+            let light = Light {
+                exposure: f.exposure,
+                tone_eq: f.tone_eq,
+            };
+            let lit = Lit::of(m, &light);
+            let detail = m.detail.clone();
+            let mut inputs = lit.inputs();
+            if let Some(d) = &detail {
+                inputs.push(d);
+            }
+            let (film, bin, exposure, zoned) =
+                (f.film, f.bin as f32, f.exposure, lit.zones.is_some());
+            m.detail = Some(on.cache.get(op, &inputs, || {
+                let mut picture = lit.picture().into_owned();
+                if !zoned {
+                    let k = exposure.exp2();
+                    picture.data.iter_mut().for_each(|v| *v *= k);
+                }
+                let mut gain =
+                    mono_tone::film::effects(&picture, &film, bin).unwrap_or_else(|| {
+                        Plane::new(picture.width, picture.height, vec![0.0; picture.data.len()])
+                    });
+                if let Some(d) = &detail {
+                    gain.data.iter_mut().zip(&d.data).for_each(|(g, d)| *g += d);
+                }
+                gain
+            }));
+        }
     }
     Ok(())
 }
@@ -1098,7 +1154,7 @@ pub(crate) fn run(op: &Op, m: &mut Mono, on: On<'_>) -> Result<(), String> {
 /// What `op` says of the picture, for the walk's [`Meta`].
 pub(crate) fn measured(op: &Op, m: &Mono, meta: &mut Meta) {
     match op {
-        Op::Prepare(_) => meta.full = (m.plane.width as u32, m.plane.height as u32),
+        Op::Prepare(..) => meta.full = (m.plane.width as u32, m.plane.height as u32),
         Op::Reduce(bin) => meta.bin = *bin,
         Op::Opcodes => meta.clip_level = m.white,
         Op::Orient(o) if stages::swaps(*o) => meta.full = (meta.full.1, meta.full.0),

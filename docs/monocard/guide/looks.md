@@ -25,7 +25,7 @@ Solar 1 to 3 are not matched to the camera's Solarized modes. Selenium and Warm 
 
 ## Save your own look
 
-1. Set the controls of the six panels.
+1. Set the controls of the panels. A film and its settings are kept too.
 2. Click **Save as look**, type a name, and click **Save**.
 
 The look holds each control that is not at its default, **Exposure** too. It does not hold the crop, the lens, the masks, or the retouch. A name of your own that is in use is written over. A name of a bundled look is refused.

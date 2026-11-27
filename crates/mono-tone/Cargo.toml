@@ -2,7 +2,8 @@
 name = "mono-tone"
 version.workspace = true
 description = "Monocard: tone equalizer, local contrast tools, curves, and the display transform on one plane"
-license = "GPL-3.0-or-later"
+# GPL-3.0-only for src/film/mod.rs, ported from spektrafilm (docs/notes/738).
+license = "GPL-3.0-or-later AND GPL-3.0-only"
 edition.workspace = true
 rust-version.workspace = true
 authors.workspace = true

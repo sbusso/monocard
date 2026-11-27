@@ -37,6 +37,9 @@ Windows versions are for 64-bit Intel and AMD. They are new and have had little 
   on it. A setting hides color photos.
 - **Light and curve.** Sliders for light, a paper grade from 00 to 5 as darkroom paper, and
   a curve that is always in view. Sigmoid or AgX as the display transform.
+- **Film.** Eighteen black and white films from Kodak, Ilford, and Fujifilm, printed on
+  Ilford Multigrade. Each film has its own curve, grain, halation, and edge effect, and a
+  color photo goes to grey through the film's color sensitivity.
 - **Zones.** A view of the picture in zones 0 to X, and a tone equalizer of nine zones that
   keeps to edges.
 - **Highlights.** A raw histogram of the sensor's own values, a map of what the sensor
@@ -117,7 +120,10 @@ published or endorsed by Greycard's author. Greycard's own README is
 Denoise, tone, and detail tools are ported from
 [darktable](https://github.com/darktable-org/darktable), GPL-3.0-or-later. The import of
 Lightroom's monochrome presets is adapted from
-[RAWmakase](https://github.com/pch/rawmakase), MIT. See the
+[RAWmakase](https://github.com/pch/rawmakase), MIT. The film and its print are ported from
+[spektrafilm](https://github.com/andreavolpato/spektrafilm), GPL-3.0, with film and paper data
+from [SpektraLab](https://github.com/JamesQiu2005/SpektraLab) and grain data from
+[Negs](https://github.com/noahhaasis/negs), CC BY-SA 4.0. See the
 [third-party notices](../docs/monocard/THIRD-PARTY-NOTICES.md).
 
 Ricoh, GR, and GR IV Monochrome belong to Ricoh Imaging Company, Ltd. Monocard is not

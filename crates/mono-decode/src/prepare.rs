@@ -24,6 +24,8 @@ pub struct PrepareOptions {
     /// Red, green and blue's parts in the grey of a frame made of a color
     /// photo (`DngTags::from_color`). Nothing to a monochrome one.
     pub mix: [f32; 3],
+    /// A film's response, which stands in for `mix` where it is given.
+    pub response: Option<mono_core::color::ColorResponse>,
 }
 
 impl Default for PrepareOptions {
@@ -32,6 +34,7 @@ impl Default for PrepareOptions {
             hot_pixels: Some(HotPixelOptions::default()),
             defects: Vec::new(),
             mix: mono_core::edit::Filter::None.weights(),
+            response: None,
         }
     }
 }
@@ -66,7 +69,7 @@ pub fn prepare(frame: &RawFrame, options: &PrepareOptions) -> Result<Prepared> {
     if frame.dng.from_color {
         // Its samples are a develop's, so nothing in them is a sensor's
         // to repair or to count.
-        let grey = grey_of(frame, options.mix)?;
+        let grey = grey_of(frame, options.mix, options.response.as_ref())?;
         let options = PrepareOptions {
             hot_pixels: None,
             defects: Vec::new(),
@@ -145,7 +148,11 @@ pub fn prepare(frame: &RawFrame, options: &PrepareOptions) -> Result<Prepared> {
 /// A frame made of a color photo as one channel: each pixel's three
 /// samples mixed by `mix`, and nothing under 0, which a color outside the
 /// working space can give.
-fn grey_of(frame: &RawFrame, mix: [f32; 3]) -> Result<RawFrame> {
+fn grey_of(
+    frame: &RawFrame,
+    mix: [f32; 3],
+    response: Option<&mono_core::color::ColorResponse>,
+) -> Result<RawFrame> {
     let Samples::F32(rgb) = &frame.samples else {
         return Err(Error::Unsupported("a color frame of integers".into()));
     };
@@ -162,7 +169,10 @@ fn grey_of(frame: &RawFrame, mix: [f32; 3]) -> Result<RawFrame> {
     }
     let grey = rgb
         .par_chunks(3)
-        .map(|p| (mix[0] * p[0] + mix[1] * p[1] + mix[2] * p[2]).max(0.0))
+        .map(|p| match response {
+            Some(r) => r.grey([p[0], p[1], p[2]]),
+            None => (mix[0] * p[0] + mix[1] * p[1] + mix[2] * p[2]).max(0.0),
+        })
         .collect();
     let mut dng = frame.dng.clone();
     dng.from_color = false;

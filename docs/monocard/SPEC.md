@@ -201,7 +201,7 @@ Built-in looks for v1.0.
 
 The Solar looks are the one place where matching the camera matters. Calibrate them by shooting the same scene as RAW plus in-camera JPEG for each Solarized type, then fit the curves until the RAW render matches the JPEG within a small tolerance.
 
-Grain is applied in display-referred space after tone mapping. It is strongest in the midtones and fades toward pure black and white, like silver film. Controls are Amount, Size, Roughness and "Link to ISO", which scales grain with the file's ISO.
+Grain is applied in display-referred space after tone mapping. It is strongest in the midtones and fades toward pure black and white, like silver film. Controls are Amount, Size, Roughness and "Link to ISO", which scales grain with the file's ISO. With a film set, the grain's strength comes from the film's RMS granularity and "Link to ISO" is off (§738).
 
 Toning maps grey to colour at the very end. It has an overall tint, a split tone with separate highlight and shadow hues, and a balance control. Presets cover selenium, sepia, platinum, cyanotype and gold.
 
@@ -242,10 +242,11 @@ The Develop view has six panels in pipeline order, and nothing else. A first-tim
 | --- | --- |
 | Look | Built-in and user looks as thumbnails, strength slider |
 | Basic | Exposure, Contrast, Blacks, Midtones, Whites, display transform choice |
+| Film | Film, development, halation, edge effect, paper grade, grain (§738) |
 | Light | Tone equalizer, Zone view toggle, masks |
 | Detail | Denoise (mode, strength, detail), sharpening, local contrast, contrast equalizer |
 | Highlights | Clip map, shoulder, edge inpaint, bracket merge |
-| Finish | Grain, toning, vignette, geometry, crop |
+| Finish | Toning, vignette, solarize, geometry, crop |
 
 Interaction rules.
 

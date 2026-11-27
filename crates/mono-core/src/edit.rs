@@ -16,6 +16,10 @@ pub struct MonoEdit {
     pub look: LookRef,
     pub basic: Basic,
     pub display: Display,
+    /// The film the scene is shot on and printed from. Not written when
+    /// there is none, so an edit without one reads as before.
+    #[serde(skip_serializing_if = "Film::is_default")]
+    pub film: Film,
     pub tone_eq: ToneEq,
     pub curve: Curve,
     pub contrast_eq: ContrastEq,
@@ -36,6 +40,7 @@ impl Default for MonoEdit {
             look: Default::default(),
             basic: Default::default(),
             display: Default::default(),
+            film: Default::default(),
             tone_eq: Default::default(),
             curve: Default::default(),
             contrast_eq: Default::default(),
@@ -144,17 +149,22 @@ impl Filter {
     // 47), not a filter's measured curve on a camera's sensitivities.
     pub fn weights(self) -> [f32; 3] {
         const LUMINANCE: [f32; 3] = [0.2627, 0.6780, 0.0593];
-        let through = match self {
+        let through = self.transmission();
+        let w = [0, 1, 2].map(|c| LUMINANCE[c] * through[c]);
+        let sum: f32 = w.iter().sum();
+        w.map(|v| v / sum)
+    }
+
+    /// What the filter lets through of red, green and blue.
+    pub fn transmission(self) -> [f32; 3] {
+        match self {
             Filter::None => [1.0, 1.0, 1.0],
             Filter::Yellow => [1.0, 0.95, 0.35],
             Filter::Orange => [1.0, 0.7, 0.15],
             Filter::Red => [1.0, 0.25, 0.05],
             Filter::Green => [0.4, 1.0, 0.35],
             Filter::Blue => [0.15, 0.35, 1.0],
-        };
-        let w = [0, 1, 2].map(|c| LUMINANCE[c] * through[c]);
-        let sum: f32 = w.iter().sum();
-        w.map(|v| v / sum)
+        }
     }
 }
 
@@ -184,6 +194,161 @@ pub struct Display {
     /// The paper's grade, -1 (00) to 5. Not written at [`NORMAL_GRADE`].
     #[serde(skip_serializing_if = "is_normal_grade")]
     pub grade: f32,
+}
+
+/// A black and white film and its development (the FILM panel). With a
+/// film, the scene is exposed on it, and the negative printed on Ilford
+/// Multigrade at the paper's grade, [`Display::grade`]; the display
+/// transform stands aside.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Film {
+    pub stock: FilmStock,
+    /// Push (+) or pull (-), -2 to 2: steps of the negative's contrast.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub development: f32,
+    /// The glow round bright light and the film's own spread, 0 to 2 of
+    /// the film's.
+    pub halation: f32,
+    /// The developer's edge effect, 0 to 2 of the film's.
+    pub edges: f32,
+}
+
+impl Default for Film {
+    fn default() -> Self {
+        Self {
+            stock: FilmStock::None,
+            development: 0.0,
+            halation: 1.0,
+            edges: 1.0,
+        }
+    }
+}
+
+impl Film {
+    pub fn is_none(&self) -> bool {
+        self.stock == FilmStock::None
+    }
+
+    fn is_default(&self) -> bool {
+        *self == Film::default()
+    }
+}
+
+fn is_zero(v: &f32) -> bool {
+    *v == 0.0
+}
+
+/// The films, in the order of the FILM panel's list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum FilmStock {
+    #[default]
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "kodak-tri-x-400")]
+    TriX400,
+    #[serde(rename = "kodak-t-max-100")]
+    TMax100,
+    #[serde(rename = "kodak-t-max-400")]
+    TMax400,
+    #[serde(rename = "kodak-t-max-p3200")]
+    TMaxP3200,
+    #[serde(rename = "kodak-plus-x-125")]
+    PlusX125,
+    #[serde(rename = "kodak-double-x")]
+    DoubleX,
+    #[serde(rename = "ilford-hp5-plus")]
+    Hp5Plus,
+    #[serde(rename = "ilford-fp4-plus")]
+    Fp4Plus,
+    #[serde(rename = "ilford-pan-f-plus")]
+    PanFPlus,
+    #[serde(rename = "ilford-delta-100")]
+    Delta100,
+    #[serde(rename = "ilford-delta-400")]
+    Delta400,
+    #[serde(rename = "ilford-delta-3200")]
+    Delta3200,
+    #[serde(rename = "ilford-sfx-200")]
+    Sfx200,
+    #[serde(rename = "ilford-xp2-super")]
+    Xp2Super,
+    #[serde(rename = "ilford-ortho-plus")]
+    OrthoPlus,
+    #[serde(rename = "fujifilm-acros-ii")]
+    AcrosII,
+    #[serde(rename = "fujifilm-neopan-400")]
+    Neopan400,
+    #[serde(rename = "fujifilm-neopan-1600")]
+    Neopan1600,
+}
+
+impl FilmStock {
+    pub const ALL: [FilmStock; 19] = [
+        FilmStock::None,
+        FilmStock::TriX400,
+        FilmStock::TMax100,
+        FilmStock::TMax400,
+        FilmStock::TMaxP3200,
+        FilmStock::PlusX125,
+        FilmStock::DoubleX,
+        FilmStock::Hp5Plus,
+        FilmStock::Fp4Plus,
+        FilmStock::PanFPlus,
+        FilmStock::Delta100,
+        FilmStock::Delta400,
+        FilmStock::Delta3200,
+        FilmStock::Sfx200,
+        FilmStock::Xp2Super,
+        FilmStock::OrthoPlus,
+        FilmStock::AcrosII,
+        FilmStock::Neopan400,
+        FilmStock::Neopan1600,
+    ];
+
+    /// Every film's [`FilmStock::label`], in [`FilmStock::ALL`]'s order.
+    pub const LABELS: [&'static str; 19] = {
+        let mut out = [""; 19];
+        let mut i = 0;
+        while i < out.len() {
+            out[i] = Self::ALL[i].label();
+            i += 1;
+        }
+        out
+    };
+
+    /// The film's place in the data, None for no film.
+    pub fn index(self) -> Option<usize> {
+        Self::ALL
+            .iter()
+            .position(|s| *s == self)
+            .and_then(|i| i.checked_sub(1))
+    }
+
+    /// The name the panel shows.
+    pub const fn label(self) -> &'static str {
+        match self {
+            FilmStock::None => "None",
+            FilmStock::TriX400 => "Kodak Tri-X 400",
+            FilmStock::TMax100 => "Kodak T-Max 100",
+            FilmStock::TMax400 => "Kodak T-Max 400",
+            FilmStock::TMaxP3200 => "Kodak T-Max P3200",
+            FilmStock::PlusX125 => "Kodak Plus-X 125",
+            FilmStock::DoubleX => "Kodak Double-X 5222",
+            FilmStock::Hp5Plus => "Ilford HP5 Plus 400",
+            FilmStock::Fp4Plus => "Ilford FP4 Plus 125",
+            FilmStock::PanFPlus => "Ilford Pan F Plus 50",
+            FilmStock::Delta100 => "Ilford Delta 100",
+            FilmStock::Delta400 => "Ilford Delta 400",
+            FilmStock::Delta3200 => "Ilford Delta 3200",
+            FilmStock::Sfx200 => "Ilford SFX 200",
+            FilmStock::Xp2Super => "Ilford XP2 Super 400",
+            FilmStock::OrthoPlus => "Ilford Ortho Plus 80",
+            FilmStock::AcrosII => "Fujifilm Acros II",
+            FilmStock::Neopan400 => "Fujifilm Neopan 400",
+            FilmStock::Neopan1600 => "Fujifilm Neopan 1600",
+        }
+    }
 }
 
 /// The grade that changes nothing.
@@ -535,6 +700,18 @@ impl MonoEdit {
         !self.contrast_eq.is_neutral()
             || !self.local_contrast.is_neutral()
             || !self.diffuse.is_neutral()
+    }
+
+    /// Whether the develop must make the film's effects: a film with its
+    /// halation or edge effect on.
+    pub fn wants_film_plane(&self) -> bool {
+        !self.film.is_none() && (self.film.halation > 0.0 || self.film.edges > 0.0)
+    }
+
+    /// Whether `MonoFrame::detail` holds anything: the detail tools' gain,
+    /// the film's, or both.
+    pub fn wants_detail_plane(&self) -> bool {
+        self.wants_detail() || self.wants_film_plane()
     }
 
     /// Whether the picture leaves grey: what decides a grey or RGB export.

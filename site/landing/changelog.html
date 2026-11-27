@@ -34,6 +34,24 @@
 
 <main id="main" class="wrap rels">
   <h1>Changelog</h1>
+  <article class="rel" id="v0.4.0">
+    <header><h2>0.4.0</h2><p class="note"><time datetime="2026-11-27">27 November 2026</time></p></header>
+    <div>
+      <ul class="plain">
+        <li>A <b>FILM</b> panel, after BASIC. Choose one of 18 black and white films: Kodak Tri-X 400, T-Max 100, T-Max 400, T-Max P3200, Plus-X 125 and Double-X 5222; Ilford HP5 Plus, FP4 Plus, Pan F Plus 50, Delta 100, Delta 400, Delta 3200, SFX 200, XP2 Super and Ortho Plus 80; and Fujifilm Acros II, Neopan 400 and Neopan 1600. The photo is exposed on the film and the negative printed on Ilford Multigrade. The film’s print takes the place of the display transform.</li>
+        <li><b>Development</b> pushes or pulls the negative, -2 to +2. Each step is a first guess, not measured.</li>
+        <li><b>Paper grade</b> moves from BASIC to FILM. With a film, it sets the Multigrade filter. <b>Grain</b> moves from FINISH to FILM.</li>
+        <li>Each film has its own grain, from its data sheet. A fast film has large grain, a slow one fine grain. There is no grain in the paper’s white.</li>
+        <li><b>Halation</b>: a soft glow around bright points, as light bounces off the back of the film. <b>Edge effect</b>: a dark and a light rim along edges, from the developer. Both 0 to 200%.</li>
+        <li>A color photo goes to grey through the film’s own color sensitivity. Ortho Plus 80 does not see red, so red goes dark.</li>
+        <li>A look, and a look for a camera mode, can hold a film and its settings.</li>
+        <li>Fixed: a new <b>Filter</b> on a color photo did not change the photo until another edit.</li>
+        <li>The film curves are from the makers’ data sheets, digitized by <a href="https://github.com/JamesQiu2005/SpektraLab">SpektraLab</a> (CC BY-SA 4.0), and seven grain figures are from <a href="https://github.com/noahhaasis/negs">Negs</a> (CC BY-SA 4.0). The film, print, halation and edge effect are ported from <a href="https://github.com/andreavolpato/spektrafilm">spektrafilm</a>. See <a href="https://github.com/sbusso/monocard/blob/monocard/docs/notes/738-film-and-paper.md">the design note</a>.</li>
+      </ul>
+      <p>0.3.1 opens an edit that 0.4.0 saved, without the film.</p>
+      <p class="note"><a href="https://github.com/sbusso/monocard/releases/tag/monocard-v0.4.0">Release 0.4.0 on GitHub</a>, with the checksums.</p>
+    </div>
+  </article>
   <article class="rel" id="v0.3.1">
     <header><h2>0.3.1</h2><p class="note"><time datetime="2026-11-26">26 November 2026</time></p></header>
     <div>

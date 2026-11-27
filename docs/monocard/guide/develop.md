@@ -55,11 +55,10 @@ A look sets several controls at once. Click a tile to put it on, and **None** to
 | **Filter** | **None**, **Yellow**, **Orange**, **Red**, **Green**, **Blue** | **None** | On a color photo only. Mixes its colors into grey as a black and white film filter does. See [Color photos](#color-photos) |
 | **Exposure** | -5 to +5 EV | 0 | Brightens or darkens in stops |
 | **Contrast** | -100 to +100 | 0 | Changes contrast around middle grey |
-| **Paper grade** | 00 to 5 | 2 | Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. Middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG |
 | **Blacks** | -100 to +100 | 0 | Lifts or lowers the tones below middle grey |
 | **Midtones** | -100 to +100 | 0 | Lightens or darkens between black and white |
 | **Whites** | -100 to +100 | 0 | The same control as **Shoulder** in [HIGHLIGHTS](#highlights). Positive values compress |
-| **Display transform** | **Sigmoid**, **AgX** | **Sigmoid** | Fits the light of the scene to the screen and the print |
+| **Display transform** | **Sigmoid**, **AgX** | **Sigmoid** | Fits the light of the scene to the screen and the print. Off when a film is set in [FILM](#film) |
 
 ![The BASIC panel with Transform open](images/panel-basic.webp "BASIC, with Transform open")
 
@@ -79,7 +78,7 @@ Monocard opens a color photo in grey. It uses Greycard's color develop with the 
 | **Green** | Lighten leaves and grass, and darken red and skin |
 | **Blue** | Lighten a blue sky, and darken red and yellow |
 
-The filters are first versions, not measured filters. The grid shows a color photo's camera preview in grey without the filter until the photo has an edit.
+The filters are first versions, not measured filters. With a film in [FILM](#film), the mix is the film's color sensitivity, and the filter acts on the light before the film. The grid shows a color photo's camera preview in grey without the filter until the photo has an edit.
 
 ### Transform
 
@@ -102,6 +101,41 @@ The filters are first versions, not measured filters. The grid shows a color pho
 The histogram is behind the curve. When the sensor clipped in the photo, a dashed line shows where its white is, and the part beyond it is hatched.
 
 **Levels** has **Input black**, **Input white**, **Output black**, and **Output white**, each from 0 to 100%.
+
+## FILM
+
+FILM exposes the photo on a black and white film and prints the negative on Ilford Multigrade paper. The film's print then takes the place of the display transform.
+
+| Control | Range | Default | What it does |
+| --- | --- | --- | --- |
+| **Film** | **None** and 18 films | **None** | The film the photo is exposed on. **None** keeps the display transform of BASIC |
+| **Development** | -2 to +2 | 0 | Push (+) or pull (-): makes the negative harder or softer. Middle grey stays where it is |
+| **Halation** | 0 to 200% | 100% | A soft glow around bright points, from light that bounces off the back of the film. With a film only |
+| **Edge effect** | 0 to 200% | 100% | A dark and a light rim along an edge, from the developer. It makes the negative look sharper. With a film only |
+| **Paper grade** | 00 to 5 | 2 | Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. With a film, it sets the Multigrade filter. Without one, middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG |
+
+The films are Kodak Tri-X 400, T-Max 100, T-Max 400, T-Max P3200, Plus-X 125 and Double-X 5222; Ilford HP5 Plus, FP4 Plus, Pan F Plus 50, Delta 100, Delta 400, Delta 3200, SFX 200, XP2 Super and Ortho Plus 80; and Fujifilm Acros II, Neopan 400 and Neopan 1600.
+
+Each film is its characteristic curve, from the maker's data sheet: how dark the negative gets for each amount of light. A film with a long toe, such as Tri-X, keeps more shadow detail. A film with a short one, such as Pan F Plus, makes deeper blacks.
+
+A color photo goes to grey through the film's own color sensitivity, and through the **Filter** of BASIC. So Ortho Plus 80, which does not see red, makes red lips and red bricks dark. A monochrome photo has no color, so this does not change it.
+
+The film also sets the grain. A fast film, such as Delta 3200, has large grain. A slow one, such as Pan F Plus, has fine grain. The grain is strongest in the midtones and none in the paper's white. **Amount** in [Grain](#grain) scales it, and **Link to ISO** is off.
+
+The film's print, grain, halation and edge effect are the same on the screen and in an export. The curves were digitized from the makers' data sheets by SpektraLab (Hanze Qiu), under CC BY-SA 4.0. The film model is ported from spektrafilm (Andrea Volpato).
+
+### Grain
+
+| Control | Range | Default | What it does |
+| --- | --- | --- | --- |
+| **Amount** | 0 to 100% | 0% | The strength, most in the midtones |
+| **Size** | 0 to 100% | 30% | The size of the grain |
+| **Roughness** | 0 to 100% | 50% | How rough the grain is |
+| **Link to ISO** | On, off | Off | Makes the grain stronger at a high ISO. Not shown with a film, whose grain is set by its speed |
+
+![The Grain controls](images/panel-grain.webp "Grain")
+
+![A wall without grain, with fine grain, and with large grain](images/grain-effect.webp "Amount and Size of the grain")
 
 ## LIGHT
 
@@ -204,19 +238,6 @@ Clipped data is lost. These controls shape the way into white.
 To keep highlights, use the camera's highlight-weighted metering and negative exposure compensation, and lift the shadows in Monocard.
 
 ## FINISH
-
-### Grain
-
-| Control | Range | Default | What it does |
-| --- | --- | --- | --- |
-| **Amount** | 0 to 100% | 0% | The strength, most in the midtones |
-| **Size** | 0 to 100% | 30% | The size of the grain |
-| **Roughness** | 0 to 100% | 50% | How rough the grain is |
-| **Link to ISO** | On, off | Off | Makes the grain stronger at a high ISO |
-
-![The Grain controls](images/panel-grain.webp "Grain")
-
-![A wall without grain, with fine grain, and with large grain](images/grain-effect.webp "Amount and Size of the grain")
 
 ### Toning
 

@@ -25,6 +25,10 @@ shadows here. To keep more range, merge brackets.";
 pub const FILTER_HELP: &str = "The sensor recorded no color, so a software color filter is not \
 offered. Use a yellow, orange, or red filter on the lens.";
 
+pub const FILM_HELP: &str = "With a film, the photo is exposed on the film and the negative \
+printed on Ilford Multigrade at the paper grade. The display transform is not used. The film \
+curves are from the makers' data sheets, digitized by SpektraLab (Hanze Qiu), CC BY-SA 4.0.";
+
 /// Which keys the mono views take, and what else has them.
 pub const KEYS_HELP: &str = "On this tab, A shows before, B after, S the split, Z the zones, and \
 C the clip map. The other tabs and the grid keep the usual keys: B collection, Z zoom, C cull.";

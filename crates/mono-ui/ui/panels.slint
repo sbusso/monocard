@@ -1,7 +1,7 @@
 // The mono panels: the six of a monochrome frame on the Develop tab, and
 // a mask's own on the Masks tab, drawn from the rows of `Mono`.
 
-import { LineEdit } from "std-widgets.slint";
+import { ComboBox, LineEdit } from "std-widgets.slint";
 import { Theme, LabelColumn } from "../../greycard-slint/ui/theme.slint";
 import { Section, EditSlider, Toggle, Segmented, PanelButton, CurveEditor, Typing } from "../../greycard-slint/ui/controls.slint";
 import { Mono, MonoRow, MonoCurve, MonoLook } from "state.slint";
@@ -385,8 +385,9 @@ export component MonoPanels inherits VerticalLayout {
     callback curve-resized(float);
     callback focus-keys();
     pure function icon-of(name: string) -> image {
-        return name == "mono-look" ? @image-url("../../greycard-slint/ui/icons/film.svg")
+        return name == "mono-look" ? @image-url("../../greycard-slint/ui/icons/sparkles.svg")
             : name == "mono-basic" ? @image-url("../../greycard-slint/ui/icons/sliders-horizontal.svg")
+            : name == "mono-film" ? @image-url("../../greycard-slint/ui/icons/film.svg")
             : name == "mono-light" ? @image-url("../../greycard-slint/ui/icons/sun.svg")
             : name == "mono-detail" ? @image-url("../../greycard-slint/ui/icons/focus.svg")
             : name == "mono-highlights" ? @image-url("../../greycard-slint/ui/icons/contrast.svg")
@@ -461,7 +462,24 @@ export component MonoPanels inherits VerticalLayout {
                     selected(v) => { Mono.picked(row.id, v); }
                 }
             }
-            if row.kind != "slider" && row.kind != "toggle" && row.kind != "choice": Rest {
+            // A choice of many, such as the film.
+            if row.kind == "list": VerticalLayout {
+                padding-bottom: 2px;
+                spacing: 2px;
+                Text {
+                    text: row.label;
+                    color: row.enabled ? Theme.text : Theme.text-muted;
+                    font-size: Theme.font-sm;
+                }
+                ComboBox {
+                    accessible-label: row.label;
+                    enabled: row.enabled;
+                    model: row.lines.length > 0 ? row.lines[0] : [];
+                    current-value: row.current;
+                    selected(v) => { Mono.picked(row.id, v); }
+                }
+            }
+            if row.kind != "slider" && row.kind != "toggle" && row.kind != "choice" && row.kind != "list": Rest {
                 item: row;
                 curve-picture: root.curve-picture;
                 curve-resized(w) => { root.curve-resized(w); }

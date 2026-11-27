@@ -23,6 +23,8 @@ struct MonoParams {
     zone: vec4<f32>,
     factors: array<vec4<f32>, 3>,
     curve: array<vec4<f32>, 64>,
+    film_head: vec4<f32>,
+    film: array<vec4<f32>, 64>,
 }
 
 struct MonoLocalParams {
@@ -132,8 +134,23 @@ fn mono_grade(y: f32) -> f32 {
     return mono.range.y + span * clamp((exp2(-d * mono.grade.w) - black) / (1.0 - black), 0.0, 1.0);
 }
 
-// Step 11, the paper's grade with it.
+// A film's print at scene light, `film::look_up`: log2 over grey from
+// -14 to 8 on 256 entries.
+fn mono_film(x: f32) -> f32 {
+    let l = log2(max(x, 1e-20) / MONO_GREY);
+    let p = clamp((l + 14.0) / 22.0, 0.0, 1.0) * 255.0;
+    let i = u32(min(floor(p), 254.0));
+    let t = p - f32(i);
+    let a = mono.film[i >> 2u][i & 3u];
+    let b = mono.film[(i + 1u) >> 2u][(i + 1u) & 3u];
+    return a + (b - a) * t;
+}
+
+// Step 11, the paper's grade with it; with a film, its print.
 fn mono_display(x: f32) -> f32 {
+    if (mono.film_head.x == 1.0) {
+        return mono.range.y + (mono.range.x - mono.range.y) * mono_film(x);
+    }
     if (mono.head.x == 2.0) {
         return mono_grade(mono.range.y + (mono.range.x - mono.range.y) * min(x, 1.0));
     }

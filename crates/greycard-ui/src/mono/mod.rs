@@ -201,7 +201,7 @@ fn welcomed(app: &App, highlights: bool) {
     app.global::<Mono>().set_welcome(false);
     if highlights {
         tab(app, "Develop");
-        set_folded::<4>(app, false);
+        set_folded::<5>(app, false);
     }
 }
 
@@ -500,7 +500,7 @@ pub(crate) fn show_open_folds(app: &App, open: &[String]) {
 pub(crate) fn curve_shown_on(app: &App) -> bool {
     let (folded, fold) = match app.get_shown_tab().as_str() {
         "Develop" => (folded::<1>(app), None),
-        "Masks" if app.get_target() > 0 => (folded::<6>(app), Some("mask-curve")),
+        "Masks" if app.get_target() > 0 => (folded::<7>(app), Some("mask-curve")),
         _ => return false,
     };
     !folded
@@ -508,9 +508,20 @@ pub(crate) fn curve_shown_on(app: &App) -> bool {
         && fold.is_none_or(|f| HELD.with_borrow(|h| h.open.contains(f)))
 }
 
+/// More options than this are a list, not buttons.
+const LIST: usize = 9;
+
 fn row(v: &panel::RowView) -> MonoRow {
-    // Up to five short options on a line; more, three to a line.
-    let per = if v.options.len() > 5 { 3 } else { 5 };
+    let list = v.kind == "choice" && v.options.len() > LIST;
+    // Up to five short options on a line; more, three to a line; a list,
+    // one line.
+    let per = if list {
+        LIST.max(v.options.len())
+    } else if v.options.len() > 5 {
+        3
+    } else {
+        5
+    };
     let lines: Vec<ModelRc<SharedString>> = v
         .options
         .chunks(per)
@@ -522,7 +533,7 @@ fn row(v: &panel::RowView) -> MonoRow {
         .collect();
     MonoRow {
         id: v.id.into(),
-        kind: v.kind.into(),
+        kind: if list { "list" } else { v.kind }.into(),
         label: v.label.into(),
         minimum: v.min,
         maximum: v.max,

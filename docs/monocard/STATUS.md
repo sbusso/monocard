@@ -14,6 +14,7 @@ opened and developed by hand, and one DNG from it.
 | Looks and brand | Ten looks, grain, toning, vignette, solarize, TOML looks, XMP import, icon, theme, About, landing page |
 | Learned and AI | Learned runner and training tools (no weights), subject and sky masks, HDR merge |
 | Camera modes | Mode read from the MakerNote, `monocard mode`, `monocard profile modes`, look import, export, rename and delete, Camera modes group, start from the camera's mode (on by default). Settings page Camera profiles (table, fit from folders, sensor noise, test chart), `monocard profile list`. Standard, Solid and Solarized 1 to 3 pass on three real DNGs. Soft, High Contrast and HDR Tone are drafts, Grainy has no photos. The photo's settings go over the mode's look as draft steps (no toning, grain, or HDR level). See [picture-controls.md](picture-controls.md) |
+| Film | FILM panel: 18 black and white films and Ilford Multigrade from SpektraLab's data (CC BY-SA 4.0), the print ported from spektrafilm, development as a draft contrast step, paper grade and grain moved in. The film's grain from its RMS granularity (7 measured, 11 estimated), halation and the developer's edge effect as a plane in exposure, a color photo seen through the film's spectral sensitivity. A look can hold a film. The frame is taken as 36 mm wide for the grain and halation. See [§738](../notes/738-film-and-paper.md) |
 | Recipes | The recipe book: a recipe from the open photo, edit, compare, import, export, delete. Files in `recipes` in the settings folder. Not applied to photos or sent to the camera. See [the guide](guide/looks.md#recipes) |
 | USB import | The camera window: menu entry, opens when a camera is connected, grid of the camera's photos, import of the selected ones. macOS only, with the `mono-usb` feature. Tested with a made-up camera, not with the real one. See [camera-connection.md](camera-connection.md) |
 
@@ -55,7 +56,8 @@ A 4 GB PC GPU was not tried.
 - The contrast equalizer, diffuse, midtones, blacks, and whites do not take a mask.
 - Color photos are listed and develop in grey: Greycard's color develop at the open, with
   the camera's white balance, then a mix through a filter (None, Yellow, Orange, Red, Green,
-  Blue; draft weights) in `mono_decode::prepare`. **Hide color photos** in Settings leaves
+  Blue; draft weights) in `mono_decode::prepare`, or, with a film, through the film's
+  spectral sensitivity and the filter's transmission. **Hide color photos** in Settings leaves
   them out, read at the start. No color tool is offered anywhere in the window. A raw that
   is not a DNG counts as color. A raw's JPEG goes with its raw. The lens opcodes and the clip
   map of a color raw are not carried. The grid's camera previews are grey by luma, with no

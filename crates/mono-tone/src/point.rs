@@ -27,6 +27,7 @@
 //!   1 EV, and gains in EV, so that the solve hits every zone's slider
 //!   exactly where the original's is a least squares fit.
 
+use crate::film;
 use bytemuck::{Pod, Zeroable};
 use mono_core::edit::{Basic, Curve, Display, NORMAL_GRADE, ToneEq, Transform};
 use mono_core::{MIDDLE_GREY, MonoEdit, MonoLocal, ZONES};
@@ -75,6 +76,10 @@ pub struct MonoParams {
     pub factors: [[f32; 4]; 3],
     /// The curve on 1/2.2 encoded light.
     pub curve: [[f32; 4]; CURVE / 4],
+    /// Film on, 0, 0, 0.
+    pub film_head: [f32; 4],
+    /// The film's print, see [`crate::film::Print::table`].
+    pub film: [[f32; 4]; film::TABLE / 4],
 }
 
 /// One mask's entry in the shader's `mono_locals`.
@@ -562,7 +567,15 @@ impl Compiled {
             zone: zones.zone,
             factors: zones.factors,
             curve: table(|g| levels(basic(g, b), &e.curve, &points)),
+            film_head: [0.0; 4],
+            film: [[0.0; 4]; film::TABLE / 4],
         };
+        // A film's print is the transform, the rolloff and the grade.
+        if let Some(print) = film::Print::new(&e.film, e.display.grade) {
+            p.film_head[0] = 1.0;
+            p.film = print.table();
+            p.grade[0] = 1.0;
+        }
         // Clipped light as the transform sees it. The shoulder and the
         // sliders of Basic do not move what is white; the curve and the
         // levels do, by where they put the white end.
@@ -607,8 +620,13 @@ impl Compiled {
         }
     }
 
-    /// Step 11 alone, the paper's grade with it.
+    /// Step 11 alone, the paper's grade with it. With a film, its print
+    /// between the paper's white and black.
     pub fn display(&self, x: f32) -> f32 {
+        if self.p.film_head[0] == 1.0 {
+            let [white, floor, ..] = self.p.range;
+            return floor + (white - floor) * film::look_up(&self.p.film, x);
+        }
         if self.p.head[0] == 2.0 {
             let [white, floor, ..] = self.p.range;
             return grade(floor + (white - floor) * x.min(1.0), &self.p);

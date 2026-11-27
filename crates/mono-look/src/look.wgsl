@@ -15,6 +15,8 @@ struct MonoLookParams {
     tone1: vec4<f32>,
     seed: vec4<u32>,
     solar: array<vec4<f32>, 5>,
+    film_grain: vec4<f32>,
+    film_grain_table: array<vec4<f32>, 64>,
 }
 
 // WGSL's pow at a base of 0 is left to the driver.
@@ -101,8 +103,19 @@ fn mono_grain(n: f32, px: vec2<f32>, scale: f32) -> f32 {
     sum += 0.6 * rough * min(cell * 2.2 * scale, 1.0)
         * mono_grain_noise(px, cell * 2.2, vec2<f32>(-0.904072, 0.42738), seed + 2u);
     let power = 1.0 + rough * rough * 1.36;
+    let unit = sum / (sqrt(power) * 0.45238);
     let g = mono_look_pow(n, 1.0 / 2.2);
-    let d = amount * 0.1 * 4.0 * g * (1.0 - g) * sum / (sqrt(power) * 0.45238);
+    if (mono_look.film_grain.x == 1.0) {
+        // `film::grain_look_up` at n, then the negative's grain in a cell.
+        let p = clamp(g, 0.0, 1.0) * 255.0;
+        let i = u32(min(floor(p), 254.0));
+        let t = p - f32(i);
+        let a = mono_look.film_grain_table[i >> 2u][i & 3u];
+        let b = mono_look.film_grain_table[(i + 1u) >> 2u][(i + 1u) & 3u];
+        let d = amount * mono_look.film_grain.y / cell * (a + (b - a) * t);
+        return clamp(n + d * unit, 0.0, 1.0);
+    }
+    let d = amount * 0.1 * 4.0 * g * (1.0 - g) * unit;
     return mono_look_pow(clamp(g + d, 0.0, 1.0), 2.2);
 }
 

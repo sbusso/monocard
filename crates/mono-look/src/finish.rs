@@ -11,6 +11,7 @@ use mono_core::MonoEdit;
 use mono_core::edit::{
     Display, Grain, SOLAR_NODES as NODES, Solarize, SolarizeKind, Tint, Toning, Vignette,
 };
+use mono_tone::film;
 
 /// The same functions for a shader, which declares the binding they read:
 ///
@@ -38,6 +39,11 @@ pub struct MonoLookParams {
     pub seed: [u32; 4],
     /// The solarize nodes with one continued off each end.
     pub solar: [[f32; 4]; 5],
+    /// The film's grain: 1 when on, its density's standard deviation in a
+    /// picture pixel at net density 1 (`film::Print::grain_sigma`), 0, 0.
+    pub film_grain: [f32; 4],
+    /// How a unit of it moves display light, see `film::Print::grain_table`.
+    pub film_grain_table: [[f32; 4]; film::TABLE / 4],
 }
 
 /// Step 12 compiled from an edit.
@@ -48,14 +54,34 @@ pub struct Compiled {
 
 impl Compiled {
     pub fn new(e: &MonoEdit, iso: Option<f32>) -> Self {
-        Self::of(
+        let mut c = Self::of(
             &e.display,
             &e.vignette,
             &e.solarize,
             &e.grain,
             &e.toning,
             iso,
-        )
+        );
+        // With a film, the grain is the negative's: its size is the data
+        // sheet's and an ISO says nothing more of it.
+        if let Some(print) = film::Print::new(&e.film, e.display.grade) {
+            let g = grain_constants(
+                &Grain {
+                    link_iso: false,
+                    ..e.grain
+                },
+                None,
+            );
+            c.p.grain[0] = g[0];
+            c.p.film_grain = [1.0, print.grain_sigma(), 0.0, 0.0];
+            c.p.film_grain_table = print.grain_table();
+        }
+        c
+    }
+
+    /// This look's grain alone, the film's when it has one; see [`grain`].
+    pub fn grain(&self, display: f32, px: [f32; 2], scale: f32) -> f32 {
+        grain_at(display.clamp(0.0, 1.0), px, scale, &self.p)
     }
 
     fn of(
@@ -86,6 +112,8 @@ impl Compiled {
                 tone1,
                 seed: [g.seed, 0, 0, 0],
                 solar: solar_constants(s),
+                film_grain: [0.0; 4],
+                film_grain_table: [[0.0; 4]; film::TABLE / 4],
             },
         }
     }
@@ -447,9 +475,15 @@ fn grain_at(n: f32, px: [f32; 2], scale: f32, p: &MonoLookParams) -> f32 {
         sum += w * seen * noise(px, cell * share, turn, p.seed[0].wrapping_add(k as u32));
         power += w * w;
     }
+    let unit = sum / (power.sqrt() * NOISE_DEVIATION);
+    if p.film_grain[0] == 1.0 {
+        // The negative's grain in a cell of `cell` pixels, as display light.
+        let d = amount * p.film_grain[1] / cell * film::grain_look_up(&p.film_grain_table, n);
+        return (n + d * unit).clamp(0.0, 1.0);
+    }
     let g = encode(n);
     let weight = 4.0 * g * (1.0 - g);
-    let d = amount * GRAIN_SCALE * weight * sum / (power.sqrt() * NOISE_DEVIATION);
+    let d = amount * GRAIN_SCALE * weight * unit;
     decode((g + d).clamp(0.0, 1.0))
 }
 

@@ -749,3 +749,4 @@ in its section; the roadmap and the changelog only point at it.
 - [§735. The gamut op at the output: process 2](notes/735-the-gamut-op-at-the-output.md) (2026-11-22)
 - [§736. A mask's Output sharpen with its own Radius and Threshold](notes/736-a-masks-output-sharpen-with-its-own-radius-and-threshold.md) (2026-11-22)
 - [§737. Pentax lenses found, and the lens written into an export](notes/737-pentax-lenses-found-and-the-lens-in-an-export.md) (2026-11-22)
+- [§738. Film and paper: the FILM panel](notes/738-film-and-paper.md) (2026-11-27)

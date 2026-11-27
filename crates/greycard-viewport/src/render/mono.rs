@@ -355,7 +355,7 @@ impl Mono {
             ],
             planes: [
                 flag(self.has[1] && zones),
-                flag(self.has[2] && edit.wants_detail()),
+                flag(self.has[2] && edit.wants_detail_plane()),
                 flag(self.has[3] && local_contrast),
                 flag(self.has[CLIP] && m.clip_map),
             ],

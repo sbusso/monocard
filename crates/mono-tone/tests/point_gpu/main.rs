@@ -3,7 +3,7 @@
 mod device;
 
 use device::{Gpu, Rng, worst};
-use mono_core::edit::{Basic, Curve, Display, Highlights, ToneEq, Transform};
+use mono_core::edit::{Basic, Curve, Display, Film, FilmStock, Highlights, ToneEq, Transform};
 use mono_core::{MonoEdit, MonoLocal, ZONES};
 use mono_tone::point::{self, Compiled, LocalCompiled, Paper};
 
@@ -52,6 +52,16 @@ fn edit(r: &mut Rng, k: usize) -> MonoEdit {
             mask_contrast: r.slider(-2.0, 2.0),
             mask_exposure: r.slider(-4.0, 4.0),
             ..Default::default()
+        },
+        // Every fourth on a film, each film in turn.
+        film: if k % 4 == 1 {
+            Film {
+                stock: FilmStock::ALL[1 + (k / 4) % (FilmStock::ALL.len() - 1)],
+                development: r.slider(-2.0, 2.0),
+                ..Default::default()
+            }
+        } else {
+            Film::default()
         },
         // Every third without the table.
         curve: if k.is_multiple_of(3) {

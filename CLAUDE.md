@@ -10,7 +10,8 @@
 ## Layout and licenses
 - Every crate is GPL-3.0-or-later (relicensed from MIT OR Apache-2.0 on
   2026-09-05 so RawTherapee and darktable algorithms can be ported with
-  attribution). Ported code says where it came from and who wrote it, in the
+  attribution), except mono-tone's `film` module, which is GPL-3.0-only
+  because spektrafilm states no "or later" (§738). Ported code says where it came from and who wrote it, in the
   file header.
 - `crates/greycard-core` must never depend on a UI toolkit, a tone-mapping
   choice, or an edit schema; those belong to consumers.

@@ -1,6 +1,7 @@
 //! Monocard: the single-channel picture, the mono edit schema, and the
 //! routing rule. Depends on nothing of ours, so every layer may read it.
 
+pub mod color;
 pub mod edit;
 pub mod plane;
 

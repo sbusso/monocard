@@ -8,7 +8,9 @@ use crate::curve;
 use crate::looks;
 use crate::state::{MonoUiState, Proof, Split, Surround, ZONE_COUNT};
 use crate::words;
-use mono_core::edit::{DenoiseMode, DiffusePreset, Filter, SolarizeKind, Toning, Transform};
+use mono_core::edit::{
+    DenoiseMode, DiffusePreset, FilmStock, Filter, SolarizeKind, Toning, Transform,
+};
 use mono_core::{MonoEdit, MonoLocal};
 use mono_look::TonePreset;
 use std::collections::BTreeSet;
@@ -85,9 +87,10 @@ const GRADE: &str = "display.grade";
 const FILTER: &str = "basic.filter";
 
 /// The panels' names in pipeline order.
-pub const NAMES: [&str; 6] = [
+pub const NAMES: [&str; 7] = [
     "mono-look",
     "mono-basic",
+    "mono-film",
     "mono-light",
     "mono-detail",
     "mono-highlights",
@@ -96,6 +99,14 @@ pub const NAMES: [&str; 6] = [
 
 fn always<T>(_: &T) -> bool {
     true
+}
+
+fn no_film(e: &MonoEdit) -> bool {
+    e.film.is_none()
+}
+
+fn has_film(e: &MonoEdit) -> bool {
+    !e.film.is_none()
 }
 
 fn control<T>(id: &'static str, label: &'static str, kind: Kind<T>) -> Control<T> {
@@ -294,21 +305,6 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
             basic.exposure
         )),
         E(signed!("basic.contrast", "Contrast", basic.contrast)),
-        E(control(
-            GRADE,
-            "Paper grade",
-            Kind::Slider(Slider {
-                min: -1.0,
-                max: 5.0,
-                step: 0.5,
-                scale: 1.0,
-                places: 1,
-                unit: "",
-                get: |e: &MonoEdit| e.display.grade,
-                // Whole and half grades.
-                set: |e, v| e.display.grade = (2.0 * v).round() / 2.0,
-            }),
-        )),
         E(signed!("basic.blacks", "Blacks", basic.blacks)),
         E(signed!("basic.midtones", "Midtones", basic.midtones)),
         E(signed!("basic.whites", "Whites", highlights.shoulder)),
@@ -320,7 +316,9 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
                 get: |e: &MonoEdit| index(&TRANSFORMS, &e.display.transform),
                 set: |e, i| e.display.transform = TRANSFORMS[i.min(1)],
             },
-        )),
+        )
+        // A film's print stands in for the transform.
+        .when(no_film)),
         E(fold("display", "Transform")),
         E(slider!(
             "display.contrast",
@@ -332,7 +330,8 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
             MonoEdit,
             display.contrast
         )
-        .under("display")),
+        .under("display")
+        .when(no_film)),
         E(share!(
             "display.shoulder",
             "Shoulder",
@@ -340,8 +339,13 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
             MonoEdit,
             display.shoulder
         )
-        .under("display")),
-        E(share!("display.toe", "Toe", 0.0..=1.0, MonoEdit, display.toe).under("display")),
+        .under("display")
+        .when(no_film)),
+        E(
+            share!("display.toe", "Toe", 0.0..=1.0, MonoEdit, display.toe)
+                .under("display")
+                .when(no_film),
+        ),
         E(share!(
             "display.white",
             "White ceiling",
@@ -349,7 +353,8 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
             MonoEdit,
             display.white_ceiling
         )
-        .under("display")),
+        .under("display")
+        .when(no_film)),
         E(slider!(
             "display.black",
             "Black floor",
@@ -360,7 +365,8 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
             MonoEdit,
             display.black_floor
         )
-        .under("display")),
+        .under("display")
+        .when(no_film)),
         E(heading("curve-title", "Curve")),
     ];
     basic.extend(
@@ -574,7 +580,54 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
         V(button("merge", "Merge brackets")),
         V(note("highlights-help", words::HIGHLIGHTS_HELP)),
     ];
-    let finish = vec![
+    let mut film = vec![
+        E(control(
+            "film.stock",
+            "Film",
+            Kind::Choice {
+                options: &FilmStock::LABELS,
+                get: |e: &MonoEdit| index(&FilmStock::ALL, &e.film.stock),
+                set: |e, i| e.film.stock = FilmStock::ALL[i.min(FilmStock::ALL.len() - 1)],
+            },
+        )),
+        E(slider!(
+            "film.development",
+            "Development",
+            -2.0..=2.0,
+            0.5,
+            1,
+            "",
+            MonoEdit,
+            film.development
+        )
+        .when(has_film)),
+        E(share!(
+            "film.halation",
+            "Halation",
+            0.0..=2.0,
+            MonoEdit,
+            film.halation
+        )
+        .when(has_film)),
+        E(share!("film.edges", "Edge effect", 0.0..=2.0, MonoEdit, film.edges).when(has_film)),
+        E(control(
+            GRADE,
+            "Paper grade",
+            Kind::Slider(Slider {
+                min: -1.0,
+                max: 5.0,
+                step: 0.5,
+                scale: 1.0,
+                places: 1,
+                unit: "",
+                get: |e: &MonoEdit| e.display.grade,
+                // Whole and half grades.
+                set: |e, v| e.display.grade = (2.0 * v).round() / 2.0,
+            }),
+        )),
+        V(note("film-help", words::FILM_HELP)),
+    ];
+    film.extend(vec![
         E(fold("grain", "Grain")),
         E(share!("grain.amount", "Amount", 0.0..=1.0, MonoEdit, grain.amount).under("grain")),
         E(share!("grain.size", "Size", 0.0..=1.0, MonoEdit, grain.size).under("grain")),
@@ -594,7 +647,10 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
                 set: |e, on| e.grain.link_iso = on,
             },
         )
-        .under("grain")),
+        .under("grain")
+        .when(no_film)),
+    ]);
+    let finish = vec![
         E(fold("toning", "Toning")),
         E(control(
             "toning.preset",
@@ -727,8 +783,16 @@ pub static PANELS: LazyLock<Vec<Panel>> = LazyLock::new(|| {
         V(button("lens", "Lens corrections")),
         V(note("filter-help", words::FILTER_HELP)),
     ];
-    let titles = ["LOOK", "BASIC", "LIGHT", "DETAIL", "HIGHLIGHTS", "FINISH"];
-    let rows = [look, basic, light, detail, highlights, finish];
+    let titles = [
+        "LOOK",
+        "BASIC",
+        "FILM",
+        "LIGHT",
+        "DETAIL",
+        "HIGHLIGHTS",
+        "FINISH",
+    ];
+    let rows = [look, basic, film, light, detail, highlights, finish];
     NAMES
         .into_iter()
         .zip(titles)
@@ -1062,16 +1126,24 @@ pub fn run(b: &MonoEdit, a: &MonoEdit, masks: MaskWants) -> Run {
     };
     let zoned = |e: &MonoEdit| masks.zones || !e.tone_eq.is_neutral();
     let guide = |e: &MonoEdit| (e.tone_eq.smoothing, e.tone_eq.edges);
+    // The film's plane, and the light it sees: the exposure always.
+    let film = |e: &MonoEdit| e.wants_film_plane().then_some(e.film);
+    let film_light = |e: &MonoEdit| (e.basic.exposure, e.tone_eq);
     if b.denoise != a.denoise
         || inpaint(b) != inpaint(a)
         || b.contrast_eq != a.contrast_eq
         || b.local_contrast != a.local_contrast
         || b.diffuse != a.diffuse
         || (zoned(a) && zoned(b) && guide(b) != guide(a))
+        // A color photo is mixed to grey through the filter and the film.
+        || b.basic.filter != a.basic.filter
+        || b.film.stock != a.film.stock
+        || film(b) != film(a)
     {
         Run::Develop
     } else if (zoned(a) && !zoned(b))
         || ((a.wants_detail() || masks.local_contrast) && light(b) != light(a))
+        || (a.wants_film_plane() && film_light(b) != film_light(a))
     {
         Run::ViewThenDevelop
     } else if b != a {
@@ -1378,6 +1450,19 @@ mod tests {
         assert_eq!(run(&zoned, &up), Run::View);
         assert_eq!(super::run(&zoned, &up, lc), Run::ViewThenDevelop);
         assert_eq!(super::run(&b, &zoned, lc), Run::ViewThenDevelop);
+        // A film's halation and edge effect are a plane of the light it
+        // sees; its curve and grain are drawn.
+        let tri_x = with(&|e| e.film.stock = FilmStock::TriX400);
+        assert_eq!(run(&b, &tri_x), Run::Develop);
+        let less = |f: &dyn Fn(&mut MonoEdit)| {
+            let mut e = tri_x.clone();
+            f(&mut e);
+            run(&tri_x, &e)
+        };
+        assert_eq!(less(&|e| e.film.halation = 0.5), Run::Develop);
+        assert_eq!(less(&|e| e.basic.exposure = 1.0), Run::ViewThenDevelop);
+        assert_eq!(less(&|e| e.display.grade = 4.0), Run::View);
+        assert_eq!(less(&|e| e.grain.amount = 1.0), Run::View);
         // What undo, paste, and sync go by.
         assert!(same_develop(
             (&b, none),

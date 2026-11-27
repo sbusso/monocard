@@ -307,7 +307,9 @@ fn cpu(
             b: 0.0,
         };
         let plane = |p: &Option<Arc<Plane>>| p.as_ref().map(|p| p.data[i]);
-        let detail = plane(&f.detail).filter(|_| e.wants_detail()).unwrap_or(0.0);
+        let detail = plane(&f.detail)
+            .filter(|_| e.wants_detail_plane())
+            .unwrap_or(0.0);
         let local = plane(&f.local).unwrap_or(0.0);
         let spot = Spot {
             uv: [(x as f32 + 0.5) / size.0, (y as f32 + 0.5) / size.1],

@@ -132,7 +132,7 @@ fn the_route_is_by_the_layout() {
             let steps = stages(&busy(), p, &facts, None);
             let first = steps.ops().next().unwrap();
             assert_eq!(
-                matches!(first, Stage::Mono(Op::Prepare(_))),
+                matches!(first, Stage::Mono(Op::Prepare(..))),
                 is_mono,
                 "{p:?}: {first:?}"
             );
@@ -1148,4 +1148,35 @@ fn a_color_raw_develops_as_grey_through_any_filter() {
         .max();
     assert!(most <= Some(2), "{most:?}");
     crate::testing::remove_dir_retry(&dir);
+}
+
+/// A film's halation and edge effect are a plane over the light, run
+/// after the detail tools; the film's exposure moves it even at rest.
+#[test]
+fn a_film_makes_its_plane() {
+    use mono_core::edit::FilmStock;
+    let input = Input::Raw(Arc::new(small()));
+    let mut kept = Kept::new();
+    let mut run = |edit: &Edit| -> (Vec<&'static str>, MonoFrame) {
+        let w = walked(&input, edit, &Purpose::Viewport, &mut kept);
+        let Buf::Plane(m) = &w.buf else { panic!() };
+        (w.seconds.iter().map(|(n, _)| *n).collect(), m.frame())
+    };
+    let (ran, plain) = run(&mono(|_| {}));
+    assert!(!ran.contains(&"film") && plain.detail.is_none());
+    let mut e = mono(|m| m.film.stock = FilmStock::TriX400);
+    let (ran, first) = run(&e);
+    assert!(ran.contains(&"film"), "{ran:?}");
+    assert!(first.detail.is_some());
+    // Off at both, no plane.
+    let m = e.mono.as_mut().unwrap();
+    (m.film.halation, m.film.edges) = (0.0, 0.0);
+    let (ran, off) = run(&e);
+    assert!(!ran.contains(&"film") && off.detail.is_none());
+    // The exposure moves the plane and nothing before it.
+    let m = e.mono.as_mut().unwrap();
+    (m.film.halation, m.film.edges, m.basic.exposure) = (1.0, 1.0, 1.0);
+    let (ran, brighter) = run(&e);
+    assert_eq!(ran, ["film"]);
+    assert!(Arc::ptr_eq(&brighter.base, &first.base));
 }
