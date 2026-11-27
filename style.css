@@ -256,7 +256,7 @@ p { text-wrap: pretty; }
   .frame.app img { object-position: var(--pos, 50% 50%); }
 }
 .shot .frame { outline: 1px solid var(--border-strong); outline-offset: -1px; }
-.wrap > .shot, .wrap > .compare, .wrap > .strip, .wrap > .pair, .wrap > .prints, .wrap > .looks { margin-top: 3rem; }
+.wrap > .shot, .wrap > .compare, .wrap > .strip, .wrap > .pair, .wrap > .prints, .wrap > .looks, .wrap > .film-prints { margin-top: 3rem; }
 .wrap > .shot + .shot, .wrap > .compare + .shot { margin-top: 4rem; }
 
 figcaption, .cap {
@@ -472,6 +472,14 @@ html:not(.js) .js-only { display: none; }
 .prints-row { display: flex; gap: var(--gap); }
 .prints figure { flex: var(--ar) 1 0; min-width: 0; }
 .prints .frame { aspect-ratio: var(--ar); }
+
+/* Film: one picture, printed eight ways */
+.film-prints { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem var(--gap); }
+@media (min-width: 56rem) {
+  .film-prints { grid-template-columns: repeat(4, 1fr); }
+}
+.film-prints .frame { aspect-ratio: 3 / 2; }
+.film-prints figcaption { margin-top: 0.5rem; }
 
 /* Download ------------------------------------------------------------- */
 
