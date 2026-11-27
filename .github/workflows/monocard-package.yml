@@ -67,13 +67,17 @@ jobs:
         name: ONNX Runtime library
         run: scripts/ort-dylib.sh release
 
-      - &editor
-        name: Build the editor
-        run: cargo build --locked --release -p greycard-ui --features mono-usb --bin monocard-ui
-
-      - &command
-        name: Build the command line
-        run: cargo build --locked --release -p greycard-cli --features mono --bin monocard
+      # One cargo run for both programs: two runs settle the shared
+      # crates' features apart and build many of them twice (7 minutes
+      # more on Windows). The shared crates carry the same features
+      # either way, so each program is built as alone.
+      - &build
+        name: Build the editor and the command line
+        run: >-
+          cargo build --locked --release
+          -p greycard-ui -p greycard-cli
+          --features greycard-ui/mono-usb,greycard-cli/mono
+          --bin monocard-ui --bin monocard
 
       # For THIRD-PARTY-NOTICES; see release.yml.
       - &about-cache
@@ -158,8 +162,7 @@ jobs:
 
       - *cache
       - *runtime
-      - *editor
-      - *command
+      - *build
       - *about-cache
       - *about
 
