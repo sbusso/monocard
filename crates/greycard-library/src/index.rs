@@ -4884,6 +4884,39 @@ pub(crate) mod tests {
         greycard_core::testing::remove_dir_retry(&dir);
     }
 
+    /// A schema 18 library reads its DNGs' tags again, for the camera's
+    /// frame a crop mode's DefaultCrop now gives, and leaves every other
+    /// row read.
+    #[test]
+    fn a_schema_18_library_reads_its_dngs_tags_again() {
+        let dir = scratch("migrate-18");
+        let db = dir.join("library.sqlite");
+        let shoot = dir.join("shoot");
+        std::fs::create_dir_all(&shoot).unwrap();
+        for name in ["a.DNG", "b.dng", "c.CR3"] {
+            std::fs::write(shoot.join(name), b"not a raw").unwrap();
+        }
+        {
+            let mut lib = Library::open(&db).unwrap();
+            lib.index_folder(&shoot, &mut quiet()).unwrap();
+            lib.conn
+                .execute_batch("UPDATE files SET style_read = 1; PRAGMA user_version = 18;")
+                .unwrap();
+        }
+        let lib = Library::open(&db).unwrap();
+        let unread: Vec<String> = lib
+            .conn
+            .prepare("SELECT name FROM files WHERE style_read = 0 ORDER BY name")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(unread, ["a.DNG", "b.dng"]);
+        drop(lib);
+        greycard_core::testing::remove_dir_retry(&dir);
+    }
+
     /// On a network mount only a CR3's or a RAF's preview is read, from
     /// the file's ends: a NEF stays unscored after the pass and the
     /// scorer, and a CR3 is read (this one, a picture under a raw's

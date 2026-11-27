@@ -20,6 +20,8 @@ Crop and straighten a photo, correct the lens, and remove dust and unwanted thin
 
 Press **O** for the next guide. Press **Shift+O** to turn the spiral or the triangles. The aspect of a new crop is in [Settings](settings.md#editing).
 
+A DNG shot in a crop mode, such as the 35 mm or 50 mm crop of a Ricoh GR, keeps the whole sensor. It opens at the camera's crop. To use the whole sensor, choose **Free** in the Crop tab and drag the edges out.
+
 ![The Crop tab with CROP, ROTATE, and PERSPECTIVE](images/panel-crop.webp "The Crop tab, enlarged")
 
 ### Angle

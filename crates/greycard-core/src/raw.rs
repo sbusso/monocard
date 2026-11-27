@@ -399,10 +399,19 @@ pub struct Rect {
     pub height: usize,
 }
 
+/// The share of a DNG's `ActiveArea` under which its `DefaultCrop` is
+/// the camera's frame ([`CameraFrame::of_default_crop`]). A converter's
+/// or a body's ordinary crop trims a few samples at the edges (well
+/// over 0.99 of the area); a crop mode keeps far less (a GR's 35 mm
+/// crop 0.63, its 50 mm 0.31). Nine tenths leaves room for a crop that
+/// trims a lens's dark corners and is still not a framing.
+pub const DNG_FRAMED_SHARE: f64 = 0.9;
+
 /// The camera's frame: the part of the picture the photographer framed
 /// in camera (an aspect ratio chosen on the body) when the raw keeps
 /// more of the sensor than that, as Olympus and OM System bodies keep
-/// the whole 4:3 sensor. `area` is the sensor's valid area, the region
+/// the whole 4:3 sensor and a Ricoh GR's crop mode its whole sensor
+/// (a DNG's `DefaultCrop`, [`CameraFrame::of_default_crop`]). `area` is the sensor's valid area, the region
 /// a develop is cut to (the frame's crop), and `frame` the part of it
 /// framed, both in sensor samples; `orientation` the file's own tag,
 /// which the camera's preview is shown turned by.
@@ -449,10 +458,37 @@ impl CameraFrame {
         size.is_none_or(|s| s == (self.area.width as u32, self.area.height as u32))
     }
 
+    /// The camera's frame read from a DNG: its `DefaultCrop` (`crop`,
+    /// in sensor samples) inside its `ActiveArea` (`area`), when the
+    /// crop lies inside the area and covers under
+    /// [`DNG_FRAMED_SHARE`] of it. That is a body's crop mode (a Ricoh
+    /// GR's 35 mm or 50 mm), which keeps the whole sensor and says
+    /// what was framed. `None` for a crop that only trims the area's
+    /// edges, as every DNG's does.
+    pub fn of_default_crop(area: Rect, crop: Rect, orientation: Orientation) -> Option<Self> {
+        let inside = crop.width > 0
+            && crop.height > 0
+            && crop.x >= area.x
+            && crop.y >= area.y
+            && crop.x + crop.width <= area.x + area.width
+            && crop.y + crop.height <= area.y + area.height;
+        let share = (crop.width * crop.height) as f64 / (area.width * area.height).max(1) as f64;
+        (inside && share < DNG_FRAMED_SHARE).then_some(CameraFrame {
+            area,
+            frame: crop,
+            orientation,
+        })
+    }
+
     /// The whole area's size as the tag turns it: what the develop of
     /// the frame is, before an edit's geometry.
     pub fn shown_area(&self) -> (u32, u32) {
-        let (w, h) = (self.area.width as u32, self.area.height as u32);
+        self.turned(self.area)
+    }
+
+    /// `r`'s size as the tag turns it.
+    fn turned(&self, r: Rect) -> (u32, u32) {
+        let (w, h) = (r.width as u32, r.height as u32);
         match self.orientation {
             Orientation::Transpose
             | Orientation::Rotate90
@@ -463,16 +499,25 @@ impl CameraFrame {
     }
 
     /// Whether a picture `w` by `h`, as the tag turns it, is of the
-    /// whole area: its shape the area's, within a hundredth. A camera
-    /// JPEG beside the raw, or a preview a body embeds already cut to
-    /// its frame, is not.
+    /// whole area: its shape the area's, within a hundredth, and no
+    /// nearer the frame's. A camera JPEG beside the raw, or a preview
+    /// a body embeds already cut to its frame, is not. The second
+    /// test tells the two apart where the frame's shape is close to
+    /// the area's: a Ricoh GR's crop mode frames 3:2 in an area of
+    /// 1.496, and embeds a preview of the frame alone.
     pub fn shows_whole_area(&self, w: u32, h: u32) -> bool {
+        let off = |(fw, fh): (u32, u32)| {
+            let shape = f64::from(fw) / f64::from(fh);
+            ((f64::from(w) / f64::from(h)) / shape - 1.0).abs()
+        };
         let (aw, ah) = self.shown_area();
-        let (aw, ah) = (f64::from(aw), f64::from(ah));
+        let (fw, fh) = self.turned(self.frame);
         w > 0
             && h > 0
-            && ah > 0.0
-            && ((f64::from(w) / f64::from(h)) / (aw / ah) - 1.0).abs() <= 0.01
+            && ah > 0
+            && fh > 0
+            && off((aw, ah)) <= 0.01
+            && off((aw, ah)) <= off((fw, fh))
     }
 
     /// The camera's picture as the tag turns it, `w` by `h` with
@@ -1498,5 +1543,42 @@ mod tests {
         assert!(f.develops_at(Some((5184, 3888))) && f.develops_at(None));
         assert!(!f.develops_at(Some((10368, 7776))));
         assert!(!three_two(Orientation::Normal).shows_whole_area(176, 117));
+    }
+
+    /// A DNG's DefaultCrop is the camera's frame only where it frames
+    /// clearly less than the ActiveArea: a GR's 35 mm crop mode is, the
+    /// few samples every DNG's crop trims are not, nor is a crop that
+    /// reaches outside the area. Its preview, of the frame alone and
+    /// within a hundredth of the area's shape, is not cut again; a
+    /// picture of the whole area is.
+    #[test]
+    fn a_dngs_default_crop_frames_only_a_crop_mode() {
+        let rect = |x, y, width, height| Rect {
+            x,
+            y,
+            width,
+            height,
+        };
+        let area = rect(26, 34, 6224, 4160);
+        let gr =
+            CameraFrame::of_default_crop(area, rect(678, 474, 4944, 3296), Orientation::Normal)
+                .unwrap();
+        assert_eq!((gr.area, gr.frame.width), (area, 4944));
+        let normal = rect(34, 42, 6208, 4144);
+        assert_eq!(
+            CameraFrame::of_default_crop(area, normal, Orientation::Normal),
+            None
+        );
+        let outside = rect(20, 474, 4944, 3296);
+        assert_eq!(
+            CameraFrame::of_default_crop(area, outside, Orientation::Normal),
+            None
+        );
+        assert!(!gr.shows_whole_area(4944, 3296));
+        assert!(!gr.shows_whole_area(480, 320));
+        assert!(gr.shows_whole_area(6224, 4160));
+        let on_end = CameraFrame::of_default_crop(area, gr.frame, Orientation::Rotate90).unwrap();
+        assert!(!on_end.shows_whole_area(3296, 4944));
+        assert!(on_end.shows_whole_area(4160, 6224));
     }
 }

@@ -58,6 +58,13 @@ pub(crate) fn info(file: &std::path::Path) -> Result<()> {
         ),
         None => println!("crop          none"),
     }
+    if let Some(c) = frame.shot.camera_frame {
+        let f = c.frame;
+        println!(
+            "camera frame  {}x{} at ({}, {})",
+            f.width, f.height, f.x, f.y
+        );
+    }
     println!("orientation   {:?}", frame.orientation);
     let shot = &frame.shot;
     println!(

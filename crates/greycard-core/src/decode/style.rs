@@ -569,6 +569,29 @@ impl<R: Read + Seek> Tiff<R> {
         })
     }
 
+    /// A value's elements as whole numbers, at least zero: integers as
+    /// [`Tiff::ints`] reads them, and unsigned rationals (a DNG's
+    /// DefaultCrop may be written so) rounded down, as rawler reads
+    /// them; `None` for a negative one or a zero denominator.
+    pub(super) fn numbers(&mut self, f: &Field) -> Option<Vec<u64>> {
+        if f.typ != 5 {
+            return self
+                .ints(f)?
+                .into_iter()
+                .map(|v| u64::try_from(v).ok())
+                .collect();
+        }
+        let b = self.bytes(f)?;
+        b.as_chunks::<8>()
+            .0
+            .iter()
+            .map(|c| {
+                let (n, d) = (u32_of(f.endian, &c[..4]), u32_of(f.endian, &c[4..]));
+                (d > 0).then(|| u64::from(n / d))
+            })
+            .collect()
+    }
+
     /// An integer value's first element.
     pub(super) fn int(&mut self, f: &Field) -> Option<i64> {
         self.ints(f)?.first().copied()
@@ -1852,9 +1875,11 @@ pub(super) const OLYMPUS_CROP_HEIGHT: u16 = 0x0615;
 pub(super) const OLYMPUS_ASPECT_FRAME: u16 = 0x1113;
 
 /// The camera's frame of the raw read from `file`, in sensor samples:
-/// `None` for a maker whose frame is not read, a DNG (whose converter
-/// has said what it kept), a note that does not say, a frame that is
-/// the whole valid area, and one that does not lie inside it.
+/// an Olympus or OM System note's AspectFrame, or a DNG's
+/// `DefaultCrop` where it frames a crop mode
+/// (`CameraFrame::of_default_crop`). `None` for a maker whose frame is
+/// not read, a note or DNG that does not say, a frame that is the
+/// whole valid area, and one that does not lie inside it.
 pub(crate) fn frame_stream(mut file: impl Read + Seek) -> Result<Option<CameraFrame>> {
     // From the start, wherever a reader before this one left it.
     file.seek(SeekFrom::Start(0))?;
@@ -1865,8 +1890,12 @@ pub(crate) fn frame_stream(mut file: impl Read + Seek) -> Result<Option<CameraFr
     file.seek(SeekFrom::Start(0))?;
     let mut tiff = Tiff::new(file)?;
     let (ifd0, endian) = tiff_ifd0(&mut tiff)?;
+    let orientation = int_tag(&mut tiff, &ifd0, TAG_ORIENTATION)
+        .and_then(|o| u16::try_from(o).ok())
+        .and_then(crate::raw::Orientation::from_exif)
+        .unwrap_or_default();
     if find(&ifd0, TAG_DNG_VERSION).is_some() {
-        return Ok(None);
+        return dng_frame(&mut tiff, &ifd0, endian, orientation);
     }
     let make = find(&ifd0, TAG_MAKE)
         .and_then(|f| tiff.ascii(&f))
@@ -1878,10 +1907,6 @@ pub(crate) fn frame_stream(mut file: impl Read + Seek) -> Result<Option<CameraFr
     // lies inside it, or the note's numbers are of another picture.
     let declared =
         int_tag(&mut tiff, &ifd0, TAG_IMAGE_WIDTH).zip(int_tag(&mut tiff, &ifd0, TAG_IMAGE_LENGTH));
-    let orientation = int_tag(&mut tiff, &ifd0, TAG_ORIENTATION)
-        .and_then(|o| u16::try_from(o).ok())
-        .and_then(crate::raw::Orientation::from_exif)
-        .unwrap_or_default();
     let Some(note) = maker_note(&mut tiff, &ifd0, endian)? else {
         return Ok(None);
     };
@@ -1923,6 +1948,92 @@ pub(crate) fn frame_stream(mut file: impl Read + Seek) -> Result<Option<CameraFr
             orientation,
         }),
     )
+}
+
+// A DNG's camera frame. A body's crop mode (a Ricoh GR's 35 mm and
+// 50 mm) writes the whole sensor and says what was framed in the raw
+// IFD's DefaultCropOrigin and DefaultCropSize, which count from the
+// corner of its ActiveArea (top, left, bottom, right). rawler takes
+// that crop as the frame's; the decode widens it to the ActiveArea by
+// the same rule, so the two agree.
+
+const TAG_NEW_SUBFILE_TYPE: u16 = 0x00fe;
+const TAG_COMPRESSION: u16 = 0x0103;
+const TAG_SUB_IFDS: u16 = 0x014a;
+const TAG_ACTIVE_AREA: u16 = 0xc68d;
+const TAG_DEFAULT_CROP_ORIGIN: u16 = 0xc61f;
+const TAG_DEFAULT_CROP_SIZE: u16 = 0xc620;
+/// The sub-IFDs looked at for the raw: a DNG has a handful.
+const DNG_SUB_IFDS_MOST: usize = 32;
+
+/// The frame of a DNG whose IFD0 is `ifd0`: its raw IFD's DefaultCrop
+/// as `CameraFrame::of_default_crop` takes it. The raw IFD is the first
+/// of IFD0 and its SubIFDs that is a full-size image (NewSubfileType 0)
+/// of a compression rawler decodes, as rawler picks it.
+fn dng_frame<R: Read + Seek>(
+    tiff: &mut Tiff<R>,
+    ifd0: &[Field],
+    endian: Endian,
+    orientation: crate::raw::Orientation,
+) -> Result<Option<CameraFrame>> {
+    let is_raw = |tiff: &mut Tiff<R>, ifd: &[Field]| {
+        int_tag(tiff, ifd, TAG_NEW_SUBFILE_TYPE).unwrap_or(0) == 0
+            && int_tag(tiff, ifd, TAG_COMPRESSION)
+                .is_some_and(|c| matches!(c, 1 | 7 | 8 | 0x884c | 52546))
+    };
+    let raw = if is_raw(tiff, ifd0) {
+        ifd0.to_vec()
+    } else {
+        let subs = find(ifd0, TAG_SUB_IFDS)
+            .and_then(|f| tiff.ints(&f))
+            .unwrap_or_default();
+        let mut found = None;
+        for at in subs.into_iter().take(DNG_SUB_IFDS_MOST) {
+            let Ok(at) = u64::try_from(at) else { continue };
+            let Ok(ifd) = tiff.ifd(at, 0, endian) else {
+                continue;
+            };
+            if is_raw(tiff, &ifd) {
+                found = Some(ifd);
+                break;
+            }
+        }
+        let Some(ifd) = found else {
+            return Ok(None);
+        };
+        ifd
+    };
+    let mut numbers = |tag| find(&raw, tag).and_then(|f| tiff.numbers(&f));
+    let (Some(active), Some(origin), Some(size), Some(width), Some(length)) = (
+        numbers(TAG_ACTIVE_AREA),
+        numbers(TAG_DEFAULT_CROP_ORIGIN),
+        numbers(TAG_DEFAULT_CROP_SIZE),
+        numbers(TAG_IMAGE_WIDTH),
+        numbers(TAG_IMAGE_LENGTH),
+    ) else {
+        return Ok(None);
+    };
+    let (&[top, left, bottom, right], &[ox, oy], &[cw, ch], &[w], &[h]) =
+        (&active[..], &origin[..], &size[..], &width[..], &length[..])
+    else {
+        return Ok(None);
+    };
+    if !(top < bottom && left < right && bottom <= h && right <= w) {
+        return Ok(None);
+    }
+    let area = Rect {
+        x: left as usize,
+        y: top as usize,
+        width: (right - left) as usize,
+        height: (bottom - top) as usize,
+    };
+    let crop = Rect {
+        x: (left + ox) as usize,
+        y: (top + oy) as usize,
+        width: cw as usize,
+        height: ch as usize,
+    };
+    Ok(CameraFrame::of_default_crop(area, crop, orientation))
 }
 
 /// An AspectFrame (inclusive corners) inside the valid `area` (left,

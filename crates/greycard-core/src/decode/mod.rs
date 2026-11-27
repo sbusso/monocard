@@ -126,8 +126,10 @@ pub fn merge_tag_path(path: impl AsRef<Path>) -> Result<Option<crate::merge::Tag
 /// samples, that the photographer framed in camera (an aspect ratio
 /// chosen on the body), when the file keeps more of the sensor than
 /// that. `None` when the file does not say or the frame is all of it.
-/// Read from the maker note with no decode; Olympus and OM System are
-/// the makers read.
+/// Read from the file's head with no decode: Olympus's and OM System's
+/// maker note, and a DNG's DefaultCrop where it frames a crop mode
+/// ([`crate::raw::CameraFrame::of_default_crop`]), the develop then
+/// cut to the DNG's ActiveArea.
 ///
 /// As the decode takes it: not where the decoder says it develops
 /// another size than the note's valid area ([`Stance::size`]), so what
@@ -148,8 +150,9 @@ pub fn camera_frame_path(path: impl AsRef<Path>) -> Result<Option<crate::raw::Ca
 }
 
 /// The extensions of the raws [`camera_frame_path`] can find a frame in:
-/// Olympus's and OM System's. Another maker read later adds its own.
-const FRAMED_EXTENSIONS: [&str; 2] = ["orf", "ori"];
+/// Olympus's and OM System's, and DNG. Another maker read later adds
+/// its own.
+const FRAMED_EXTENSIONS: [&str; 3] = ["orf", "ori", "dng"];
 
 /// Whether the file at `path` may decode with a saturation level above
 /// its white ([`crate::raw::Levels::saturation`]), by its name alone: a
@@ -192,14 +195,18 @@ pub fn may_have_linearization(path: &Path) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("dng"))
 }
 
-/// How a DNG's `LinearizationTable` is read, for the keys of whatever
-/// is kept of a frame [`may_have_linearization`]: raise it when that
-/// changes, and the pictures, fills, and mask bases kept of every DNG
+/// How a DNG decodes (its `LinearizationTable` read, its crop mode's
+/// area), for the keys of whatever is kept of a frame
+/// [`may_have_linearization`]: raise it when that changes, and the pictures, fills, and mask bases kept of every DNG
 /// are made again, those of every other file found again as they were.
 /// The index learns of it through `keys_made_under`, as of
 /// [`HEADROOM`].
 /// 1: the table applied at decode, before the levels, 2026-11-19.
-pub const LINEARIZATION: &str = "linearization-1";
+/// 2: a crop mode's DNG (its DefaultCrop well inside its ActiveArea)
+/// develops the whole ActiveArea, framed to the crop, 2026-11-28: the
+/// pictures kept of an edit with a crop of its own are of another
+/// picture.
+pub const LINEARIZATION: &str = "linearization-2";
 
 /// Whether the file at `path` is of a kind [`camera_frame_path`] can
 /// find a frame in, by its name alone: what spares every other file a

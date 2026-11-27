@@ -8291,14 +8291,28 @@ mod tests {
                 &region,
                 size,
                 window,
-                Some("linearization-1")
+                Some("linearization-2")
             )
         );
         assert_eq!(
             earlier_fill_slots(root, dng, &patch, &region, size, window),
-            [old_slot(root, dng, &patch, &region, size, window)]
+            [
+                old_slot(root, dng, &patch, &region, size, window),
+                fill_slot_under(
+                    root,
+                    dng,
+                    &patch,
+                    &region,
+                    size,
+                    window,
+                    Some("linearization-1")
+                )
+            ]
         );
-        assert_eq!(earlier_linearizations(), [None]);
+        assert_eq!(
+            earlier_linearizations(),
+            [None, Some("linearization-1".to_string())]
+        );
         assert_eq!(
             earlier_headrooms(),
             [

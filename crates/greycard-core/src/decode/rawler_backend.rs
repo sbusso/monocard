@@ -1167,7 +1167,14 @@ fn decode_source(source: &RawSource) -> Result<(RawFrame, RawMetadata)> {
     {
         list_stored_constants(&mut dng.mosaic, stored, image.width);
     }
+    let framed = framed_area(
+        &image,
+        decoder.format_hint() == ::rawler::decoders::FormatHint::DNG,
+    );
     let mut frame = frame_from_rawler(image)?;
+    if framed.is_some() {
+        frame.crop = framed;
+    }
     judge_rows(&frame, up_front)?;
     frame.dng = dng;
     // A DNG always names its model; another raw's tags stay the default.
@@ -1491,6 +1498,26 @@ fn level_text(p: &LevelPattern) -> String {
         Some(&v) if p.values.iter().all(|&x| x == v) => format!("{v}"),
         _ => format!("{:?}", p.values),
     }
+}
+
+/// The ActiveArea a DNG's develop is cut to in place of its
+/// DefaultCrop, where that crop frames a crop mode
+/// ([`crate::raw::CameraFrame::of_default_crop`]); the camera's frame
+/// is then the crop, read by the same rule from the file's tags
+/// (`style::frame_stream`). `None` for any other image, whose develop
+/// is cut to rawler's crop.
+fn framed_area(image: &RawImage, dng: bool) -> Option<Rect> {
+    if !dng {
+        return None;
+    }
+    let rect = |r: ::rawler::imgop::Rect| Rect {
+        x: r.p.x,
+        y: r.p.y,
+        width: r.d.w,
+        height: r.d.h,
+    };
+    let (area, crop) = (rect(image.active_area?), rect(image.crop_area?));
+    crate::raw::CameraFrame::of_default_crop(area, crop, Orientation::Normal).map(|f| f.area)
 }
 
 /// The camera's frame of a raw (`style::frame_stream`), kept when its
@@ -2734,6 +2761,120 @@ mod tests {
             Some("Test Mono One")
         );
         assert_eq!(frame.dng.camera_serial.as_deref(), Some("0042"));
+    }
+
+    /// A monochrome DNG of 64 by 48 with an ActiveArea of 56 by 42 at
+    /// (4, 2) and the DefaultCrop `crop` (in sensor samples), turned by
+    /// its tag `orientation`, as a body's DNG is written: the crop
+    /// counted from the area's corner.
+    fn a_dng_cropped(crop: (usize, usize, usize, usize), orientation: u16) -> Vec<u8> {
+        use ::rawler::dng::writer::DngWriter;
+        use ::rawler::dng::{
+            CompressionParams, CropMode, DNG_VERSION_V1_4, DngCompression, DngPhotometricConversion,
+        };
+        use ::rawler::imgop::{Dim2, Point, Rect as RawlerRect};
+        use ::rawler::pixarray::PixU16;
+        use ::rawler::rawimage::{BlackLevel, WhiteLevel};
+        use ::rawler::tags::TiffCommonTag;
+
+        let (w, h) = (64usize, 48usize);
+        let data: Vec<u16> = (0..w * h).map(|i| 600 + (i * 37 % 900) as u16).collect();
+        let mut camera = ::rawler::decoders::Camera::new();
+        camera.make = "Test".into();
+        camera.model = "Crop Mode".into();
+        camera.clean_make = camera.make.clone();
+        camera.clean_model = camera.model.clone();
+        let mut raw = RawImage::new(
+            camera,
+            PixU16::new_with(data, w, h),
+            1,
+            [1.0, 1.0, 1.0, f32::NAN],
+            RawPhotometricInterpretation::LinearRaw,
+            Some(BlackLevel::new(&[100u16], 1, 1, 1)),
+            Some(WhiteLevel::new(vec![4000])),
+            false,
+        );
+        raw.active_area = Some(RawlerRect::new(Point::new(4, 2), Dim2::new(56, 42)));
+        let (x, y, cw, ch) = crop;
+        raw.crop_area = Some(RawlerRect::new(Point::new(x, y), Dim2::new(cw, ch)));
+        let mut file = std::io::Cursor::new(Vec::new());
+        let mut dng = DngWriter::new(&mut file, DNG_VERSION_V1_4).unwrap();
+        let mut main = dng.subframe_on_root(0);
+        main.raw_image(
+            &raw,
+            CropMode::Best,
+            DngCompression::Uncompressed,
+            DngPhotometricConversion::Original,
+            &CompressionParams::default(),
+        )
+        .unwrap();
+        main.finalize().unwrap();
+        dng.load_base_tags(&raw).unwrap();
+        dng.root_ifd_mut()
+            .add_tag(TiffCommonTag::Orientation, orientation);
+        dng.close().unwrap();
+        file.into_inner()
+    }
+
+    /// A DNG whose DefaultCrop frames a crop mode develops its whole
+    /// ActiveArea, framed to the crop: the head's read (with no
+    /// decode, the index's read from the file's pieces, and the
+    /// stance's size) and a full decode agree on the frame and the
+    /// size. A crop that only trims the area's edges frames nothing,
+    /// and the develop is cut to it as before.
+    #[test]
+    fn a_dngs_crop_mode_develops_the_active_area_framed_to_the_crop() {
+        use crate::raw::{CameraFrame, Rect};
+        let dir = std::env::temp_dir().join(format!("greycard-crop-mode-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let area = Rect {
+            x: 4,
+            y: 2,
+            width: 56,
+            height: 42,
+        };
+
+        let framed = dir.join("framed.dng");
+        std::fs::write(&framed, a_dng_cropped((18, 13, 28, 20), 6)).unwrap();
+        let want = CameraFrame {
+            area,
+            frame: Rect {
+                x: 18,
+                y: 13,
+                width: 28,
+                height: 20,
+            },
+            orientation: Orientation::Rotate90,
+        };
+        let head = super::super::camera_frame_path(&framed).unwrap();
+        let indexed = index_read_path(&framed).unwrap().3;
+        let size = stance_path(&framed).unwrap().1;
+        let decoded = RawlerDecoder.decode_path(&framed).unwrap();
+        assert!(super::super::may_have_camera_frame(&framed));
+        assert_eq!(head, Some(want));
+        assert_eq!(indexed, Some(want));
+        assert_eq!(decoded.shot.camera_frame, Some(want));
+        assert_eq!(decoded.crop, Some(area));
+        assert_eq!(size, Some((56, 42)));
+
+        let trimmed = dir.join("trimmed.dng");
+        std::fs::write(&trimmed, a_dng_cropped((5, 3, 54, 40), 1)).unwrap();
+        let head = super::super::camera_frame_path(&trimmed).unwrap();
+        let size = stance_path(&trimmed).unwrap().1;
+        let decoded = RawlerDecoder.decode_path(&trimmed).unwrap();
+        crate::testing::remove_dir_retry(&dir);
+        assert_eq!(head, None);
+        assert_eq!(decoded.shot.camera_frame, None);
+        assert_eq!(
+            decoded.crop,
+            Some(Rect {
+                x: 5,
+                y: 3,
+                width: 54,
+                height: 40
+            })
+        );
+        assert_eq!(size, Some((54, 40)));
     }
 
     /// A Pentax maker note as a Pentax DNG keeps it in
@@ -4989,7 +5130,8 @@ fn stance_unguarded(path: &Path) -> Result<RawStance> {
     // A frame whose size cannot be had this cheaply is not worth
     // decoding for: the caller has other pictures of it to measure by.
     let image = decoder.raw_image(&source, &params, true).ok();
-    let size = image.as_ref().and_then(size_of);
+    let dng = decoder.format_hint() == ::rawler::decoders::FormatHint::DNG;
+    let size = image.as_ref().and_then(|i| size_of(i, dng));
     let mosaic = image.as_ref().and_then(mosaic_of);
     Ok((orientation, size, mosaic))
 }
@@ -5691,15 +5833,21 @@ fn probe_and_stance_source(source: &RawSource, path: &Path) -> Result<(Probe, Ra
             None
         }
     };
-    let size = image.as_ref().and_then(size_of);
+    let dng = decoder.format_hint() == ::rawler::decoders::FormatHint::DNG;
+    let size = image.as_ref().and_then(|i| size_of(i, dng));
     let mosaic = image.as_ref().and_then(mosaic_of);
     let orientation = probe.orientation;
     Ok((probe, (orientation, size, mosaic)))
 }
 
-/// The size a develop of `image` comes out at before its tag turns it:
-/// its crop, else its active area, else the whole.
-fn size_of(image: &RawImage) -> Option<(u32, u32)> {
+/// The size a develop of `image` (a DNG's, with `dng`) comes out at
+/// before its tag turns it: a crop mode's whole ActiveArea
+/// ([`framed_area`]), else its crop, else its active area, else the
+/// whole.
+fn size_of(image: &RawImage, dng: bool) -> Option<(u32, u32)> {
+    if let Some(a) = framed_area(image, dng) {
+        return Some((a.width as u32, a.height as u32));
+    }
     Some(match image.crop_area.or(image.active_area) {
         Some(r) => (r.d.w as u32, r.d.h as u32),
         None => (image.width as u32, image.height as u32),

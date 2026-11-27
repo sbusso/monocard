@@ -757,3 +757,4 @@ in its section; the roadmap and the changelog only point at it.
 - [§743. The burst merge: HDR+ align and merge on one plane](notes/743-the-burst-merge.md) (2026-11-27)
 - [§744. The import from the camera on Linux and Windows](notes/744-usb-import-on-linux-and-windows.md) (2026-11-27)
 - [§745. Stand development keeps the negative's contrast](notes/745-stand-development.md) (2026-11-28)
+- [§746. A crop mode's DNG opens at the camera's crop](notes/746-a-crop-mode-dng-opens-at-the-cameras-crop.md) (2026-11-28)
