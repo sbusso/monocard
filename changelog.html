@@ -34,6 +34,26 @@
 
 <main id="main" class="wrap rels">
   <h1>Changelog</h1>
+  <article class="rel" id="v0.5.0">
+    <header><h2>0.5.0</h2><p class="note"><time datetime="2026-11-27">27 November 2026</time></p></header>
+    <div>
+      <ul class="plain">
+        <li><b>Developer</b>, <b>Bath temperature</b> and <b>Agitation</b> in FILM: D-76, D-76 1+1, HC-110 B or Rodinal 1+50, 18 to 24 °C, continuous to stand. On Tri-X, T-Max 100 and 400, HP5 Plus, FP4 Plus and Delta 100, 400 and 3200, a push or pull follows the curves of Kodak’s and Ilford’s data sheets. <b>Development</b> now goes from -3 to +3. An edit made in 0.4.0 on one of these eight films prints a little differently. Middle grey stays where it was.</li>
+        <li>Six papers: Ilford Multigrade IV RC, MG FB Classic and Multigrade Warmtone, Kodak Polymax II RC and Polycontrast IV RC, and Foma Fomatone. <b>Split grade</b> prints with a soft (00) and a hard (5) exposure, in stops.</li>
+        <li><b>Process</b>: Silver gelatin, Lith, or Cyanotype.</li>
+        <li>Toner baths in TONING: Selenium, Sepia, Gold, Iron blue, Copper and Vanadium. Each one acts on the silver by density, as in the darkroom. Paper white stays white.</li>
+        <li>A film’s grain is made of the film’s silver grains, sized for a 35 mm frame across the photo. A small file no longer gets grain several times too strong.</li>
+        <li><b>Fast</b> and <b>Best</b> denoise run learned models, downloaded the first time you use them. <b>Remove JPEG blocks</b>, in DETAIL on a JPEG, removes the 8 by 8 blocks of a compressed JPEG. It is off by default.</li>
+        <li><b>Merge burst</b>: select 2 to 16 DNGs of one scene, shot by hand at one exposure, and merge them into one DNG with less noise.</li>
+        <li>A look can come from a LUT (.cube or HaldCLUT), and a look can go out as a LUT or as a Lightroom profile and preset. Twelve film looks from t3mujinpack, for color photos.</li>
+        <li>Export to JPEG XL, lossless 16-bit JPEG XL, and Ultra HDR.</li>
+        <li>The camera window imports from the camera on Linux and Windows too. On Linux, install the udev rule that comes with Monocard first.</li>
+      </ul>
+      <p>0.4.0 opens an edit that 0.5.0 saved, without the new settings.</p>
+      <p class="note">Design notes: <a href="https://github.com/sbusso/monocard/blob/monocard/docs/notes/739-learned-denoise-weights-jpeg-deblock.md">denoise</a>, <a href="https://github.com/sbusso/monocard/blob/monocard/docs/notes/740-development-papers-and-print-processes.md">development and paper</a>, <a href="https://github.com/sbusso/monocard/blob/monocard/docs/notes/741-film-grain-as-a-boolean-model.md">grain</a>, <a href="https://github.com/sbusso/monocard/blob/monocard/docs/notes/742-luts-lightroom-hdr-and-jpeg-xl.md">LUTs and export</a>, <a href="https://github.com/sbusso/monocard/blob/monocard/docs/notes/743-the-burst-merge.md">burst</a>, <a href="https://github.com/sbusso/monocard/blob/monocard/docs/notes/744-usb-import-on-linux-and-windows.md">import</a>.</p>
+      <p class="note"><a href="https://github.com/sbusso/monocard/releases/tag/monocard-v0.5.0">Release 0.5.0 on GitHub</a>, with the checksums.</p>
+    </div>
+  </article>
   <article class="rel" id="v0.4.0">
     <header><h2>0.4.0</h2><p class="note"><time datetime="2026-11-27">27 November 2026</time></p></header>
     <div>

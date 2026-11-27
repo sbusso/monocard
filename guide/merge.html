@@ -61,6 +61,7 @@
         <li><a href="#what-you-can-merge">What you can merge</a></li>
         <li><a href="#merge-the-selected-photos">Merge the selected photos</a></li>
         <li><a href="#merge-to-hdr">Merge to HDR</a></li>
+        <li><a href="#merge-burst">Merge burst</a></li>
         <li><a href="#merge-to-panorama">Merge to Panorama</a></li>
         <li><a href="#merge-to-focus-stack">Merge to Focus stack</a></li>
         <li><a href="#the-new-dng">The new DNG</a></li>
@@ -87,6 +88,11 @@
 <td>Detail in the bright and the dark parts</td>
 </tr>
 <tr>
+<td><strong>Merge burst</strong></td>
+<td>One view, at one exposure, shot by hand</td>
+<td>Less noise, for night and high ISO</td>
+</tr>
+<tr>
 <td><strong>Merge to Panorama</strong></td>
 <td>Views that overlap</td>
 <td>One wide picture</td>
@@ -98,7 +104,7 @@
 </tr>
 </tbody>
 </table></div>
-<p>All three take DNG files of a monochrome sensor. A JPEG, PNG, or TIFF is refused, because it is not a raw file.</p>
+<p>All four take DNG files of a monochrome sensor. A JPEG, PNG, or TIFF is refused, because it is not a raw file.</p>
 <p>The panorama and the focus stack have had little testing with monochrome photos.</p>
 <h2 id="merge-the-selected-photos">Merge the selected photos</h2>
 <ol>
@@ -107,7 +113,7 @@
 <li>Wait. The status line shows the progress.</li>
 </ol>
 <p>At the end, the status line says "merged N frames into NAME". If the merge is refused, it says "not merged" and gives the reason.</p>
-<p>You can also click <strong>Merge brackets</strong> under HIGHLIGHTS in the Develop tab. It merges the two to five photos that you selected in the filmstrip to HDR.</p>
+<p>You can also click <strong>Merge brackets</strong> under HIGHLIGHTS in the Develop tab. It merges the two to five photos that you selected in the filmstrip to HDR. <strong>Merge burst</strong> under DETAIL merges the two to sixteen photos that you selected in the filmstrip as a burst.</p>
 <h2 id="merge-to-hdr">Merge to HDR</h2>
 <p>Take from two to five photos with different shutter speeds and the same aperture and focus. Use a tripod if you can. Small moves between the photos are corrected.</p>
 <ul>
@@ -122,6 +128,20 @@
 <li>The exposures are too far apart.</li>
 </ul>
 <p>A merge of more than five photos works in a different way, and has had less testing.</p>
+<h2 id="merge-burst">Merge burst</h2>
+<p>Take from two to sixteen photos of one view, one after the other, with the same shutter speed, aperture, and ISO. Hold the camera as still as you can; a tripod is not needed. Eight photos have about the noise of one photo at an ISO three stops lower, with the blur of one shutter speed.</p>
+<ul>
+<li>The photo in the middle of the selection is the reference. Its edit is used for the new DNG, with its exposure.</li>
+<li>The other photos are aligned to it: the whole photo first, then each small area of it.</li>
+<li>The sensor data is combined before the tone controls. Where a photo differs from the reference by more than its noise, for example a person who walked through, the reference is used there.</li>
+<li>The noise reduction in the Develop tab still works on the new DNG. It knows that the new DNG has less noise, so it does less.</li>
+</ul>
+<p>The merge is refused if:</p>
+<ul>
+<li>The photos are of two cameras or two sizes.</li>
+<li>The exposures differ by more than a third of a stop. Use <strong>Merge to HDR</strong> for photos at different exposures.</li>
+<li>Fewer than two or more than sixteen photos are selected.</li>
+</ul>
 <h2 id="merge-to-panorama">Merge to Panorama</h2>
 <p>Take the photos in order, from one side to the other, with one focal length. Let each one overlap the next one.</p>
 <ul>
@@ -153,6 +173,10 @@
 <td><code>IMG_0001-HDR.dng</code></td>
 </tr>
 <tr>
+<td>Burst</td>
+<td><code>IMG_0001-burst.dng</code></td>
+</tr>
+<tr>
 <td>Panorama</td>
 <td><code>IMG_0001-pano.dng</code></td>
 </tr>
@@ -165,7 +189,7 @@
 <p>If the name is taken, a number is added. A file is never written over.</p>
 <p>If the photos are in one folder, and you are not in a collection, the new photo and its sources become a <a href="library.html#stacks">stack</a> with the new photo on top.</p>
 <h2 id="merge-from-the-command-line">Merge from the command line</h2>
-<p>The <code>monocard</code> program has the same merges, with more options. See <a href="command-line.html#merge-and-stack">Command line</a>.</p>
+<p>The <code>monocard</code> program has the same merges, except the burst merge, with more options. See <a href="command-line.html#merge-and-stack">Command line</a>.</p>
     <nav class="guide-next" aria-label="Chapters"><a href="presets-and-history.html" rel="prev">← Presets, history, and versions</a><a href="export.html" rel="next">Export →</a></nav>
   </main>
 </div>

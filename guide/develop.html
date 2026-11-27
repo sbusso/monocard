@@ -86,7 +86,7 @@
 <h3 id="where-a-photo-starts">Where a photo starts</h3>
 <p>A raw with no edit starts from its camera's profile. The one for the Ricoh GR IV Monochrome sets <strong>Sharpen</strong> to <strong>Capture</strong> at 25% and turns <strong>Link to ISO</strong> on. You can also start from <a href="looks.html#start-from-the-cameras-mode">the camera's picture mode</a>.</p>
 <h3 id="develop-a-jpeg">Develop a JPEG</h3>
-<p>The camera already rendered a JPEG, so Monocard applies no display transform to it, and it starts as the camera made it. <strong>Display transform</strong>, and <strong>Contrast</strong>, <strong>Shoulder</strong>, and <strong>Toe</strong> under <strong>Transform</strong>, do not show. The camera profile and the hot pixel repair do not apply.</p>
+<p>The camera already rendered a JPEG, so Monocard applies no display transform to it, and it starts as the camera made it. <strong>Display transform</strong>, and <strong>Contrast</strong>, <strong>Shoulder</strong>, and <strong>Toe</strong> under <strong>Transform</strong>, do not show. The camera profile and the hot pixel repair do not apply. If strong edits make the JPEG's 8 by 8 blocks show, use <a href="#remove-jpeg-blocks">Remove JPEG blocks</a>.</p>
 <h2 id="keys">Keys</h2>
 <div class="table" tabindex="0"><table>
 <thead>
@@ -268,7 +268,7 @@
 <p>The histogram is behind the curve. When the sensor clipped in the photo, a dashed line shows where its white is, and the part beyond it is hatched.</p>
 <p><strong>Levels</strong> has <strong>Input black</strong>, <strong>Input white</strong>, <strong>Output black</strong>, and <strong>Output white</strong>, each from 0 to 100%.</p>
 <h2 id="film">FILM</h2>
-<p>FILM exposes the photo on a black and white film and prints the negative on Ilford Multigrade paper. The film's print then takes the place of the display transform.</p>
+<p>FILM exposes the photo on a black and white film, develops it, and prints the negative on a darkroom paper. The film's print then takes the place of the display transform.</p>
 <div class="table" tabindex="0"><table>
 <thead>
 <tr>
@@ -287,9 +287,27 @@
 </tr>
 <tr>
 <td><strong>Development</strong></td>
-<td>-2 to +2</td>
+<td>-3 to +3</td>
 <td>0</td>
-<td>Push (+) or pull (-): makes the negative harder or softer. Middle grey stays where it is</td>
+<td>Push (+) or pull (-). One step is about 19% more time in the developer, a push of one stop. Middle grey stays where it is</td>
+</tr>
+<tr>
+<td><strong>Developer</strong></td>
+<td><strong>D-76</strong>, <strong>D-76 1+1</strong>, <strong>HC-110 B</strong>, <strong>Rodinal 1+50</strong></td>
+<td><strong>D-76</strong></td>
+<td>Each at its own normal time. It changes the grain, the edge effect, and how the temperature and the agitation act. With a film only</td>
+</tr>
+<tr>
+<td><strong>Bath temperature</strong></td>
+<td>18 to 24 °C</td>
+<td>20 °C</td>
+<td>A warmer developer works faster: the same time gives a harder negative. With a film only</td>
+</tr>
+<tr>
+<td><strong>Agitation</strong></td>
+<td><strong>Continuous</strong>, <strong>Every 30 s</strong>, <strong>Every minute</strong>, <strong>Semi-stand</strong>, <strong>Stand</strong></td>
+<td><strong>Every 30 s</strong></td>
+<td>Less agitation develops slower, holds back the highlights, and makes a stronger edge effect. With a film only</td>
 </tr>
 <tr>
 <td><strong>Halation</strong></td>
@@ -304,18 +322,76 @@
 <td>A dark and a light rim along an edge, from the developer. It makes the negative look sharper. With a film only</td>
 </tr>
 <tr>
+<td><strong>Paper</strong></td>
+<td>Six papers</td>
+<td><strong>Ilford Multigrade IV RC</strong></td>
+<td>The paper the negative is printed on. With a film only</td>
+</tr>
+<tr>
+<td><strong>Split grade</strong></td>
+<td>On, off</td>
+<td>Off</td>
+<td>Prints with two exposures, through filter 00 and filter 5, in place of <strong>Paper grade</strong>. On an Ilford Multigrade paper, with a film</td>
+</tr>
+<tr>
 <td><strong>Paper grade</strong></td>
 <td>00 to 5</td>
 <td>2</td>
-<td>Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. With a film, it sets the Multigrade filter. Without one, middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG</td>
+<td>Changes contrast as darkroom paper does. Low grades are soft, with more greys. High grades are hard, with more black and white. With a film, it sets the paper's filter. Without one, middle grey, black, and white stay where they are. It works the same on a raw and on a JPEG</td>
+</tr>
+<tr>
+<td><strong>Soft (00)</strong>, <strong>Hard (5)</strong></td>
+<td>-3 to +3 EV</td>
+<td>0</td>
+<td>The two exposures of a split-grade print, in stops of time (EV). Shown in place of <strong>Paper grade</strong></td>
+</tr>
+<tr>
+<td><strong>Process</strong></td>
+<td><strong>Silver gelatin</strong>, <strong>Lith</strong>, <strong>Cyanotype</strong></td>
+<td><strong>Silver gelatin</strong></td>
+<td>How the print is made. Lith and cyanotype work with or without a film</td>
+</tr>
+<tr>
+<td><strong>Overexposure</strong></td>
+<td>0 to 4 EV</td>
+<td>0</td>
+<td>Lith and cyanotype: exposure over the normal print. Lith printers often give 2 to 3 stops</td>
+</tr>
+<tr>
+<td><strong>Snatch</strong>, <strong>Abruptness</strong></td>
+<td>0 to 100%</td>
+<td>55%, 60%</td>
+<td>Lith: how early the shadows go black, and how suddenly</td>
+</tr>
+<tr>
+<td><strong>Sensitizer</strong></td>
+<td><strong>Classic</strong>, <strong>New</strong></td>
+<td><strong>Classic</strong></td>
+<td>Cyanotype: Herschel's formula, or Mike Ware's, which holds a deeper blue</td>
+</tr>
+<tr>
+<td><strong>Range</strong></td>
+<td>0.5 to 3</td>
+<td>1.4</td>
+<td>Cyanotype: the density range the sensitizer holds. Lower is harder</td>
+</tr>
+<tr>
+<td><strong>Bleach</strong>, <strong>Tannin</strong></td>
+<td>0 to 100%</td>
+<td>0%</td>
+<td>Cyanotype: washing soda clears the blue from the highlights; tannin turns what is left brown</td>
 </tr>
 </tbody>
 </table></div>
 <p>The films are Kodak Tri-X 400, T-Max 100, T-Max 400, T-Max P3200, Plus-X 125 and Double-X 5222; Ilford HP5 Plus, FP4 Plus, Pan F Plus 50, Delta 100, Delta 400, Delta 3200, SFX 200, XP2 Super and Ortho Plus 80; and Fujifilm Acros II, Neopan 400 and Neopan 1600.</p>
 <p>Each film is its characteristic curve, from the maker's data sheet: how dark the negative gets for each amount of light. A film with a long toe, such as Tri-X, keeps more shadow detail. A film with a short one, such as Pan F Plus, makes deeper blacks.</p>
+<p>Eight films develop as their data sheets show: Kodak Tri-X 400, T-Max 100 and T-Max 400, from Kodak's curves at several times in D-76, and Ilford HP5 Plus, FP4 Plus, Delta 100, Delta 400 and Delta 3200, from Ilford's curve. On these, a longer time raises the highlights much more than the shadows and gains some speed, as a real push does. On the other ten films, <strong>Development</strong> makes the negative's contrast higher or lower by a fixed step.</p>
+<p>The papers are Ilford Multigrade IV RC, Multigrade FB Classic and Multigrade Warmtone, Kodak Polymax II RC and Polycontrast IV RC, and Foma Fomatone. Each grade is timed so that middle grey prints the same. FB Classic has a deeper black than the RC paper. Polycontrast IV has grades 1 to 5 only; a lower grade prints as 1. On Multigrade Warmtone and Fomatone the silver is warm, so the photo is toned and <a href="export.html#grey-or-color">exports in color</a>.</p>
+<p>In a split-grade print, the soft exposure prints the light tones and the hard exposure fills the shadows. At 0 and 0 the print matches grade 2 at middle grey and two stops under it. Give more <strong>Soft (00)</strong> to darken the light tones, and more <strong>Hard (5)</strong> to darken the shadows.</p>
+<p>A lith print has creamy, low-contrast highlights set by the exposure, and shadows that turn black past a point set by <strong>Snatch</strong>. Its color follows the paper: warm on Fomatone, nearly neutral on the others. A cyanotype is Prussian blue and never goes black. Paper white stays white in both. Both are toned photos.</p>
 <p>A color photo goes to grey through the film's own color sensitivity, and through the <strong>Filter</strong> of BASIC. So Ortho Plus 80, which does not see red, makes red lips and red bricks dark. A monochrome photo has no color, so this does not change it.</p>
-<p>The film also sets the grain. A fast film, such as Delta 3200, has large grain. A slow one, such as Pan F Plus, has fine grain. The grain is strongest in the midtones and none in the paper's white. <strong>Amount</strong> in <a href="#grain">Grain</a> scales it, and <strong>Link to ISO</strong> is off.</p>
-<p>The film's print, grain, halation and edge effect are the same on the screen and in an export. The curves were digitized from the makers' data sheets by SpektraLab (Hanze Qiu), under CC BY-SA 4.0. The film model is ported from spektrafilm (Andrea Volpato).</p>
+<p>The film also sets the grain. A fast film, such as Delta 3200, has large grain. A slow one, such as Pan F Plus, has fine grain. Monocard renders the negative's silver grains at the size that matches each film's published granularity, on a 35 mm frame across the photo, so the grain has the same size in the print whether the file is small or large. A crop enlarges the grain with the picture, as it would on film. The grain is weak in the print's shadows, strongest in the midtones and light tones, and none in the paper's white. In <a href="#grain">Grain</a>, <strong>Amount</strong> scales it and <strong>Size</strong> makes the grains smaller or larger than the film's (30% is the film's own). <strong>Roughness</strong> and <strong>Link to ISO</strong> are hidden with a film.</p>
+<p>The film's print, grain, halation and edge effect are the same on the screen and in an export. The curves were digitized from the makers' data sheets by SpektraLab (Hanze Qiu), under CC BY-SA 4.0. The film model is ported from spektrafilm (Andrea Volpato). The development, the fitted curves, and the Kodak papers are from film-darkroom (James Huckle); Multigrade Warmtone from film_tests (Rafal Lukawiecki); FB Classic, Fomatone, lith, cyanotype, and the toners from NegPy; the split-grade print from mimizan (Dragan Bojovic).</p>
 <h3 id="grain">Grain</h3>
 <div class="table" tabindex="0"><table>
 <thead>
@@ -337,13 +413,13 @@
 <td><strong>Size</strong></td>
 <td>0 to 100%</td>
 <td>30%</td>
-<td>The size of the grain</td>
+<td>The size of the grain. With a film, 30% is the film's grain size</td>
 </tr>
 <tr>
 <td><strong>Roughness</strong></td>
 <td>0 to 100%</td>
 <td>50%</td>
-<td>How rough the grain is</td>
+<td>How rough the grain is. Not shown with a film</td>
 </tr>
 <tr>
 <td><strong>Link to ISO</strong></td>
@@ -418,7 +494,7 @@
 <td><strong>Denoise</strong></td>
 <td><strong>Off</strong>, <strong>Profiled</strong>, <strong>Wavelet</strong>, <strong>Fast</strong>, <strong>Best</strong></td>
 <td><strong>Off</strong></td>
-<td>Chooses the method. <strong>Fast</strong> and <strong>Best</strong> need a learned model that does not come with Monocard, and use <strong>Profiled</strong> without it</td>
+<td>Chooses the method. <strong>Fast</strong> and <strong>Best</strong> are learned models. See <a href="#learned-denoise">Learned denoise</a></td>
 </tr>
 <tr>
 <td><strong>Strength</strong></td>
@@ -456,10 +532,79 @@
 <td>0</td>
 <td>A light denoise of the raw data, also with <strong>Denoise</strong> off. Dimmed while the switch above is on</td>
 </tr>
+<tr>
+<td><strong>Merge burst</strong></td>
+<td></td>
+<td></td>
+<td>Merges 2 to 16 frames at one exposure that you selected in the filmstrip into one with less noise. See <a href="merge.html#merge-burst">Merge</a></td>
+</tr>
+<tr>
+<td><strong>Remove JPEG blocks</strong></td>
+<td>0 to 100</td>
+<td>0</td>
+<td>On a JPEG only. Removes the 8 by 8 pixel blocks of the JPEG compression. See <a href="#remove-jpeg-blocks">Remove JPEG blocks</a></td>
+</tr>
 </tbody>
 </table></div>
 <figure><a href="images/panel-denoise.webp"><img src="images/panel-denoise.webp" alt="The Denoise controls" width="350" height="266" loading="lazy" decoding="async"></a><figcaption>Denoise</figcaption></figure>
 <figure class="wide"><a href="images/denoise-effect.webp"><img src="images/denoise-effect.webp" alt="A wall at ISO 3200 without denoise, with it, and with a part of the grain kept" width="1088" height="280" loading="lazy" decoding="async"></a><figcaption>A photo at ISO 3200, at 200%</figcaption></figure>
+<h4 id="learned-denoise">Learned denoise</h4>
+<p><strong>Fast</strong> and <strong>Best</strong> are networks trained on many photos to tell noise from detail. Monocard downloads each one the first time you choose it, after it shows you the model's license. You can also download them on the <a href="settings.html#models">Models</a> page of Settings.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Choice</th>
+<th>Model</th>
+<th>Download</th>
+<th>Time for a 24 MP photo on an M5 Max</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Fast</strong></td>
+<td>FFDNet</td>
+<td>2 MB</td>
+<td>about 1.5 s</td>
+</tr>
+<tr>
+<td><strong>Best</strong></td>
+<td>DRUNet</td>
+<td>131 MB</td>
+<td>about 10 s</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>Best</strong> keeps more fine detail than <strong>Fast</strong>. Both read the noise of the photo from the camera profile, so one model works at every ISO. <strong>Strength</strong> mixes the result with the photo: at 50, the mix is the one that the camera profile gives for the ISO, and lower values keep more of the noise. <strong>Detail</strong> and <strong>Shadows</strong> do nothing to them.</p>
+<p>Monocard runs the learned denoise only for the full develop of the photo and for an export. While you move a slider, the photo shows without it for a moment. Until the model is downloaded, or where it cannot run, <strong>Profiled</strong> stands in, and the status line says so.</p>
+<h4 id="remove-jpeg-blocks">Remove JPEG blocks</h4>
+<p>A JPEG is saved in blocks of 8 by 8 pixels. Curves, local contrast, and sharpening can make the edges of these blocks show, mostly in the sky and other smooth areas. <strong>Remove JPEG blocks</strong> finds how strongly the photo was compressed and removes the blocks to match. It runs at the start of the develop, before the other tools. The control shows on a JPEG only.</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Value</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td>Off</td>
+</tr>
+<tr>
+<td>50</td>
+<td>Removes the blocks as strongly as the compression that the model reads from the photo</td>
+</tr>
+<tr>
+<td>75, 100</td>
+<td>Removes more: two and four times as much, which also smooths fine detail</td>
+</tr>
+<tr>
+<td>25, 1</td>
+<td>Removes less</td>
+</tr>
+</tbody>
+</table></div>
+<p>The model is FBCNN, a 288 MB download. Download it on the <a href="settings.html#models">Models</a> page of Settings before you use the control; without it, the photo is left as it is. It takes about the same time as <strong>Best</strong>, and it also runs only for the full develop and for an export.</p>
 <h3 id="sharpen">Sharpen</h3>
 <p><strong>Sharpen</strong> is <strong>None</strong>, <strong>Capture</strong> for fine detail, <strong>Deblur</strong> for the blur of the lens, or <strong>Local</strong> for local contrast. <strong>Strength</strong> goes from 0 to 100%. The default is 50%.</p>
 <figure class="wide"><a href="images/sharpen-effect.webp"><img src="images/sharpen-effect.webp" alt="A person at a railing under the four choices of Sharpen" width="1132" height="280" loading="lazy" decoding="async"></a><figcaption>The choices of Sharpen, at 200%</figcaption></figure>
@@ -549,7 +694,7 @@
 <p>To keep highlights, use the camera's highlight-weighted metering and negative exposure compensation, and lift the shadows in Monocard.</p>
 <h2 id="finish">FINISH</h2>
 <h3 id="toning">Toning</h3>
-<p>Toning is the only tool that makes color. A toned photo is <a href="export.html#grey-or-color">exported in color</a>. <strong>Toning</strong> sets the sliders below it to <strong>None</strong>, <strong>Selenium</strong>, <strong>Sepia</strong>, <strong>Platinum</strong>, <strong>Cyanotype</strong>, or <strong>Gold</strong>.</p>
+<p>Toning makes color, as do a lith or cyanotype print and a warm-tone paper in <a href="#film">FILM</a>. A toned photo is <a href="export.html#grey-or-color">exported in color</a>. <strong>Toning</strong> sets the sliders below it to <strong>None</strong>, <strong>Selenium</strong>, <strong>Sepia</strong>, <strong>Platinum</strong>, <strong>Cyanotype</strong>, or <strong>Gold</strong>. <strong>Selenium</strong>, <strong>Sepia</strong>, and <strong>Gold</strong> put the print in that toner's bath; <strong>Platinum</strong> and <strong>Cyanotype</strong> set tints.</p>
 <div class="table" tabindex="0"><table>
 <thead>
 <tr>
@@ -579,8 +724,39 @@
 <td>-100 to +100</td>
 <td>Negative values spread the tint of the shadows, positive values that of the highlights</td>
 </tr>
+<tr>
+<td><strong>Selenium</strong></td>
+<td>0 to 100%</td>
+<td>Converts the densest silver first: deeper blacks with a purple-brown cast, light tones as they were</td>
+</tr>
+<tr>
+<td><strong>Sepia</strong></td>
+<td>0 to 100%</td>
+<td>Converts the thinnest silver first: brown highlights and midtones, the deepest black stays</td>
+</tr>
+<tr>
+<td><strong>Gold</strong></td>
+<td>0 to 100%</td>
+<td>Blue-black, from the highlights in. After <strong>Sepia</strong> it turns the brown to red</td>
+</tr>
+<tr>
+<td><strong>Iron blue</strong></td>
+<td>0 to 100%</td>
+<td>Prussian blue, strongest in the shadows</td>
+</tr>
+<tr>
+<td><strong>Copper</strong></td>
+<td>0 to 100%</td>
+<td>Red to pink, and a little lighter</td>
+</tr>
+<tr>
+<td><strong>Vanadium</strong></td>
+<td>0 to 100%</td>
+<td>Green, from the highlights in</td>
+</tr>
 </tbody>
 </table></div>
+<p>A bath acts on the print's density, so paper white stays white. The tints go over the bath's color and keep its lightness. The baths do not act on a cyanotype, which has no silver. On a lith print, selenium reaches further into the midtones and gold acts on every density alike. An edit made before the baths existed keeps its tints and looks as it did; choosing a preset again uses the bath.</p>
 <figure><a href="images/panel-toning.webp"><img src="images/panel-toning.webp" alt="The Toning controls" width="350" height="317" loading="lazy" decoding="async"></a><figcaption>Toning</figcaption></figure>
 <figure class="wide"><a href="images/toning-effect.webp"><img src="images/toning-effect.webp" alt="A harbor untoned and under the five toning presets" width="1088" height="484" loading="lazy" decoding="async"></a><figcaption>The presets of Toning</figcaption></figure>
 <h3 id="vignette">Vignette</h3>

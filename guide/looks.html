@@ -116,20 +116,61 @@
 </table></div>
 <figure><a href="images/looks.webp"><img src="images/looks.webp" alt="One photo under the ten looks" width="724" height="1216" loading="lazy" decoding="async"></a><figcaption>The ten looks on one photo</figcaption></figure>
 <p>Solar 1 to 3 are not matched to the camera's Solarized modes. Selenium and Warm Fibre tone the photo, so it <a href="export.html#grey-or-color">exports in color</a>.</p>
+<h3 id="film-looks-for-color-photos">Film looks for color photos</h3>
+<p>Twelve more looks are black and white film emulations from t3mujinpack by João Almeida (MIT), named with <strong>(t3mujinpack)</strong> after the film: AGFA APX 25 and 100, Fuji Neopan 1600 and Neopan Acros 100, Ilford Delta 100, 400 and 3200, FP4 125, HP5 Plus 400 and XP2, Kodak T-Max 3200 and Tri-X 400.</p>
+<p>Each one sets the curve to the film's tone and the filter to the film's mix of colors to grey. The mix acts on color photos only. On a photo from a monochrome camera only the curve acts. The <strong>Filter</strong> row shows <strong>From LUT</strong>; choose a filter to take the film's mix off.</p>
+<p>These looks are not the films of the <a href="develop.html#film">FILM panel</a>, which model the film's chemistry from its data sheet.</p>
 <h2 id="save-your-own-look">Save your own look</h2>
 <ol>
 <li>Set the controls of the panels. A film and its settings are kept too.</li>
 <li>Click <strong>Save as look</strong>, type a name, and click <strong>Save</strong>.</li>
 </ol>
 <p>The look holds each control that is not at its default, <strong>Exposure</strong> too. It does not hold the crop, the lens, the masks, or the retouch. A name of your own that is in use is written over. A name of a bundled look is refused.</p>
-<p>With a look on, <strong>Export</strong> writes it as a file. For your own looks, there are also <strong>Rename</strong> and <strong>Delete</strong>. Photos that have a renamed or deleted look keep their values, but <strong>Strength</strong> no longer works on them. The open photo follows a rename.</p>
-<h3 id="import-a-look-or-a-lightroom-preset">Import a look or a Lightroom preset</h3>
-<p>Click <strong>Import look or preset</strong> and choose a file:</p>
+<p>With a look on, <strong>Export</strong> shows four buttons:</p>
+<div class="table" tabindex="0"><table>
+<thead>
+<tr>
+<th>Button</th>
+<th>What it writes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Look</strong></td>
+<td>The look's own file (<code>.toml</code>)</td>
+</tr>
+<tr>
+<td><strong>1D LUT</strong></td>
+<td>A 1D <code>.cube</code> of 4096 entries, for grey pictures: the look's tone, and its toning as one curve a channel</td>
+</tr>
+<tr>
+<td><strong>3D LUT</strong></td>
+<td>A 3D <code>.cube</code> of 33 points, for color pictures: the filter or film's conversion to grey, the tone, and the toning</td>
+</tr>
+<tr>
+<td><strong>Lightroom</strong></td>
+<td>A creative profile (<code>-profile.xmp</code>) and a Develop preset (<code>-preset.xmp</code>)</td>
+</tr>
+</tbody>
+</table></div>
+<p>Both LUTs take and give display-referred sRGB. They hold the tone and the toning only: the grain, the vignette, and the local contrast are not in a LUT.</p>
+<p>The Lightroom profile converts to black and white and holds the look's conversion and tone as a table, which Lightroom's <strong>Amount</strong> slider scales. Put it in Camera Raw's <code>Settings</code> folder, then restart Lightroom. The preset puts the profile on, with the clarity, texture, grain, vignette, and toning (as split toning). Import it in Lightroom's <strong>Presets</strong> panel. Lightroom's sliders are not Monocard's, so the grain and vignette look different.</p>
+<p>For your own looks, there are also <strong>Rename</strong> and <strong>Delete</strong>. Photos that have a renamed or deleted look keep their values, but <strong>Strength</strong> no longer works on them. The open photo follows a rename.</p>
+<h3 id="import-a-look-a-lightroom-preset-or-a-lut">Import a look, a Lightroom preset, or a LUT</h3>
+<p>Click <strong>Import look, preset, or LUT</strong> and choose a file:</p>
 <ul>
 <li>A look (<code>.toml</code>).</li>
 <li>A monochrome Lightroom preset (<code>.xmp</code>). Monocard takes the basic tone, the curves, clarity, texture, grain, split toning, and vignette. A line under the button lists what it left out, such as color values and masks. The picture is not equal to Lightroom's.</li>
+<li>A LUT: a <code>.cube</code> (1D or 3D) or a HaldCLUT <code>.png</code>, made for display-referred sRGB. The look takes the file's name.</li>
 </ul>
 <p>A name that is in use is refused.</p>
+<p>On a grey photo a 3D LUT acts only along its black-to-white line. So the look holds that line as an editable curve, and the difference between the LUT's channels on it as toning. The LUT's filter part, how it turns colors into greys, acts on color photos only:</p>
+<ul>
+<li>When a filter mix comes near the LUT, the look sets the <strong>Filter</strong> to that mix. The line under the button gives how near, in levels of 255.</li>
+<li>When none does (on average more than 1.5 levels off, or 4 levels for 95% of the colors), the line says so, and the look keeps the LUT's own conversion to grey in place of a filter.</li>
+</ul>
+<p>In both cases the <strong>Filter</strong> row shows <strong>From LUT</strong>.</p>
+<p>The curve is fitted under the default display transform, as for a raw. A camera JPEG has no display transform, so on a JPEG the look's tone differs from the LUT's.</p>
 <h3 id="the-file-of-a-look">The file of a look</h3>
 <p>A look is a text file in TOML format. Monocard reads this folder when it starts:</p>
 <div class="table" tabindex="0"><table>
