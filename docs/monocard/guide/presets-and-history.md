@@ -101,6 +101,6 @@ A preset can also be applied on [import](import.md#import-from-a-card-or-folder)
 
 ### Import a preset
 
-**Import...** under PRESETS takes `.gcp` files, which is the format of Monocard and Greycard presets. Presets that have only color settings are not listed. To import a Lightroom preset, see [Looks](looks.md#import-a-look-or-a-lightroom-preset).
+**Import...** under PRESETS takes `.gcp` files, which is the format of Monocard and Greycard presets. Presets that have only color settings are not listed. To import a Lightroom preset, see [Looks](looks.md#import-a-look-a-lightroom-preset-or-a-lut).
 
 Presets are `.gcp` files in the `presets` folder. [Settings](settings.md#files) says where it is.

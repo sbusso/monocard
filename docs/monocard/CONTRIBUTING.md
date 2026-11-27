@@ -56,7 +56,7 @@ scripts/monocard-licenses.sh
 | --- | --- | --- |
 | `monocard.yml`: lint, Monocard's crates, the mono pipeline, licenses | a push to `monocard` that changes the app, and a pull request | about 10 minutes |
 | `monocard.yml`, with the slow tests and the stock build | on request, after a merge of Greycard | about 20 minutes |
-| `monocard-package.yml`: the Linux and Windows packages, and their checks | on request, for a release | about 30 minutes |
+| `monocard-package.yml`: the Linux and Windows packages, and their checks | on request, for a release | about 30 minutes cold, less from the cache |
 | `ci.yml`: Greycard's whole suite on three systems | on request | 1 to 2 hours |
 | `fuzz.yml`: the fuzz targets | on request | 15 minutes or more |
 
