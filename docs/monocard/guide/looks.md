@@ -147,19 +147,47 @@ Click a row for **Use**, **Adjust**, **Export**, **Delete**, and **Fit** or **Fi
 
 ### Help fit the modes
 
-Soft, High Contrast, and HDR Tone are still drafts. Photos from more cameras make the fits better. The fit needs the test chart, shot at two exposures. To send yours:
+Soft, High Contrast, and HDR Tone are still drafts. The settings of the modes, the grain, and the toning are not fitted yet. Photos from more cameras make all of them better. You shoot 4 DNGs, and then the camera develops them into 44 JPEGs.
 
-1. On the camera, set every parameter of the modes to its default. Turn off Highlight Correction, Shadow Correction, noise reduction, and Peripheral Illumination Correction.
-2. In **Settings...**, **Camera profiles**, under **TEST CHART**, click **Test chart**. It fills the screen with 40 grey steps over 10 stops.
-3. Make the room dark. Put the camera on a tripod. Set RAW+JPEG, Standard mode, and manual exposure.
-4. Set ISO 160 and a shutter of 1/30 s or longer. Make the focus a little soft.
-5. Take two shots. In the first, the brightest step is just under white. Take the second 4 stops darker.
-6. Develop the two DNGs in the camera in each mode. Soft, High Contrast, and HDR Tone help most.
-7. Copy the DNGs and the JPEGs to a folder as they are. Do not edit them.
-8. Send one of these:
-   - A fitted mode: [fit the folder](#fit-a-mode-from-your-photos), click the mode's row, then click **Export**. This writes the look's own file (`.toml`).
-   - The photos: put the DNGs and the JPEGs in a zip, and share a link to it.
-9. [Open an issue](https://github.com/sbusso/monocard/issues/new) on GitHub with the file or the link. An issue is public.
+Set the camera first:
+
+- Every parameter of the modes at its default, and Standard mode.
+- RAW+JPEG, size L, 3:2, manual exposure, and manual focus.
+- Off: Highlight Correction, Shadow Correction, noise reduction, Peripheral Illumination Correction, the crop, and Horizon Correction.
+- Use a tripod. Do not change the light between shots.
+
+Shoot the 4 DNGs:
+
+| DNG | What | ISO |
+| --- | --- | --- |
+| Chart | The [test chart](#the-test-chart) in a dark room, at 1/30 s or longer. The brightest step is just under white | 160 |
+| Scene | A real scene with sky, shade, and fine texture | 160 |
+| Scene, high ISO | The same scene | 3200 |
+| Wall | A plain wall, evenly lit, that fills the frame | 160 |
+
+Then develop each DNG in the camera with **RAW Development**, once for each line. Leave each setting that a line does not name at its default.
+
+| DNG | Develop as | JPEGs |
+| --- | --- | --- |
+| Chart | Each mode | 8 |
+| Chart | Standard, Key at -4 and at +4 | 2 |
+| Chart | Standard, Contrast at -4 and at +4 | 2 |
+| Chart | Standard, Contrast (Highlight) at -4 and at +4 | 2 |
+| Chart | Standard, Contrast (Shadow) at -4 and at +4 | 2 |
+| Chart | Standard, each toning | 5 |
+| Scene | Soft, High Contrast, Grainy | 3 |
+| Scene | HDR Tone, at each level | 3 |
+| Scene | Standard, Sharpness at -4 and at +4 | 2 |
+| Scene | Standard, Clarity at -4 and at +4 | 2 |
+| Scene, high ISO | Standard, and Grainy | 2 |
+| Wall | Standard, Shading at -4 and at +4 | 2 |
+| Wall | Standard, grain on, each size at each strength | 9 |
+
+Monocard reads each JPEG's mode and settings from the file, so the names do not matter.
+
+1. Copy the DNGs and the JPEGs to a folder as they are. Do not edit them.
+2. Put the folder in a zip, and share a link to it.
+3. [Open an issue](https://github.com/sbusso/monocard/issues/new) on GitHub with the link. An issue is public.
 
 ### The test chart
 
