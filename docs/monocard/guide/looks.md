@@ -147,15 +147,19 @@ Click a row for **Use**, **Adjust**, **Export**, **Delete**, and **Fit** or **Fi
 
 ### Help fit the modes
 
-Soft, High Contrast, and HDR Tone are still drafts. Photos from more cameras make the fits better. To send yours:
+Soft, High Contrast, and HDR Tone are still drafts. Photos from more cameras make the fits better. The fit needs the test chart, shot at two exposures. To send yours:
 
-1. Set the camera as in [Fit a mode from your photos](#fit-a-mode-from-your-photos).
-2. Shoot RAW+JPEG of one scene in each mode. Choose a scene with deep shadows and bright highlights. Soft, High Contrast, and HDR Tone help most.
-3. Copy the DNGs and the JPEGs to a folder as they are. Do not edit them.
-4. Send one of these:
-   - A fitted mode: fit the folder, click the mode's row, then click **Export**. This writes the look's own file (`.toml`).
+1. On the camera, set every parameter of the modes to its default. Turn off Highlight Correction, Shadow Correction, noise reduction, and Peripheral Illumination Correction.
+2. In **Settings...**, **Camera profiles**, under **TEST CHART**, click **Test chart**. It fills the screen with 40 grey steps over 10 stops.
+3. Make the room dark. Put the camera on a tripod. Set RAW+JPEG, Standard mode, and manual exposure.
+4. Set ISO 160 and a shutter of 1/30 s or longer. Make the focus a little soft.
+5. Take two shots. In the first, the brightest step is just under white. Take the second 4 stops darker.
+6. Develop the two DNGs in the camera in each mode. Soft, High Contrast, and HDR Tone help most.
+7. Copy the DNGs and the JPEGs to a folder as they are. Do not edit them.
+8. Send one of these:
+   - A fitted mode: [fit the folder](#fit-a-mode-from-your-photos), click the mode's row, then click **Export**. This writes the look's own file (`.toml`).
    - The photos: put the DNGs and the JPEGs in a zip, and share a link to it.
-5. [Open an issue](https://github.com/sbusso/monocard/issues/new) on GitHub with the file or the link. An issue is public, so send only photos you are happy to share.
+9. [Open an issue](https://github.com/sbusso/monocard/issues/new) on GitHub with the file or the link. An issue is public.
 
 ### The test chart
 
