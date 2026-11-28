@@ -145,6 +145,18 @@ The **CAMERA MODES** table shows each mode:
 
 Click a row for **Use**, **Adjust**, **Export**, **Delete**, and **Fit** or **Fit again**. **Adjust** puts the look on the open photo. Change the controls, then save the look under the same name. **Fit all** does not write over an adjusted look.
 
+### Help fit the modes
+
+Soft, High Contrast, and HDR Tone are still drafts. Photos from more cameras make the fits better. To send yours:
+
+1. Set the camera as in [Fit a mode from your photos](#fit-a-mode-from-your-photos).
+2. Shoot RAW+JPEG of one scene in each mode. Choose a scene with deep shadows and bright highlights. Soft, High Contrast, and HDR Tone help most.
+3. Copy the DNGs and the JPEGs to a folder as they are. Do not edit them.
+4. Send one of these:
+   - A fitted mode: fit the folder, click the mode's row, then click **Export**. This writes the look's own file (`.toml`).
+   - The photos: put the DNGs and the JPEGs in a zip, and share a link to it.
+5. [Open an issue](https://github.com/sbusso/monocard/issues/new) on GitHub with the file or the link. An issue is public, so send only photos you are happy to share.
+
 ### The test chart
 
 Under **TEST CHART**, **Test chart** fills the screen with 40 grey steps over 10 stops. **Save chart...** saves it as a picture. The page says how to photograph it.
